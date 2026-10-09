@@ -4,6 +4,7 @@
 // type may show; the slot schema of the chosen pattern keeps its part.
 import { CONTENT_NAMES, CONTENT_SCREENS, entryPrefix } from "@wizard/modules";
 import { type PatternMeta, patternById, type SectionType } from "@wizard/ui-kit/v3/patterns";
+import { type CabinetSection, VISITOR_CABINET_MODULE } from "./account.js";
 import { type SiteFacts, textOf } from "./facts.js";
 import {
   ANCHOR_LABELS,
@@ -12,6 +13,7 @@ import {
   isParamRoute,
   type PageKind,
   type PlannedPage,
+  type SectionPhotos,
   SHOP_MODULE,
   type SiteModel,
   type SiteSection,
@@ -73,7 +75,13 @@ export function primaryAction(
   if (formOnHome)
     return formOnHome.needs === "booking"
       ? { kind: "booking", label: heroCta ?? "Записаться", route: "/", anchor: "form" }
-      : { kind: "form", label: heroCta ?? "Оставить заявку", route: "/", anchor: "form" };
+      : {
+          kind: "form",
+          // The button the brief quotes for a request («Обсудить проект»).
+          label: heroCta ?? fits(facts.copy.action, LINE.label) ?? "Оставить заявку",
+          route: "/",
+          anchor: "form",
+        };
   const booking = pages.find((p) => p.kind === "booking");
   if (booking)
     return {
@@ -131,6 +139,8 @@ export interface SectionContext {
   homeSections: readonly { id: string; type: SectionType }[];
   /** Path of the site's request form («/#form») when the site has one (where a catalog item leads without booking). */
   leadForm?: string;
+  /** The client cabinet of «Кабинет посетителя» (V3-18): the visitor role and the sections of his records. */
+  cabinet?: { role: string; sections: CabinetSection[] };
 }
 
 function headerNav(c: SectionContext): Link[] {
@@ -197,19 +207,26 @@ function heroAction(c: SectionContext): Link | null {
   return other ? { label: navLabel(other), href: other.route } : null;
 }
 
+/** The client cabinet /me: its account section is the heading of the page (h1), no first screen above it. */
+const isCabinet = (c: SectionContext) =>
+  c.page.kind === "account" && c.page.module === VISITOR_CABINET_MODULE && !!c.cabinet;
+
 function heroProps(c: SectionContext): Props | null {
   const { facts: f, page } = c;
+  if (isCabinet(c)) return null;
   const main = heroAction(c);
   if (!main) return null;
   if (page.kind !== "home") return { title: page.title, action: main };
+  // The owner's heading, else the system's description, else what the brief says the business offers and where.
   const title =
     fits(textOf(f, "hero", "title"), LINE.title) ??
     fits(f.description, LINE.title) ??
-    fits(`${f.name}: ${f.niche}`, LINE.title) ??
+    fits(f.copy.title, LINE.title) ??
     f.name.slice(0, LINE.title);
   const lead =
     forAction(fits(textOf(f, "hero", "subtitle"), LINE.lead), c.primary) ??
-    (title === f.description ? undefined : fits(f.description, LINE.lead));
+    (title === f.description ? undefined : fits(f.description, LINE.lead)) ??
+    forAction(fits(f.copy.lead, LINE.lead), c.primary);
   const photos = f.photos.filter((p) => p.slot === "top" || /^top-\d+$/.test(p.slot));
   const out: Props = { title, action: main };
   if (lead) out.lead = lead;
@@ -401,10 +418,11 @@ function boundProps(type: SectionType, c: SectionContext): Props | null {
         ...(cfg.specialistEntity ? { specialistEntity: cfg.specialistEntity } : {}),
         ...(b.packageCheckFn ? { packageCheckFn: b.packageCheckFn } : {}),
       },
-      title: fits(textOf(f, "booking", "title"), LINE.cta) ?? "Запись онлайн",
+      title:
+        fits(textOf(f, "booking", "title"), LINE.cta) ?? fits(f.copy.booking, LINE.cta) ?? "Запись онлайн",
       ...(text ? { text } : {}),
       submit: submit && !VAGUE.has(submit) ? submit : "Записаться",
-      sent: { title: SENT_TITLES.booking },
+      sent: { title: f.bookingByRequest ? SENT_TITLES.bookingRequest : SENT_TITLES.booking },
       again: "Записаться ещё раз",
       ...contact,
     };
@@ -415,7 +433,10 @@ function boundProps(type: SectionType, c: SectionContext): Props | null {
     const points = planSteps(f, 120);
     return {
       entity,
-      title: fits(textOf(f, "lead_form", "title"), LINE.cta) ?? "Оставьте заявку",
+      title:
+        fits(textOf(f, "lead_form", "title"), LINE.cta) ??
+        fits(f.copy.leadForm, LINE.cta) ??
+        "Оставьте заявку",
       ...(text ? { text } : {}),
       submit: submit && !VAGUE.has(submit) ? submit : "Отправить заявку",
       sent: { title: SENT_TITLES.lead },
@@ -564,6 +585,23 @@ function contentEntryProps(type: SectionType, c: SectionContext, b: Binding): Pr
   return null;
 }
 
+/**
+ * The client cabinet (V3-18) in the slot contract of the account patterns: the page's title as its h1, the sections of
+ * the visitor's records, sign-in by a code with the way back, the site's main action for an empty cabinet.
+ */
+function accountProps(c: SectionContext): Props | null {
+  if (!isCabinet(c) || !c.cabinet) return null;
+  const next = new URLSearchParams({ role: c.cabinet.role, next: c.page.route });
+  return {
+    title: fits(c.page.title, LINE.cta) ?? "Личный кабинет",
+    level: 1,
+    sections: c.cabinet.sections,
+    signIn: { label: "Войти по коду", href: `/login?${next}` },
+    ...(c.primary ? { action: actionLink(c.primary, c.page.route) } : {}),
+    empty: "Здесь появятся ваши записи и заявки",
+  };
+}
+
 /** Props of a section of a page kind, or null when there is nothing honest to show. */
 export function sectionProps(type: SectionType, c: SectionContext): Props | null {
   switch (type) {
@@ -575,6 +613,8 @@ export function sectionProps(type: SectionType, c: SectionContext): Props | null
       return heroProps(c);
     case "cta":
       return ctaProps(c);
+    case "account":
+      return accountProps(c);
     case "form":
     case "catalog":
     case "blog":
@@ -587,6 +627,76 @@ export function sectionProps(type: SectionType, c: SectionContext): Props | null
     default:
       return c.page.kind === "home" || type === "faq" || type === "contacts" ? contentProps(type, c) : null;
   }
+}
+
+// ------------------------------------------------------------------------------------- the owner's photos (V3-18)
+
+/** Places of the owner's photos of a type, in page order (hero: top, top-2…; about; gallery…; features…). */
+const placesOf = (f: SiteFacts, type: SiteFacts["places"][number]["type"]) =>
+  f.places.filter((p) => p.type === type).map((p) => p.slot);
+
+/**
+ * Places of the owner's photos a home section shows («Фото сайта», B2-38: the landing's slots of the plan — the same
+ * the cabinet lists): the first screen its hero places, «О нас» its photo, the gallery its pictures by their slots,
+ * the services the picture of each item. Undefined — the section has no place.
+ */
+export function sectionPhotos(type: SectionType, c: SectionContext, props: Props): SectionPhotos | undefined {
+  const f = c.facts;
+  if (c.page.kind !== "home" || f.places.length === 0) return undefined;
+  const out: SectionPhotos = {};
+  if (type === "hero") {
+    const top = placesOf(f, "hero");
+    if (top[0]) out.image = top[0];
+    if (top.length >= 2 && Array.isArray(props.images)) out.images = top;
+  } else if (type === "about") {
+    const about = placesOf(f, "about");
+    if (about[0]) out.image = about[0];
+  } else if (type === "gallery" && Array.isArray(props.images)) {
+    // The gallery shows the stock photos of its places in their order: each picture keeps its place.
+    const shown = f.photos.filter((x) => /^gallery(-\d+)?$/.test(x.slot)).map((x) => x.slot);
+    const places = new Set(placesOf(f, "gallery"));
+    if (shown.some((slot) => places.has(slot))) out.images = shown;
+  } else if (type === "services" && Array.isArray(props.items)) {
+    const features = placesOf(f, "features");
+    if (features.length) out.items = features.slice(0, props.items.length);
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+type Shape = Record<string, unknown>;
+type ZodDef = { type?: string; innerType?: unknown; element?: unknown };
+const defOf = (t: unknown): ZodDef => (t as { _zod?: { def?: ZodDef } } | undefined)?._zod?.def ?? {};
+/** The schema without optional / nullable / default wrappers. */
+function bare(t: unknown): unknown {
+  let x = t;
+  for (let d = defOf(x); d.type === "optional" || d.type === "nullable" || d.type === "default"; d = defOf(x))
+    x = d.innerType;
+  return x;
+}
+const shapeOf = (t: unknown): Shape => (bare(t) as { shape?: Shape } | undefined)?.shape ?? {};
+
+/** Slot names of a variant and of its items (the zod object schema of the pattern). */
+export function slotShape(p: PatternMeta): { keys: Set<string>; itemKeys: Set<string> } {
+  const shape = shapeOf(p.slots);
+  return {
+    keys: new Set(Object.keys(shape)),
+    itemKeys: new Set(Object.keys(shapeOf(defOf(bare(shape.items)).element))),
+  };
+}
+
+/** The places a variant can show: `image` with its image slot, `images` with its list, `items` with item pictures. */
+export function fitPhotos(
+  p: PatternMeta | undefined,
+  photos: SectionPhotos | undefined,
+  props: Props,
+): SectionPhotos | undefined {
+  if (!p || !photos) return undefined;
+  const { keys, itemKeys } = slotShape(p);
+  const out: SectionPhotos = {};
+  if (photos.image && keys.has("image")) out.image = photos.image;
+  if (photos.images && keys.has("images") && Array.isArray(props.images)) out.images = photos.images;
+  if (photos.items && itemKeys.has("image") && Array.isArray(props.items)) out.items = photos.items;
+  return Object.keys(out).length ? out : undefined;
 }
 
 /** The photo the first screen shows (its variant kept `image` or `images`). */
@@ -603,12 +713,15 @@ export function seoOf(
   hero: Props | null,
 ): { title: string; description: string; image?: string } {
   const clip = (s: string, n: number) => (s.length <= n ? s : `${s.slice(0, n - 1).trimEnd()}…`);
-  const title = page.kind === "home" ? `${f.name} — ${f.niche}` : `${page.title} — ${f.name}`;
+  // What the business is (the brief's niche with its place, never the first words of the brief cut off).
+  const about = f.copy.about;
+  const home = about && about !== f.name ? `${f.name} — ${about}` : f.name;
+  const title = page.kind === "home" ? home : `${page.title} — ${f.name}`;
   const lead = typeof hero?.lead === "string" ? hero.lead : undefined;
   const description =
     page.kind === "home"
-      ? (lead ?? f.description ?? `${f.name}: ${f.niche}.`)
-      : `${page.title}. ${f.name}: ${f.niche}.`;
+      ? (lead ?? f.description ?? `${f.name}: ${about}.`)
+      : `${page.title}. ${f.name}: ${about}.`;
   const image = heroPhoto(hero);
   return {
     title: clip(title, 70),
@@ -632,7 +745,12 @@ export const KIND_LABELS: Readonly<Record<PageKind, string>> = {
 };
 
 /** The «sent» headings of the module forms: the goal scenarios read them after a write (GS-leads-1, GS-booking-1). */
-export const SENT_TITLES = { lead: "Заявка отправлена", booking: "Вы записаны" } as const;
+export const SENT_TITLES = {
+  lead: "Заявка отправлена",
+  booking: "Вы записаны",
+  /** Bookings the staff confirms (confirm = manual), as the module's v2 page. */
+  bookingRequest: "Заявка на запись отправлена",
+} as const;
 /** A booking heading the booking goal scenarios accept (staff confirmation says «Заявка на запись отправлена»). */
 const BOOKED_RE = /Вы записаны|Заявка на запись отправлена/;
 

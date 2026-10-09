@@ -64,6 +64,19 @@ export interface SiteSection {
   /** Signature section: its file in ui/sections and what it shows (Russian). */
   file?: string;
   title?: string;
+  /** Places of the owner's photos the section shows (V3-18): the page replaces the stock pictures by them. */
+  photos?: SectionPhotos;
+}
+
+/**
+ * Places («слоты» of «Фото сайта», B2-38) of a section's pictures: `image` — the one picture, `images` — the pictures in
+ * order, `items` — the picture of each item (services). The page file asks useSitePhotos for them: the owner's photo
+ * of a place wins, else the stock photo of the props stays (codegen pageSource).
+ */
+export interface SectionPhotos {
+  image?: string;
+  images?: string[];
+  items?: string[];
 }
 
 export interface SeoMeta {
@@ -121,7 +134,8 @@ export const PAGE_SECTIONS: Readonly<Record<PageKind, readonly SectionType[]>> =
   booking: ["header", "hero", "form", "faq", "contacts", "footer"],
   // V3-24: the list of articles shows the rubric section (with the rubric links) when the site has rubrics, else blog.
   content: ["header", "hero", "rubric", "blog", "cta", "footer"],
-  account: ["header", "hero", "catalog", "footer"],
+  // V3-18: the client cabinet /me is the account section (the page's h1); other visitor pages keep a first screen.
+  account: ["header", "hero", "account", "catalog", "footer"],
   credits: ["header", "hero", "gallery", "footer"],
   // V3-24: the entry and the rubric are the heading of their page (h1), no first screen above them.
   entry: ["header", "article", "cta", "footer"],

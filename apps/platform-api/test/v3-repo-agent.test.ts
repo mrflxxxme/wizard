@@ -413,7 +413,7 @@ describe("GitHub: a Vite + React repository â€” report, rules proposal, a task â
     // The reviewer is of another family than the agent.
     const agentModels = new Set(rows.filter((r) => r.call_type === "repo_code").map((r) => r.model_id));
     const reviewModels = new Set(rows.filter((r) => r.call_type === "repo_review").map((r) => r.model_id));
-    expect([...agentModels]).toEqual(["deepseek-v4-pro"]);
+    expect([...agentModels]).toEqual(["glm-5.1"]);
     expect([...reviewModels]).toEqual(["gpt-oss-120b"]);
   });
 

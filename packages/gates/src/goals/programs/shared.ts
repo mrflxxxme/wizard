@@ -20,9 +20,14 @@ export function pageRoute(spec: AppSpec, role: string, prefix = "/cabinet"): str
   return routes.sort((a, b) => a.length - b.length)[0] ?? null;
 }
 
-/** Whether a page source works with an entity (DataTable, RecordForm, StatusBoard … entity="x"). */
+/**
+ * Whether a page source works with an entity: a ui-kit component (DataTable, RecordForm, StatusBoard … entity="x"),
+ * or a section of a v3 page whose props name it (the composer writes them as JSON: "entity":"x", V3-18).
+ */
 const showsEntity = (source: string, entity: string) =>
-  source.includes(`entity={"${entity}"}`) || source.includes(`entity="${entity}"`);
+  source.includes(`entity={"${entity}"}`) ||
+  source.includes(`entity="${entity}"`) ||
+  source.includes(`"entity":"${entity}"`);
 
 /**
  * Page of a role that works with an entity: a page whose source names the entity, routes under `prefix` first (the

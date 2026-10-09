@@ -26,7 +26,16 @@ const hasChromium = (() => {
 })();
 
 const DATA = PATTERNS.filter((p) => p.needs !== null);
-const LISTS = DATA.filter((p) => p.needs === "catalog" || p.needs === "content" || p.needs === "booking");
+/**
+ * The client cabinet (account-*, V3-18) shows the visitor's own records only after his sign-in: the guest of the
+ * preview gets the sign-in by a code (checked below); its data states — ui-kit v3-account.dom.test.ts and the goal
+ * scenarios GS-visitor_cabinet-* (apps/platform-api v3-goals.browser.test.ts).
+ */
+const ACCOUNT = DATA.filter((p) => p.sectionType === "account");
+const LISTS = DATA.filter(
+  (p) =>
+    (p.needs === "catalog" || p.needs === "content" || p.needs === "booking") && p.sectionType !== "account",
+);
 const SHOTS = join(PKG_ROOT, "test/artifacts/patterns-v3");
 const MAIN = "calm_medical";
 const PHONE = { width: 390, height: 844 };
@@ -117,7 +126,7 @@ const writesSince = (mark: number) => server().writes.slice(mark);
 describe.skipIf(!hasChromium)("module-bound patterns in chromium", () => {
   test("the library has data-bound form, catalog and blog sections", () => {
     expect(new Set(DATA.map((p) => p.sectionType))).toEqual(
-      new Set(["form", "catalog", "blog", "article", "rubric", "shop", "cart", "order"]),
+      new Set(["form", "catalog", "blog", "article", "rubric", "account", "shop", "cart", "order"]),
     );
   });
 
@@ -439,6 +448,10 @@ describe.skipIf(!hasChromium)("module-bound patterns in chromium", () => {
           const said = (await root.textContent()) ?? "";
           expect(said, p.id).toMatch(/скоро появятся|пока нет|нет услуг/i);
         }
+      }
+      for (const p of ACCOUNT) {
+        const signIn = section(page, p.id).getByRole("link", { name: "Войти по коду" });
+        expect(await signIn.getAttribute("href"), p.id).toMatch(/^\/login\?/);
       }
       // The runtime's 500 answers are logged by the browser; nothing else may be.
       expect(errors.filter((e) => !/status of 500/.test(e))).toEqual([]);

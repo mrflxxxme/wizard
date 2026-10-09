@@ -3,11 +3,34 @@
 // WzProvider the system template mounts), no markup. The public actions of a backend-mode system name their hook
 // (@wizard/modules publicFront.actions[].hook).
 
-/** useBooking(o) — service → specialist → day → free slots (busySlots + the module's schedule) → contacts with consent → booking. */
+/**
+ * Client cabinet (V3-18): useMyRecords(entity, o) — the visitor's own rows (rowFilter on the server) as texts, «Отменить»
+ * when allowed; useClientSession() — signed in or not, the name, sign out; cellText(field, value).
+ */
+export {
+  type ClientSession,
+  cellText,
+  MY_RECORDS_FIELDS,
+  type MyRecord,
+  type MyRecordCell,
+  type MyRecordsModel,
+  type UseMyRecordsOptions,
+  useClientSession,
+  useMyRecords,
+} from "./account.js";
+/**
+ * useBooking(o) — service → specialist → day → free slots (busySlots + the module's schedule) → contacts with consent →
+ * booking; with o.reschedule (?reschedule= of the e-mail, bookingAddress()) the chosen time goes to the runtime's
+ * confirmation (reschedule.href) with the service fixed (V3-18).
+ */
 export {
   BOOKING_TEXTS,
+  type BookingAddress,
   type BookingList,
   type BookingModel,
+  type BookingReschedule,
+  bookingAddress,
+  RESCHEDULE_PATH,
   type UseBookingOptions,
   useBooking,
 } from "./booking.js";
@@ -55,6 +78,14 @@ export {
 export { type LeadFormModel, type UseLeadFormOptions, useLeadForm } from "./lead-form.js";
 /** usePagedList(entity, query, {page, max}) — «Показать ещё» by a page, ≤ 96 rows, read permission. */
 export { LIST_MAX, LIST_PAGE, type PagedList, usePagedList } from "./list.js";
+/** useSitePhotos() — the owner's photos of the site's places («Фото сайта», site_photo), else the stock ones (V3-18). */
+export {
+  SITE_PHOTO_DEFAULTS,
+  type SitePhoto,
+  type SitePhotos,
+  type UseSitePhotosOptions,
+  useSitePhotos,
+} from "./photos.js";
 /** Schedule of «Запись по слотам»: workdays, daySlots, freeSlots (the first free seat), zonedAt, dayKey, addDays. */
 export {
   addDays,

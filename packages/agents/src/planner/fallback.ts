@@ -80,6 +80,12 @@ const ROLES: readonly (readonly [RegExp, string])[] = [
 
 const lower = (s: string) => s.toLowerCase().replace(/ё/g, "е");
 
+/**
+ * A niche the keywords gave (a whole phrase: «медицинская клиника»), not the first words of a sentence of the brief —
+ * only such a niche may be shown to visitors as is (V3-18: the skeleton's first screen).
+ */
+export const isKeywordNiche = (niche: string): boolean => NICHES.some(([, n]) => n === niche);
+
 /** Niche of the brief: by keywords, else the first words of its first sentence, else «малый бизнес». */
 export function fallbackNiche(brief: string): string {
   const t = lower(brief);
