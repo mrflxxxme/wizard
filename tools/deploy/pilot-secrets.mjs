@@ -407,6 +407,10 @@ export function clusterSecretFiles({ bundle, outputs, inputs, stockOff = [] }) {
     WIZARD_SECRETS_KEY: s.WIZARD_SECRETS_KEY,
     WIZARD_PREVIEW_SECRET: s.WIZARD_PREVIEW_SECRET,
     WIZARD_INTERNAL_TOKEN: s.WIZARD_INTERNAL_TOKEN,
+    // V3-21/V3-33: the pilot runs no OpenBao — the key windows and BYOK keys are sealed by the stand's local KEK (the
+    // same WIZARD_SECRETS_KEY that already encrypts the systems' secrets); production NODE_ENV would default to openbao
+    // and every window would answer 500 «Хранилище ключей платформы недоступно» (checkpoint v3-007, 2026-10-09).
+    WIZARD_BYOK_KMS: "local",
     // The invite-only pilot (registration: invite) lets the founder sign in without an invitation.
     WIZARD_FOUNDER_EMAIL: (inputs.WIZARD_FOUNDER_EMAIL ?? "").trim().toLowerCase(),
     WIZARD_S3_BUCKET: buckets.files,

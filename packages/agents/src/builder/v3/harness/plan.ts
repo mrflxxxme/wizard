@@ -106,6 +106,18 @@ export function briefPlan(
     if (r.ok) plan = r.plan;
     else unavailable.push(m);
   }
+  // V3-18 (checkpoint v3-007, CRM v3-03): the landing module or a scenario of a visitor or a client means a public
+  // site, and the v3 site is made of the modules with public actions — without one of them the system has no site at
+  // all (a home page with only the header and the footer, while the landing's goals expect a first screen). The lead
+  // form is the smallest such module.
+  const front = plan.modules.some((x) => FRONT_MODULES.has(x.id));
+  const wantsSite =
+    plan.modules.some((x) => x.id === "landing") ||
+    brief.scenarios.some((s) => s.actor === "visitor" || s.actor === "client");
+  if (!front && wantsSite && ok.has("leads")) {
+    const r = editPlan(plan, [{ op: "add_module", module: "leads" }], registry);
+    if (r.ok) plan = r.plan;
+  }
   // V3-18: the client cabinet shows the records of the modules the system has (its leads, its packages), not only the
   // bookings — the brief has no word for the module's parameters, the cabinet of a planner's plan follows the same rule.
   const vc = plan.modules.find((x) => x.id === VISITOR_CABINET);
@@ -121,6 +133,15 @@ export function briefPlan(
 }
 
 const VISITOR_CABINET = "visitor_cabinet";
+/** Modules that give a v3 system its public site (public actions of the front: forms, catalogs, articles, the shop; «landing» is the v2 front and gives none). */
+const FRONT_MODULES: ReadonlySet<string> = new Set([
+  "leads",
+  "booking",
+  "catalog",
+  "shop",
+  "content",
+  "packages",
+]);
 
 /** Sections of the client cabinet by the modules of the plan: bookings, leads, packages (modules.yaml visitor_cabinet). */
 function cabinetParams(modules: ReadonlySet<string>): Record<string, boolean> {

@@ -237,7 +237,7 @@ byok:                              # V3-33, product.yaml#decisions.D77_v3 (14), 
   scrub: "MUST: перед любым вызовом по ключу пользователя — pii.scrub всех сообщений (плейсхолдеры scrub.placeholders), независимо от страны провайдера: модель выбирает пользователь, её размещение нам не видно"
   storage:
     scheme: "Конвертное шифрование: ключ → AES-256-GCM ключом данных (AAD byok:<org>:<id>), ключ данных обёрнут OpenBao Transit (transit/datakey/plaintext, decrypt; ключ wizard-byok) или локальным KEK стенда (SecretStore, WIZARD_SECRETS_KEY) — тот же интерфейс TransitKms. В БД только шифртекст, обёрнутый ключ данных и последние 4 символа (db.yaml#byok_keys)"
-    kms: "WIZARD_BYOK_KMS=openbao (по умолчанию в production; WIZARD_OPENBAO_ADDR, WIZARD_OPENBAO_TOKEN с политикой только datakey и decrypt этого ключа) | local (dev, тесты)"
+    kms: "WIZARD_BYOK_KMS=openbao (по умолчанию в production; WIZARD_OPENBAO_ADDR, WIZARD_OPENBAO_TOKEN с политикой только datakey и decrypt этого ключа) | local (dev, тесты; пилот без OpenBao — тот же KEK WIZARD_SECRETS_KEY, что шифрует секреты систем стенда)"
     decrypt: "Расшифровка — только на время вызова (проверка ключа, вызов модели в воркере прогона); ключ не кэшируется"
     revoke: "Отзыв удаляет шифртекст и обёрнутый ключ данных (CHECK в БД)"
     rls: "platform.byok_keys и byok_consents — RLS ENABLE + FORCE по org_id = set_config('wizard.org_id', …, true) в транзакции"

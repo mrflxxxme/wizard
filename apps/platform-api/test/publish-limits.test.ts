@@ -226,4 +226,21 @@ describe("PHONE_LOGIN_PLAN_REQUIRED (F4)", () => {
     expect(BLOCKER_RU.PHONE_LOGIN_PLAN_REQUIRED).toBe("Вход по телефону доступен на тарифах Старт и Бизнес");
     expect(BLOCKER_RU.PLAN_LIMIT).toBe("Лимит опубликованных систем тарифа");
   });
+
+  test("operator of ПДн: asked for with pii fields or with a login role, as G2-PII-06 does (v3-007, CRM)", () => {
+    const spec = forum();
+    spec.compliance = {};
+    for (const e of spec.entities) for (const f of e.fields) delete f.pii;
+    // No pii field, but staff log in: their e-mails are ПДн — the owner is asked for the operator.
+    expect(spec.roles.some((r) => r.access === "login")).toBe(true);
+    expect(specPublishBlockers(spec, "start")).toEqual(
+      expect.arrayContaining([
+        "OPERATOR_NAME_REQUIRED",
+        "OPERATOR_CONTACT_REQUIRED",
+        "OPERATOR_ADDRESS_REQUIRED",
+      ]),
+    );
+    for (const r of spec.roles) r.access = "public";
+    expect(specPublishBlockers(spec, "start")).not.toContain("OPERATOR_NAME_REQUIRED");
+  });
 });
