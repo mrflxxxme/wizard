@@ -378,6 +378,8 @@ export async function driveV3Brief(ctx, brief, r = newV3Result(brief)) {
       }
     }
     r.interview.minutes = minutesBetween(new Date(r.startedAt), now());
+    // D77 (10), (16): the build's time targets run from the ready brief — the interview is the owner's time.
+    r.briefAt = now().toISOString();
     say(
       `бриф готов: вопросов ${r.interview.questions}${r.interview.restAt ? `, «Дальше решай сам» на ${r.interview.restAt}-м` : ""}`,
     );
@@ -427,6 +429,7 @@ export async function driveV3Brief(ctx, brief, r = newV3Result(brief)) {
     };
     const end = now();
     r.minutes = minutesBetween(new Date(r.startedAt), end);
+    r.fromBriefMinutes = minutesBetween(new Date(r.briefAt), end);
     say(
       `сборка ${build.status === "succeeded" ? "завершилась" : `не завершилась (${failure(build)})`}: ${r.build.minutes ?? "—"} мин, превью через ${r.build.previewMinutes ?? "—"} мин, сценарии ${r.build.scenarios.passed} из ${r.build.scenarios.total}, ≈ ${r.build.spentRub ?? "—"} ₽`,
     );

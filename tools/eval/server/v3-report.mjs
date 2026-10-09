@@ -182,7 +182,9 @@ export function evaluateV3(doc, db = {}) {
   });
   const built = items.filter((x) => x.build?.minutes !== null && x.build?.minutes !== undefined);
   const previews = items.map((x) => x.build?.previewMinutes).filter(Number.isFinite);
-  const totals = items.map((x) => x.minutes).filter(Number.isFinite);
+  // D77 (10), (16): from the ready brief to the end of the build (older documents: from the start of the interview).
+  const totals = items.map((x) => x.fromBriefMinutes ?? x.minutes).filter(Number.isFinite);
+  const interviews = items.map((x) => x.interview?.minutes).filter(Number.isFinite);
   const rubs = items.filter((x) => x.systemId).map((x) => x.costRub);
   const e = {
     items,
@@ -196,6 +198,7 @@ export function evaluateV3(doc, db = {}) {
     medianMinutes: median(totals),
     maxMinutes: totals.length ? Math.max(...totals) : null,
     medianBuildMinutes: median(built.map((x) => x.build.minutes)),
+    medianInterviewMinutes: median(interviews),
     maxPreviewMinutes: previews.length ? Math.max(...previews) : null,
     avgRub: avg(rubs),
     maxRub: rubs.length ? Math.max(...rubs) : null,
@@ -212,6 +215,14 @@ export function evaluateV3(doc, db = {}) {
   return e;
 }
 
+/** Failed attempts of a call type: «kimi-k2.6: TIMEOUT ×2; qwen3.6-35b: HTTP_4xx · ≈ 180 с» (— without failures). */
+function failuresCell(x) {
+  if (!x.failures.size) return "—";
+  const codes = [...x.failures.entries()].map(([k, n]) => (n > 1 ? `${k} ×${n}` : k)).join("; ");
+  const ms = x.failMs.length ? Math.round(x.failMs.reduce((s, v) => s + v, 0) / x.failMs.length / 1000) : null;
+  return cell(`${codes}${ms === null ? "" : ` · ≈ ${ms} с`}`);
+}
+
 /** Model calls of one system by call type: «interview_v3 ×7 (glm-5.3) — 3.2 ₽». */
 function callsLines(calls) {
   const by = new Map();
@@ -223,7 +234,11 @@ function callsLines(calls) {
       rub: 0,
       models: new Set(),
       tiers: new Set(),
+      failures: new Map(),
+      failMs: [],
     };
+    for (const f of c.failures ?? []) x.failures.set(`${c.model}: ${f}`, (x.failures.get(`${c.model}: ${f}`) ?? 0) + 1);
+    if (c.failureLatencyMs !== null && c.failureLatencyMs !== undefined) x.failMs.push(c.failureLatencyMs);
     x.attempts += c.attempts;
     x.ok += c.ok;
     x.fallback += c.fallback;
@@ -236,7 +251,7 @@ function callsLines(calls) {
     .sort((a, b) => b[1].rub - a[1].rub)
     .map(
       ([type, x]) =>
-        `| ${cell(type)} | ${x.ok} из ${x.attempts}${x.fallback ? `, резерв ${x.fallback}` : ""} | ${cell([...x.models].join(", "))} | ${[...x.tiers].join(", ")} | ${rub(x.rub)} |`,
+        `| ${cell(type)} | ${x.ok} из ${x.attempts}${x.fallback ? `, резерв ${x.fallback}` : ""} | ${cell([...x.models].join(", "))} | ${[...x.tiers].join(", ")} | ${rub(x.rub)} | ${failuresCell(x)} |`,
     );
 }
 
@@ -256,7 +271,7 @@ export function renderV3Report(doc, db = {}, meta = {}) {
   );
   if (doc.stopped) L.push(`- Замер остановлен: ${doc.stopped}.`);
   L.push(
-    `- Время (D77 (10)): превью — до ${e.maxPreviewMinutes ?? "—"} мин ${mark(e.targets.preview)} (цель ≤ ${V3_TARGETS.previewMin}); от брифа до конца сборки — медиана ${e.medianMinutes ?? "—"} мин ${mark(e.targets.median)} (≤ ${V3_TARGETS.medianMin}), максимум ${e.maxMinutes ?? "—"} мин ${mark(e.targets.cap)} (≤ ${V3_TARGETS.capMin}); медиана самой сборки ${e.medianBuildMinutes ?? "—"} мин.`,
+    `- Время (D77 (10)): превью — до ${e.maxPreviewMinutes ?? "—"} мин ${mark(e.targets.preview)} (цель ≤ ${V3_TARGETS.previewMin}); от брифа до конца сборки — медиана ${e.medianMinutes ?? "—"} мин ${mark(e.targets.median)} (≤ ${V3_TARGETS.medianMin}), максимум ${e.maxMinutes ?? "—"} мин ${mark(e.targets.cap)} (≤ ${V3_TARGETS.capMin}); медиана самой сборки ${e.medianBuildMinutes ?? "—"} мин; интервью (время владельца, вне цели) — медиана ${e.medianInterviewMinutes ?? "—"} мин.`,
     `- Деньги (D77 (11)): в среднем ${e.avgRub === null ? "—" : rub(e.avgRub)} на систему ${mark(e.targets.avgRub)} (цель ≤ ${V3_TARGETS.targetRub} ₽), максимум ${e.maxRub === null ? "—" : rub(e.maxRub)} ${mark(e.targets.maxRub)} (потолок ${V3_TARGETS.capRub} ₽); всего ${rub(e.costRub)} ${e.costExact ? "(точно, по журналу вызовов моделей)" : `(оценка по кредитам: 1 кредит ≈ ${RUB_PER_CREDIT} ₽)`}, кредитов ${e.credits}.`,
     ...(e.t1Forbidden === null
       ? []
@@ -264,7 +279,7 @@ export function renderV3Report(doc, db = {}, meta = {}) {
     "",
   );
   L.push(
-    "| Бриф | Класс | Итог | Превью, мин | Всего, мин | ₽ | Сценарии ✓/всего (в запросы) | Техревью | Критик | Шаблонность | G0/G1/G2 |",
+    "| Бриф | Класс | Итог | Превью, мин | От брифа, мин | ₽ | Сценарии ✓/всего (в запросы) | Техревью | Критик | Шаблонность | G0/G1/G2 |",
     "|---|---|---|---|---|---|---|---|---|---|---|",
   );
   for (const x of e.items) {
@@ -285,7 +300,7 @@ export function renderV3Report(doc, db = {}, meta = {}) {
           ? "пропущен"
           : "—";
     L.push(
-      `| ${cell(x.id)} | ${cell(CLASS_RU[x.class] ?? x.class)} | ${x.ready ? "✅" : "❌"} ${cell(STATUS_RU[x.status] ?? x.status)} | ${x.build?.previewMinutes ?? "—"} | ${x.minutes ?? "—"} | ${x.systemId ? `${Math.round(x.costRub)}${x.costExact ? "" : "≈"}` : "—"} | ${sc ? `${sc.passed}/${sc.total} (${sc.toRequests})` : "—"} | ${cell(x.techreview.verdict)} | ${cell(crit)} | ${cell(tmpl)} | ${g} |`,
+      `| ${cell(x.id)} | ${cell(CLASS_RU[x.class] ?? x.class)} | ${x.ready ? "✅" : "❌"} ${cell(STATUS_RU[x.status] ?? x.status)} | ${x.build?.previewMinutes ?? "—"} | ${x.fromBriefMinutes ?? x.minutes ?? "—"} | ${x.systemId ? `${Math.round(x.costRub)}${x.costExact ? "" : "≈"}` : "—"} | ${sc ? `${sc.passed}/${sc.total} (${sc.toRequests})` : "—"} | ${cell(x.techreview.verdict)} | ${cell(crit)} | ${cell(tmpl)} | ${g} |`,
     );
   }
   L.push("", "## По брифам", "");
@@ -382,7 +397,7 @@ export function renderV3Report(doc, db = {}, meta = {}) {
       `- Расход системы: ${x.systemId ? rub(x.costRub) : "—"}${x.costExact ? "" : " (оценка)"}, кредитов ${x.creditsUsed}.`,
     );
     if (x.calls.length) {
-      L.push("", "  | Тип вызова | Успешно из попыток | Модель | Уровень | ₽ |", "  |---|---|---|---|---|");
+      L.push("", "  | Тип вызова | Успешно из попыток | Модель | Уровень | ₽ | Отказы |", "  |---|---|---|---|---|---|");
       L.push(...callsLines(x.calls).map((l) => `  ${l}`), "");
     }
     for (const g of x.developmentRequests)
