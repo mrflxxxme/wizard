@@ -7,7 +7,8 @@
     ".": "./src/index.ts",
     "./import": "./src/import/index.ts",
     "./log": "./src/log.ts",
-    "./metrics": "./src/metrics.ts"
+    "./metrics": "./src/metrics.ts",
+    "./secrets": "./src/secrets.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",

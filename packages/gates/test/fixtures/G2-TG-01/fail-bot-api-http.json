@@ -1,0 +1,27 @@
+{
+  "check": "G2-TG-01",
+  "description": "функция сама зовёт api.telegram.org через ctx.http.fetch и шлёт телефон",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/functions",
+      "value": {
+        "name": "notifyHolderHttp",
+        "kind": "action",
+        "file": "functions/notifyHolderHttp.ts",
+        "egress": [
+          "api.telegram.org"
+        ],
+        "secretRefs": [
+          "secret://bot_key"
+        ]
+      }
+    }
+  ],
+  "files": {
+    "functions/notifyHolderHttp.ts": "import { action, v } from \"@wizard/sdk\";\n\nexport default action({\n  args: {},\n  handler: async (ctx) => {\n    const holder = { holder_phone: \"x\" };\n    await ctx.http.fetch(\"https://api.telegram.org/botsecret://bot_key/sendMessage\", {\n      method: \"POST\",\n      body: JSON.stringify({ chat_id: \"1\", text: `Телефон: ${holder.holder_phone}` }),\n    });\n    return null;\n  },\n});\n"
+  },
+  "match": "api.telegram.org",
+  "base": "forum",
+  "expect": "fail"
+}

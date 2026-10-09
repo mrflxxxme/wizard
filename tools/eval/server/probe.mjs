@@ -300,6 +300,29 @@ const cell = (s) =>
     .trim();
 const STATUS_RU = { ok: "✅ ответила", error: "❌ ошибка", skipped: "⏭ пропущен" };
 
+/**
+ * One workflow annotation per probed route (the report itself stays in the artifact and the step summary, which the
+ * GitHub API does not serve): notice for an answer, warning for an error or a skip; numbers and names only.
+ */
+export function probeAnnotations(calls) {
+  return calls.map((c) => {
+    const level = c.status === "ok" ? "notice" : "warning";
+    const parts =
+      c.status === "ok"
+        ? [
+            `ответила ${c.model ?? "—"} (${c.tier ?? "—"}, ${c.routeReason ?? "—"})`,
+            `маскирование ПДн: ${c.scrubbed ? "да" : "нет"}`,
+            `${c.latencyMs ?? "—"} мс`,
+            `${c.rub === undefined ? "—" : rub(c.rub)}`,
+            `попытки: ${(c.tried ?? []).join(", ") || "—"}`,
+          ]
+        : c.status === "skipped"
+          ? [`пропущен: ${c.reason ?? "—"}`]
+          : [`ошибка ${c.code ?? "—"}: ${String(c.message ?? "").slice(0, 160)}`, `попытки: ${(c.tried ?? []).join(", ") || "—"}`];
+    return `::${level} title=V3 проба · ${c.callType}::${parts.join(" · ").replace(/[\r\n]+/g, " ")}`;
+  });
+}
+
 /** The probe report (Russian Markdown) and its summary {total, ok, costRub, passed} for the spend journal. */
 export function renderProbeReport({ calls, total }, meta = {}) {
   const ok = calls.filter((c) => c.status === "ok").length;

@@ -1,6 +1,7 @@
 // Allowlist logger (platform/deploy.yaml#cloud.observability.pii_in_logs, L3-08): only listed fields leave the
 // process; strings pass scrub(); PG errors → {sqlstate, constraint}, provider errors → {status, code}.
 import { scrub } from "./scrub.js";
+import { maskSecrets } from "./secrets.js";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 export type LogLine = Record<string, unknown>;
@@ -48,8 +49,10 @@ export const LOG_FIELDS: ReadonlySet<string> = new Set([
 const MAX_STRING = 300;
 const PG_SQLSTATE = /^[0-9A-Z]{5}$/;
 
+/** Access keys are masked before scrub (V3-21: a key typed as text never reaches a log line). */
 function clean(s: string, max = MAX_STRING): string {
-  return scrub(s.length > 4 * max ? s.slice(0, 4 * max) : s).text.slice(0, max);
+  const cut = s.length > 4 * max ? s.slice(0, 4 * max) : s;
+  return scrub(maskSecrets(cut, { context: "log" }).text).text.slice(0, max);
 }
 
 /** URLs and routes without query string or fragment (values travel there). */

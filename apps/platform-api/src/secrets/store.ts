@@ -124,6 +124,17 @@ export class SecretStore {
     return this.getPlatform(`${systemId}/${env}/${name}`);
   }
 
+  /** Removes one value of a system (V3-21 key window: removal of a key); false — there was none. */
+  remove(systemId: string, env: "draft" | "prod", name: string): boolean {
+    if (!SECRET_NAME.test(name)) throw new Error("invalid secret name");
+    const path = `${systemId}/${env}/${name}`;
+    const f = this.#read();
+    if (!(path in f.entries)) return false;
+    delete f.entries[path];
+    this.#write(f);
+    return true;
+  }
+
   /**
    * Platform secrets outside connectors (staff TOTP keys, users.totp_secret_ref, M2-08): `path` under «platform/»;
    * returns the secret:// reference kept in the DB.

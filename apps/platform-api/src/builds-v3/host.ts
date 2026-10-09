@@ -32,6 +32,7 @@ import { integrationsBuildHook } from "../integrations-v3/service.js";
 import { claimOpsAlert } from "../ops/alert.js";
 import type { EventType } from "../runs/events.js";
 import { type BuildHost, type BuildParams, RunFailure } from "../runs/types.js";
+import { withKeyWindow } from "../secrets-v3/agent.js";
 import { pgCheckpointStore, recentArchetypes } from "./checkpoints.js";
 import { platformCritic } from "./critic.js";
 import { liveStats, withLiveProgress } from "./progress.js";
@@ -242,8 +243,14 @@ export async function buildByBrief(
         o.log,
       ),
     recentArchetypes: (niche) => recentArchetypes(o.pg, systemId, niche),
-    // V3-20: the brief's integrations (stored contracts: mock until the key check, then live) over the backend.
-    integrations: integrationsBuildHook(o.pg, systemId),
+    // V3-20: the brief's integrations (stored contracts: mock until the key check, then live) over the backend;
+    // V3-21: window keys stay within their hosts, and the agent opens key windows for the keys still missing.
+    integrations: withKeyWindow(integrationsBuildHook(o.pg, systemId), {
+      pg: o.pg,
+      systemId,
+      runId: host.run.id,
+      ...(o.log ? { log: o.log } : {}),
+    }),
   };
   // V3-17: build_stage / step_started / step_finished carry the structured progress for the canvas.
   const live = withLiveProgress(v3, {

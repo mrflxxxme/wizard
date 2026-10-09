@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@wizard/appspec": "workspace:*",
+    "@wizard/pii": "workspace:*",
     "@wizard/ui-kit": "workspace:*",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

@@ -41,6 +41,7 @@ import { useCanvasBrief } from "../brief/CanvasBrief.js";
 import { briefRu } from "../brief/ru.js";
 import { useBriefUpload } from "../v3/BriefUpload.js";
 import { lastReportRun, useV3Live } from "../v3/build/index.js";
+import { useKeyWindows } from "../v3/keys/index.js";
 import { DELEGATE_OPTION_ID, v3Question } from "../v3/question.js";
 import { v3Ru } from "../v3/ru.js";
 import { StyleDrawer, spentLine, V3BuildCard } from "../v3/V3Build.js";
@@ -316,6 +317,17 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
   const runActive =
     runId !== null && !events.some((e) => e.type === "run_finished" || e.type === "run_failed");
   const thinking = runActive && runKind !== "build";
+  // V3-21: a key typed into the chat is not sent — the platform's key window takes it; the agent's key requests.
+  const keys = useKeyWindows({
+    systemId,
+    enabled: brief.available,
+    editable: canEdit(roleIn(view.system.orgId), auth),
+    live: runActive,
+    refresh: `${view.messages.length}:${stage}:${runActive}`,
+    composer: text,
+    setComposer: setText,
+    announce,
+  });
 
   const questions = (view.pendingQuestions ?? []).filter(isGoalQuestion) as unknown as GoalQuestion[];
   // V3-03: the v3 interview asks one question per turn — a new pending question starts with no local answers.
@@ -533,6 +545,8 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
   async function send(t: string) {
     const value = t.trim();
     if (!value) return;
+    // V3-21: a message with an access key never leaves the page; the key window is offered instead.
+    if (keys.intercept(value)) return;
     if (question) {
       if (question.allowCustom === false) return;
       setText("");
@@ -925,6 +939,15 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
       </>
     );
 
+  // V3-21: the key window (interception, the agent's request, the result) stays above whatever the dock shows.
+  if (keys.card)
+    dock = (
+      <>
+        {keys.card}
+        {dock}
+      </>
+    );
+
   // V3-04: a v3 system (it has a brief, or its question is a v3 one) offers «Приложить ТЗ» until the build.
   const v3 = brief.available || questions.some((q) => v3Question(q) !== null);
   const composerState = building ? "building" : thinking || busy === "answers" ? "thinking" : "idle";
@@ -1162,6 +1185,7 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
             </p>
           )}
           {upload.progress}
+          {keys.row}
           <Composer
             testId="canvas-composer"
             attach={v3 && !building && (stage === "interview" || stage === "card") ? upload.attach : null}

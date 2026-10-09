@@ -20,6 +20,7 @@ import {
   rollbackBlockedBy,
   undoTarget,
 } from "../destructive/service.js";
+import { repoPublishBlock } from "../git-sync/publish.js";
 import { alertOnce } from "../ops/alert.js";
 import { opsAlertFromConfig } from "../ops/alert-config.js";
 import { appendEvent, type TxCtx } from "../runs/events.js";
@@ -426,6 +427,9 @@ export async function runPublish(h: FlowHost): Promise<FlowResult> {
   // V3-15: the techreview of the v3 build that left this revision found blockers (D77 (10)).
   const [tr] = await h.once("techreview_verdict", () => techreviewBlockersOf(h.db, sys.id, revision));
   if (tr) throw new RunFailure("GATES_FAILED", TECHREVIEW_BLOCKED_RU(tr));
+  // V3-31: with a connected repository a revision is published after its PR is merged (D77 (3)).
+  const repo = await h.once("repo_merged", () => repoPublishBlock(h.db, sys.id, revision));
+  if (repo) throw new RunFailure("GATES_FAILED", repo.message_ru);
   if (!rev.bundle_key) {
     // A style/compliance revision made without a build: the draft gate builds it first (moves the preview too).
     const report = await h.draftG0();

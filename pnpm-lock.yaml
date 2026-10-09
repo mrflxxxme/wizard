@@ -102,6 +102,9 @@ importers:
       '@wizard/appspec':
         specifier: workspace:*
         version: link:../../packages/appspec
+      '@wizard/pii':
+        specifier: workspace:*
+        version: link:../../packages/pii
       '@wizard/ui-kit':
         specifier: workspace:*
         version: link:../../packages/ui-kit

@@ -250,15 +250,24 @@ export {
   egressPolicyFor,
   parseConnectTarget,
 } from "./sandbox/egress.js";
-/** M2-52: ctx.http.fetch made by the runtime — https to declared public hosts, via the proxy, limits, _w_egress_log. */
+/**
+ * M2-52: ctx.http.fetch made by the runtime — https to declared public hosts, via the proxy, limits, _w_egress_log;
+ * V3-22: compressed answers decoded under the size cap, OAuth client-credentials secrets (oauth2cc:) traded for tokens.
+ */
 export {
   DEFAULT_EGRESS_LIMITS,
   directTransport,
+  EGRESS_ACCEPT_ENCODING,
   type EgressLimits,
   type EgressLogEntry,
   EgressRefused,
   type EgressTransport,
   egressHttpClient,
+  OAUTH_CLIENT_SECRET_PREFIX,
+  type OAuthClientSecret,
+  OAuthTokenCache,
+  oauthClientSecret,
+  parseOAuthClientSecret,
   proxyTransport,
 } from "./sandbox/egress-fetch.js";
 /** M2-52: proxy grants of runtime-made requests (checked at /_wizard/internal/egress-authorize). */

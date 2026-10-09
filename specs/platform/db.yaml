@@ -902,6 +902,185 @@ tables:
       - "version = max+1 по (system_id, integration_id); тот же sha256, что у последней версии, — новой версии нет"
       - "Удаляется вместе с системой (как system_briefs)"
   # ==== конец блока V3-20 ====
+  # ==== V3-21: окно ключа в чате (миграция 0042, security/data-boundary.yaml#secret_window) ====
+  secret_windows:
+    milestone: V3
+    purpose: "V3-21 (D77 (15), D37): окно ключа — запрос платформы на один ключ secret://<name> системы: хосты получателя (у интеграции с контрактом — hosts контракта), назначение, кто попросил (агент сборки через request_secret или человек) и одноразовая пара ключей P-256. Браузер шифрует ключ публичной половиной (ECDH-ES + HKDF-SHA-256 + AES-256-GCM, AAD — контекст окна), закрытая половина запечатана KMS (OpenBao Transit wizard-secret-window или локальный KEK стенда) и уничтожается, когда окно использовано, закрыто или устарело"
+    columns:
+      id: "uuid pk"
+      org_id: "uuid not null references platform.orgs on delete cascade"
+      system_id: "uuid not null references platform.systems on delete cascade"
+      env: "text not null check (env in ('draft','prod'))"
+      name: "text not null check (name ~ '^[a-z][a-z0-9_]{0,63}$')"     # secret://<name>
+      integration_id: "text"                               # интеграция брифа; null — ключ по домену агента без контракта
+      hosts: "jsonb not null"                              # 1–10 хостов, куда уйдёт ключ; их видит владелец в окне
+      purpose: "text not null check (char_length(purpose) between 1 and 300)"
+      requested_by: "text not null check (requested_by in ('agent','user'))"
+      run_id: "uuid references platform.runs on delete set null"
+      created_by: "uuid references platform.users on delete set null"
+      status: "text not null default 'open' check (status in ('open','filled','cancelled','expired'))"
+      public_jwk: "jsonb"                                  # {kty: EC, crv: P-256, x, y}; создаётся при первом чтении окна
+      sealed_private: "text"                               # PKCS#8 закрытой половины, AES-256-GCM ключом данных (AAD secret-window:<org>:<id>)
+      wrapped_dek: "text"                                  # vault:v1:… | local:v1:…
+      kek_backend: "text"                                  # local | openbao
+      kek_name: "text"
+      expires_at: "timestamptz not null"                   # 24 ч
+      closed_at: "timestamptz"
+    indexes: ["unique (system_id, env, name) where status = 'open'", "(system_id, created_at desc)"]
+    checks:
+      - "(sealed_private is null) = (wrapped_dek is null); (public_jwk is null) = (sealed_private is null)"
+      - "status <> 'open' → нет ни публичной, ни закрытой половины (окно одноразовое)"
+      - "(status = 'open') = (closed_at is null)"
+    invariants:
+      - "RLS (ENABLE + FORCE): строки видны только при pg_catalog.set_config('wizard.org_id', <org>, true) в транзакции (apps/platform-api/src/secrets-v3/store.ts)"
+      - "Удаляется вместе с системой (privacy/delete-system.ts)"
+  secret_bindings:
+    milestone: V3
+    purpose: "V3-21: ключ, введённый через окно: куда ему можно уходить (hosts окна), последние 4 символа (у ключей короче 12 — пусто), версия (ротация), результат проверки по контракту V3-20. Само значение — только в хранилище секретов (secrets_refs, SecretStore)"
+    columns:
+      org_id: "uuid not null references platform.orgs on delete cascade"
+      system_id: "uuid not null references platform.systems on delete cascade"
+      env: "text not null check (env in ('draft','prod'))"
+      name: "text not null check (name ~ '^[a-z][a-z0-9_]{0,63}$')"
+      integration_id: "text"
+      hosts: "jsonb not null"                              # D37: функции с этим ключом ходят только сюда (secretEgressIssues)
+      last4: "text not null check (char_length(last4) <= 4)"
+      version: "integer not null default 1 check (version >= 1)"   # +1 при каждой ротации
+      status: "text not null check (status in ('unchecked','ok','failed'))"   # unchecked — у интеграции нет контракта
+      check_code: "text"                                   # OK | AUTH_FAILED | … (KeyCheckResult.code) | HOSTS_CHANGED
+      check_message: "text"                                # по-русски, без тела ответа и без ключа
+      checked_at: "timestamptz"
+      window_id: "uuid references platform.secret_windows on delete set null"
+      created_by: "uuid references platform.users on delete set null"
+      rotated_at: "timestamptz"
+    primary_key: [system_id, env, name]
+    invariants:
+      - "RLS (ENABLE + FORCE) по org_id, как secret_windows"
+      - "Ротация: новый ключ заменяет прежний (прежнее значение удаляется из хранилища) только если прошёл проверку или прежний не работал; иначе остаётся прежний"
+      - "Удаление ключа: значение, secrets_refs и строка уходят; интеграции без ключа возвращаются на мок (system_integration_contracts.status = mock)"
+      - "Паспорт с OAuth (СДЭК, V3-22): значение secret://<name> — Account и Secure password одним значением oauth2cc: (точка получения токена — среда контракта); токен на час получает egress-клиент runtime при вызове и держит в памяти процесса — платформа токен не хранит; last4 — от Secure password"
+  # ==== конец блока V3-21 ====
+  # ==== V3-31: синхронизация репозитория системы с GitHub и GitLab через PR (миграция 0043) ====
+  system_repo_links:
+    milestone: V3
+    purpose: "V3-31 (D77 (3)): подключение системы к внешнему репозиторию — GitHub через установку GitHub App платформы (токен установки на час на один репозиторий, не хранится) или GitLab по OAuth (gitlab.com приложением платформы или свой GitLab с приложением OAuth владельца). Токены GitLab, свои Application ID/Secret и секрет хука проекта хранятся только запечатанными (ключ данных AES-256-GCM, AAD repo:<org>:<id>, ключ данных обёрнут OpenBao Transit или локальным KEK стенда — как byok_keys); наружу — только ссылка secret://repo/<провайдер>. Одна связь на систему, один репозиторий — одной системе"
+    columns:
+      id: "uuid pk"
+      org_id: "uuid not null references platform.orgs on delete cascade"
+      system_id: "uuid not null references platform.systems on delete cascade"   # unique
+      provider: "text not null check (provider in ('github','gitlab'))"
+      status: "text not null default 'pending' check (status in ('pending','active','paused','error'))"   # pending — ждём выбора репозитория; error — нужен владелец или провайдер недоступен дольше 10 попыток
+      host_url: "text not null"                     # https://github.com | https://gitlab.com | https://<свой GitLab> (без пути)
+      repo_path: "text"                             # owner/name, group/subgroup/project
+      repo_id: "text"                               # id репозитория GitHub / проекта GitLab
+      installation_id: "text"                       # GitHub App
+      default_branch: "text"
+      clone_url: "text"                             # тот же сервер, что host_url (иначе отказ: учётные данные не уходят на чужой хост)
+      web_url: "text"
+      auto_merge: "boolean not null default false"
+      secret_ref: "text not null"                   # secret://repo/github | secret://repo/gitlab
+      ciphertext: "text"                            # запечатанный RepoSecrets (git-sync/crypto.ts); null у GitHub
+      wrapped_dek: "text"                           # vault:v1:… | local:v1:…
+      kek_backend: "text"
+      kek_name: "text"
+      remote_head_oid: "text"                       # последняя увиденная голова основной ветки
+      remote_head_revision: "integer"               # ревизия Wizard, которой она соответствует (после мержа или импорта)
+      last_pushed_revision: "integer not null default 0"
+      last_reconcile_at: "timestamptz"
+      last_sync_at: "timestamptz"
+      last_error_code: "text"
+      last_error_ru: "text"                         # причина по-русски для экрана «Репозиторий»
+      connected_by: "uuid references platform.users on delete set null"
+      updated_at: "timestamptz not null default now()"
+    indexes: ["unique (system_id)", "unique (provider, host_url, repo_id) where repo_id is not null", "(installation_id) where installation_id is not null", "(org_id)"]
+    checks:
+      - "ciphertext, wrapped_dek, kek_backend, kek_name — все заданы или все null; wrapped_dek ~ '^(vault|local):v[0-9]+:'"
+      - "status <> 'pending' → repo_path, repo_id, default_branch, clone_url заданы; GitHub не в pending → installation_id задан"
+    invariants:
+      - "RLS (ENABLE + FORCE): строки видны только при pg_catalog.set_config('wizard.org_id', <org>, true) в транзакции. Маршрутизация вебхуков и очередь читают связи разных организаций только на чтение (READ ONLY) при wizard.repo_dispatch = 'on' — политика FOR SELECT есть только у system_repo_links и system_repo_jobs; любая запись — с организацией строки"
+      - "Удаляется вместе с системой (workflows.yaml#delete_system), с ней каскадом — PR, импорты, очередь и доставки"
+  system_repo_prs:
+    milestone: V3
+    purpose: "V3-31: PR (merge request) ревизии: ветка wizard/<slug>/<ревизия>, коммит PR — файлы Wizard поверх файлов клиента из головы основной ветки (родители — коммит ревизии и голова, слияние без лишней разницы), состояние, проверки G0/G1/G2/техревью, как их видит провайдер. state direct — первая отправка прямо в основную ветку пустого репозитория"
+    columns:
+      id: "uuid pk"
+      org_id: "uuid not null references platform.orgs on delete cascade"
+      system_id: "uuid not null references platform.systems on delete cascade"
+      link_id: "uuid not null references platform.system_repo_links on delete cascade"
+      revision: "integer not null check (revision >= 1)"
+      branch: "text not null"
+      head_oid: "text not null"
+      base_oid: "text"                              # голова основной ветки, поверх которой сделан PR
+      number: "integer"                             # номер PR / iid MR; null только у direct
+      url: "text"
+      state: "text not null default 'open' check (state in ('open','merged','closed','superseded','direct'))"
+      checks: "jsonb not null default '{}'"         # G0|G1|G2|techreview → {state, id (check run GitHub), title} — последнее отправленное
+      body_sha256: "text"                           # описание PR обновляется, только когда изменилось
+      merged_at: "timestamptz"
+      merge_oid: "text"
+      updated_at: "timestamptz not null default now()"
+    indexes: ["unique (link_id, revision)", "(link_id, state, revision desc)", "(system_id, revision)"]
+    constraints: ["foreign key (system_id, revision) references platform.revisions (system_id, version) on delete cascade"]
+    invariants:
+      - "RLS (ENABLE + FORCE) по org_id, как system_repo_links"
+      - "Новая ревизия закрывает открытые PR прежних ревизий с комментарием (superseded) и удаляет их ветки"
+  system_repo_imports:
+    milestone: V3
+    purpose: "V3-31: импорт головы основной ветки (мерж PR или push разработчиков клиента): база — ревизия последней синхронизации (мерж PR Wizard или прошлый импорт); переносятся только изменения ui/**, functions/**, assets/** и spec/appspec.json; конфликт с правками Wizard по файлу, несовместимость (символьные ссылки, подмодули, размер, не UTF-8, удаление или невалидная спека) и непройденный гейт G0–G2 → rejected с причиной по-русски (и проверкой «Wizard / Импорт в Wizard» на коммите); принятый — новая ревизия kind=files, author=user"
+    columns:
+      id: "uuid pk"
+      org_id: "uuid not null references platform.orgs on delete cascade"
+      system_id: "uuid not null references platform.systems on delete cascade"
+      link_id: "uuid not null references platform.system_repo_links on delete cascade"
+      head_oid: "text not null"
+      source: "text not null check (source in ('webhook','reconcile','merge'))"
+      pr_number: "integer"
+      status: "text not null default 'pending' check (status in ('pending','noop','imported','rejected'))"
+      base_revision: "integer"
+      revision: "integer"                           # новая ревизия (status = imported)
+      reason_code: "text"                           # NO_BASE | CONFLICT | INCOMPATIBLE | SPEC_INVALID | GATES_FAILED
+      reason_ru: "text"
+      details: "jsonb not null default '{}'"        # изменённые файлы (путь, статус), предупреждения, конфликты, итоги гейтов — без содержимого
+      updated_at: "timestamptz not null default now()"
+    indexes: ["unique (link_id, head_oid)", "(link_id, created_at desc)"]
+    checks: ["(status = 'imported') = (revision is not null)", "status <> 'rejected' or reason_ru is not null"]
+    invariants:
+      - "RLS (ENABLE + FORCE) по org_id; одна голова — один импорт (повтор доставки ничего не меняет)"
+  system_repo_jobs:
+    milestone: V3
+    purpose: "V3-31: очередь синхронизации с повторами — push (ревизия → ветка и PR), statuses (гейты в PR, автомерж), import, reconcile (состояние PR и голова ветки без вебхука, раз в 15 мин). Одно задание на связь в работе (захват под блокировкой строки связи), ожидающие с одним ключом схлопываются; повтор с задержкой 30 с · 2^n до 1 ч, 10 попыток, затем dead и связь в error с причиной; задание в ожидании повтора новым событием не ускоряется"
+    columns:
+      id: "uuid pk"
+      org_id: "uuid not null references platform.orgs on delete cascade"
+      system_id: "uuid not null references platform.systems on delete cascade"
+      link_id: "uuid not null references platform.system_repo_links on delete cascade"
+      kind: "text not null check (kind in ('push','statuses','import','reconcile'))"
+      dedupe_key: "text not null"
+      payload: "jsonb not null default '{}'"        # без токенов и содержимого файлов
+      status: "text not null default 'queued' check (status in ('queued','running','done','dead'))"
+      attempts: "integer not null default 0"
+      next_attempt_at: "timestamptz not null default now()"
+      locked_until: "timestamptz"                   # аренда работающего задания (10 мин; упавший воркер — задание снова в работе)
+      last_error_code: "text"
+      last_error_ru: "text"
+      updated_at: "timestamptz not null default now()"
+    indexes: ["unique (link_id, dedupe_key) where status = 'queued'", "(next_attempt_at) where status in ('queued','running')", "(link_id, created_at desc)"]
+    invariants:
+      - "RLS (ENABLE + FORCE) по org_id; выборка готовых заданий разных организаций — только чтение при wizard.repo_dispatch = 'on', захват и завершение — с организацией строки"
+      - "Выполненные задания удаляются через 7 дней (reconcile)"
+  system_repo_deliveries:
+    milestone: V3
+    purpose: "V3-31: доставки вебхуков (X-GitHub-Delivery, X-Gitlab-Event-UUID или sha256 тела) — повтор той же доставки не делает ничего; хранятся 30 дней"
+    columns:
+      org_id: "uuid not null references platform.orgs on delete cascade"
+      link_id: "uuid not null references platform.system_repo_links on delete cascade"
+      delivery_id: "text not null"
+      event: "text not null"
+    primary_key: [link_id, delivery_id]
+    indexes: ["(created_at)"]
+    invariants:
+      - "RLS (ENABLE + FORCE) по org_id"
+  # ==== конец блока V3-31 ====
 
 views:
   wz_runtime.otp_sends:

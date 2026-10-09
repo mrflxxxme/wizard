@@ -260,6 +260,10 @@ function headersExpr(c: IntegrationContract, params: ContractOperation["params"]
   return `{ ${[...h, ...extra].join(", ")} }`;
 }
 
+/** HOSTS of a client in both modes: the contract's API (D37); G2-TG-01 recognises a Telegram client by it. */
+const hostsConst = (c: IntegrationContract) =>
+  `/** Hosts of the contract's API (live requests go only there). */\nexport const HOSTS = ${lit(c.hosts)} as const;\n`;
+
 function clientFile(
   c: IntegrationContract,
   ops: readonly ContractOperation[],
@@ -275,6 +279,7 @@ function clientFile(
       `/** mock — answers from the contract's mock without network; live — requests to the API with the key. */`,
     );
     out.push(`export const MODE = "mock" as const;\n`);
+    out.push(hostsConst(c));
     for (const op of ops) {
       const T = pascal(op.id);
       out.push(
@@ -289,6 +294,7 @@ function clientFile(
     `/** mock — answers from the contract's mock without network; live — requests to the API with the key. */`,
   );
   out.push(`export const MODE = "live" as const;\n`);
+  out.push(hostsConst(c));
   out.push(`const text = (v: unknown): string => (typeof v === "string" ? v : JSON.stringify(v));`);
   out.push(`const seg = (v: unknown): string => encodeURIComponent(text(v));`);
   if (c.auth.kind === "path" && c.auth.secret)

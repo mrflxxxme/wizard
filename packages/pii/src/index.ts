@@ -24,6 +24,17 @@ export {
   scrubJson,
   scrubMessages,
 } from "./scrub.js";
+/** V3-21: access keys typed as text — provider formats and high-entropy tokens near «ключ»/«token»/«api»; masking. */
+export {
+  detectSecrets,
+  hasSecret,
+  maskSecrets,
+  replaceSecrets,
+  SECRET_MASK,
+  type SecretDetectOptions,
+  type SecretFinding,
+  type SecretKind,
+} from "./secrets.js";
 export {
   type Category,
   type Confidence,

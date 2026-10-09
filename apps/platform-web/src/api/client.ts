@@ -1,6 +1,8 @@
 // Typed client of the M0 subset of specs/platform/api.yaml. Mutations carry Idempotency-Key (one uuid per click).
 import { ru } from "../i18n/ru.js";
 import { createByokClient } from "../screens/settings/byok/client.js";
+import { createRepoSyncClient } from "../screens/settings/repo/client.js";
+import { createKeysClient } from "../screens/v3/keys/client.js";
 import type {
   AbuseCategory,
   AbuseReport,
@@ -168,6 +170,10 @@ export function createApiClient(opts: ClientOptions = {}) {
   return {
     /** V3-33: own model keys of an org (screens/settings/byok). */
     byok: createByokClient(call),
+    /** V3-21: the key window of a system (screens/v3/keys): keys, windows, submit of the ciphertext. */
+    keys: createKeysClient(call),
+    /** V3-31: sync of the system's repository with GitHub / GitLab (screens/settings/repo). */
+    repoSync: createRepoSyncClient(call),
     listSystems: (orgId?: string) =>
       call<{ items: System[]; nextCursor?: string | null }>("GET", "/systems", { query: { orgId } }),
     createSystem: (
