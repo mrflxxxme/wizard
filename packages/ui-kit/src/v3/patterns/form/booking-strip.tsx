@@ -2,7 +2,13 @@
 // compact lists, the working days as a strip of dates, the free times as a row of chips and, once a time is chosen,
 // the contacts. The logic is the module's: useBooking (C4) gives the services, the working days, the free times from
 // busySlots and the schedule, the consent (G2-PII-04), a time taken meanwhile and «booked». Own composition.
-import { type BookingModel, type FormModel, useBooking, useContent } from "@wizard/ui-kit/v3/headless";
+import {
+  type BookingModel,
+  bookingAddress,
+  type FormModel,
+  useBooking,
+  useContent,
+} from "@wizard/ui-kit/v3/headless";
 import { type FormEvent, type ReactNode, type RefObject, useEffect, useId, useRef, useState } from "react";
 
 type Field = FormModel["fields"][number];
@@ -516,16 +522,17 @@ function metaOf(r: Rec, durationField: string | undefined, priceField: string): 
   return out.join(" · ");
 }
 
-/** useBooking over the props: the module's schedule and names; ?service= of a showcase link preselects the service. */
+/**
+ * useBooking over the props: the module's schedule and names; ?service= of a showcase link preselects the service,
+ * ?reschedule= of the e-mail's link moves a booking (the service and specialist the runtime kept stay fixed).
+ */
 function useBookingOf(p: {
   entity?: string;
   booking: Binding;
   fields?: string[];
   daysAhead?: number;
 }): BookingModel {
-  const [preset] = useState(() =>
-    typeof location === "undefined" ? null : new URLSearchParams(location.search).get("service"),
-  );
+  const [address] = useState(() => bookingAddress());
   const b = p.booking;
   return useBooking({
     schedule: b.schedule,
@@ -537,7 +544,9 @@ function useBookingOf(p: {
     ...(b.packageCheckFn ? { packageCheckFn: b.packageCheckFn } : {}),
     ...(p.fields ? { fields: p.fields } : {}),
     ...(p.daysAhead ? { daysAhead: p.daysAhead } : {}),
-    ...(preset ? { service: preset } : {}),
+    ...(address.service ? { service: address.service } : {}),
+    ...(address.specialist ? { specialist: address.specialist } : {}),
+    ...(address.reschedule ? { reschedule: address.reschedule } : {}),
   });
 }
 
@@ -792,9 +801,38 @@ function Pick(props: {
   );
 }
 
+/** A choice the reschedule keeps (the booked service or specialist): shown, not offered again (B2-14). */
+function Fixed({ testid, label, value }: { testid: string; label: string; value: string }) {
+  return (
+    <div data-testid={testid} className="min-w-0">
+      <p className="text-small font-bold">{label}</p>
+      <p className="mt-2 text-body">{value}</p>
+    </div>
+  );
+}
+
+/**
+ * The reschedule by the e-mail's link (?reschedule=): the chosen time and the link to the runtime's confirmation of it
+ * (the one-time link page moves the booking once; generated pages post no forms elsewhere, G0-SEC-01).
+ */
+function Move({ m, tz }: { m: BookingModel; tz: string }) {
+  const r = m.reschedule;
+  if (!r || !m.slot) return null;
+  return (
+    <div data-testid="booking-move">
+      <p className="text-body">{`${r.chosen}: ${dayOf(m.day).full}, ${timeOf(m.slot.start, tz)}`}</p>
+      <a href={r.href(m.slot)} className={`mt-5 w-full sm:w-auto ${primaryClass}`}>
+        {r.submit}
+      </a>
+    </div>
+  );
+}
+
 export default function FormBookingStrip(props: FormBookingStripProps) {
   const { booking, priceField = "price", title, text, submit, sent, again, note, contact } = props;
   const m = useBookingOf(props);
+  // The reschedule of the e-mail's link has its own heading and intro (the v2 page's).
+  const heading = m.reschedule ? { title: m.reschedule.title, text: m.reschedule.intro } : { title, text };
   const uid = useId();
   const tz = booking.schedule.tz;
   const first = useRef<HTMLDivElement>(null);
@@ -817,38 +855,52 @@ export default function FormBookingStrip(props: FormBookingStripProps) {
     body = (
       <div ref={first} tabIndex={-1} className="space-y-8 outline-none">
         <div className="grid gap-5 sm:grid-cols-2">
-          <Pick
-            id={`${uid}-service`}
-            testid="booking-service"
-            label="Услуга"
-            value={m.service?.id ?? ""}
-            placeholder="Выберите услугу"
-            options={m.services.items.map((r) => {
-              const meta = metaOf(r, booking.durationField, priceField);
-              return { value: r.id, label: meta ? `${nameOf(r)} — ${meta}` : nameOf(r) };
-            })}
-            onChange={(v) => m.selectService(v || null)}
-          />
-          {m.specialists ? (
+          {m.fixed ? (
+            <Fixed testid="booking-service" label="Услуга" value={nameOf(m.service)} />
+          ) : (
             <Pick
-              id={`${uid}-specialist`}
-              testid="booking-specialist"
-              label="Специалист"
-              value={m.specialist?.id ?? ""}
-              placeholder="Выберите специалиста"
-              options={m.specialists.items.map((r) => ({ value: r.id, label: nameOf(r) }))}
-              onChange={(v) => m.selectSpecialist(v || null)}
+              id={`${uid}-service`}
+              testid="booking-service"
+              label="Услуга"
+              value={m.service?.id ?? ""}
+              placeholder="Выберите услугу"
+              options={m.services.items.map((r) => {
+                const meta = metaOf(r, booking.durationField, priceField);
+                return { value: r.id, label: meta ? `${nameOf(r)} — ${meta}` : nameOf(r) };
+              })}
+              onChange={(v) => m.selectService(v || null)}
             />
+          )}
+          {m.specialists ? (
+            m.fixed ? (
+              <Fixed testid="booking-specialist" label="Специалист" value={nameOf(m.specialist)} />
+            ) : (
+              <Pick
+                id={`${uid}-specialist`}
+                testid="booking-specialist"
+                label="Специалист"
+                value={m.specialist?.id ?? ""}
+                placeholder="Выберите специалиста"
+                options={m.specialists.items.map((r) => ({ value: r.id, label: nameOf(r) }))}
+                onChange={(v) => m.selectSpecialist(v || null)}
+              />
+            )
           ) : null}
         </div>
         <DayStrip m={m} />
         <Times m={m} tz={tz} className="flex flex-wrap gap-2" />
         {m.slot ? (
           <div className="border-t border-border pt-8">
-            <h3 className="font-display text-h3 font-bold">Ваши контакты</h3>
+            <h3 className="font-display text-h3 font-bold">
+              {m.reschedule ? "Новое время" : "Ваши контакты"}
+            </h3>
             <p className="mt-1 text-body text-muted-foreground">{`${nameOf(m.service)}, ${dayOf(m.day).full}, ${timeOf(m.slot.start, tz)}`}</p>
             <div className="mt-6">
-              <Contacts m={m} uid={uid} submit={submit} note={note} />
+              {m.reschedule ? (
+                <Move m={m} tz={tz} />
+              ) : (
+                <Contacts m={m} uid={uid} submit={submit} note={note} />
+              )}
             </div>
           </div>
         ) : null}
@@ -865,9 +917,9 @@ export default function FormBookingStrip(props: FormBookingStripProps) {
       <div className="mx-auto grid w-full max-w-page gap-10 px-gutter lg:grid-cols-12 lg:gap-12">
         <div className="min-w-0 lg:col-span-4">
           <h2 id={`${uid}-title`} className="font-display text-h2 font-bold text-balance wrap-break-word">
-            {title}
+            {heading.title}
           </h2>
-          {text ? <p className="mt-4 text-body text-muted-foreground">{text}</p> : null}
+          {heading.text ? <p className="mt-4 text-body text-muted-foreground">{heading.text}</p> : null}
         </div>
         <div aria-busy={loading ? true : undefined} className="min-w-0 lg:col-span-8">
           {body}

@@ -22,7 +22,28 @@ export const BOOKING_TEXTS = {
   taken: "Это время только что заняли — выберите другое",
   noPackage:
     "На эти телефон и почту нет действующего абонемента на день визита. Продлите его у администратора или проверьте данные.",
+  rescheduleTitle: "Перенос записи",
+  rescheduleIntro: "Выберите новый день и время — старое время освободится.",
+  moveSubmit: "Перенести на это время",
+  chosen: "Выбрано",
 } as const;
+
+/** The runtime's one-time link of the reschedule (B2-14): the page links back to it with the new time in the query. */
+export const RESCHEDULE_PATH = "/_wizard/hooks/message/reschedule/";
+
+/** What the address of the booking page carries: ?service= of a showcase link; ?reschedule= of the e-mail's link. */
+export interface BookingAddress {
+  service: string | null;
+  specialist: string | null;
+  /** The one-time token of the reschedule link (the runtime redirects here with it and the kept service). */
+  reschedule: string | null;
+}
+
+/** The booking parameters of a query string (default: the page's address). */
+export function bookingAddress(search?: string): BookingAddress {
+  const q = new URLSearchParams(search ?? (typeof location === "undefined" ? "" : location.search));
+  return { service: q.get("service"), specialist: q.get("specialist"), reschedule: q.get("reschedule") };
+}
 
 export interface UseBookingOptions {
   /** The module's schedule (publicFront.actions[].booking.schedule of the backend compile). */
@@ -49,7 +70,25 @@ export interface UseBookingOptions {
   /** Preselected service and specialist (e.g. ?service= of a showcase link). */
   service?: string | null;
   specialist?: string | null;
+  /**
+   * The token of the e-mail's reschedule link (?reschedule=, B2-14): the service and specialist the runtime kept stay
+   * fixed, the chosen time goes to the runtime's confirmation instead of the contacts — exactly as the v2 page.
+   */
+  reschedule?: string | null;
   texts?: Partial<Record<keyof typeof BOOKING_TEXTS, string>>;
+}
+
+/** A reschedule by the e-mail's link: the texts of the page and the confirmation address of a chosen time. */
+export interface BookingReschedule {
+  token: string;
+  title: string;
+  intro: string;
+  /** Label of the link to the confirmation («Перенести на это время»). */
+  submit: string;
+  /** «Выбрано». */
+  chosen: string;
+  /** The runtime's confirmation of the new time: /_wizard/hooks/message/reschedule/<token>?starts_at=…&ends_at=… */
+  href(slot: FreeSlot): string;
 }
 
 export interface BookingList {
@@ -86,6 +125,10 @@ export interface BookingModel {
   booked: FreeSlot | null;
   /** Start again after «Вы записаны». */
   again(): void;
+  /** A reschedule by the e-mail's link (?reschedule=), else null. */
+  reschedule: BookingReschedule | null;
+  /** The service (and specialist) are fixed: the reschedule keeps the booked ones — show them, offer no choice. */
+  fixed: boolean;
 }
 
 const byName = { field: "name", dir: "asc" as const };
@@ -178,17 +221,37 @@ export function useBooking(o: UseBookingOptions): BookingModel {
       : {}),
   });
 
+  const token = o.reschedule ?? null;
+  const reschedule: BookingReschedule | null = token
+    ? {
+        token,
+        title: texts.rescheduleTitle,
+        intro: texts.rescheduleIntro,
+        submit: texts.moveSubmit,
+        chosen: texts.chosen,
+        href: (x) => {
+          const q = new URLSearchParams({ starts_at: x.start, ends_at: x.end });
+          if (s.capacity > 1) q.set("seat", String(x.seat));
+          return `${RESCHEDULE_PATH}${encodeURIComponent(token)}?${q.toString()}`;
+        },
+      }
+    : null;
+  // The reschedule keeps the booked service and specialist (the runtime put them into the address).
+  const fixed = reschedule !== null && chosen !== null && (!o.specialistEntity || who !== null);
+
   return {
-    allowed: can("create", entity),
+    allowed: reschedule ? true : can("create", entity),
     services: list(services),
     service: chosen,
     selectService: (id) => {
+      if (fixed) return;
       setService(id);
       setSlot(null);
     },
     specialists: o.specialistEntity ? list(specialists) : null,
     specialist: who,
     selectSpecialist: (id) => {
+      if (fixed) return;
       setSpecialist(id);
       setSlot(null);
     },
@@ -214,6 +277,8 @@ export function useBooking(o: UseBookingOptions): BookingModel {
       setBooked(null);
       setSlot(null);
     },
+    reschedule,
+    fixed,
   };
 }
 

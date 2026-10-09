@@ -89,6 +89,11 @@ export function briefPlan(
   let plan = base.plan;
   const ok = availableModules(registry);
   const unavailable: string[] = [];
+  // Every module the plan will have: the planner's and the scenarios' hints (the client cabinet shows their records).
+  const will = new Set([
+    ...plan.modules.map((m) => m.id),
+    ...brief.scenarios.flatMap((s) => s.moduleHint ?? []),
+  ]);
   for (const s of brief.scenarios) {
     const m = s.moduleHint;
     if (!m || plan.modules.some((x) => x.id === m)) continue;
@@ -96,9 +101,32 @@ export function briefPlan(
       if (!unavailable.includes(m)) unavailable.push(m);
       continue;
     }
-    const r = editPlan(plan, [{ op: "add_module", module: m }], registry);
+    const params = m === VISITOR_CABINET ? cabinetParams(will) : undefined;
+    const r = editPlan(plan, [{ op: "add_module", module: m, ...(params ? { params } : {}) }], registry);
     if (r.ok) plan = r.plan;
     else unavailable.push(m);
   }
+  // V3-18: the client cabinet shows the records of the modules the system has (its leads, its packages), not only the
+  // bookings — the brief has no word for the module's parameters, the cabinet of a planner's plan follows the same rule.
+  const vc = plan.modules.find((x) => x.id === VISITOR_CABINET);
+  if (vc) {
+    const present = new Set(plan.modules.map((x) => x.id));
+    const edits = Object.entries(cabinetParams(present))
+      .filter(([param, value]) => value === true && vc.params?.[param] === undefined)
+      .map(([param, value]) => ({ op: "set_param" as const, module: VISITOR_CABINET, param, value }));
+    const r = edits.length ? editPlan(plan, edits, registry) : null;
+    if (r?.ok) plan = r.plan;
+  }
   return { plan, questions, unavailable };
+}
+
+const VISITOR_CABINET = "visitor_cabinet";
+
+/** Sections of the client cabinet by the modules of the plan: bookings, leads, packages (modules.yaml visitor_cabinet). */
+function cabinetParams(modules: ReadonlySet<string>): Record<string, boolean> {
+  return {
+    show_bookings: modules.has("booking"),
+    show_leads: modules.has("leads"),
+    show_packages: modules.has("packages"),
+  };
 }

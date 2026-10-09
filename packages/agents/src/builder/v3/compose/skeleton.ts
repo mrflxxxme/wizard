@@ -12,15 +12,19 @@ import {
   selectPattern,
 } from "@wizard/ui-kit/v3/patterns";
 import type { V3BuildContext } from "../contract.js";
+import { clientCabinet } from "./account.js";
 import {
+  fitPhotos,
   KIND_LABELS,
   primaryAction,
   type SectionContext,
   type SiteAction,
   secondaryAction,
+  sectionPhotos,
   sectionProps,
   seoOf,
   siteRules,
+  slotShape,
 } from "./content.js";
 import { type SiteFacts, siteFacts } from "./facts.js";
 import { lintErrors, lintPage } from "./lint.js";
@@ -64,6 +68,8 @@ export function choosePattern(
     seed: string;
     used: readonly string[];
     prevLayout?: string;
+    /** The section has a place for the owner's photo but no stock one: a variant that can show a photo first. */
+    photo?: boolean;
   },
 ): PatternMeta | null {
   const fits = library.filter(
@@ -76,7 +82,12 @@ export function choosePattern(
     const out = p.slots.parse(q.props) as Record<string, unknown>;
     return keep.every((group) => group.some((k) => out[k] !== undefined));
   });
-  const shown = keeping.length ? keeping : fits;
+  let shown = keeping.length ? keeping : fits;
+  // V3-18: the owner's photo of the place («Фото сайта») shows up as soon as he uploads it.
+  if (q.photo) {
+    const can = shown.filter((p) => slotShape(p).keys.has("image"));
+    if (can.length) shown = can;
+  }
   const fresh = shown.filter((p) => p.layout !== q.prevLayout);
   const pool = fresh.length ? fresh : shown;
   // Other types stay in the list: patternFor's selection counts the layout families of every pattern already used.
@@ -122,6 +133,10 @@ export function composeSite(ctx: V3BuildContext, lib: ComposeLibrary = {}): Skel
     return { site, facts, notes, missing };
   }
   const used: string[] = [];
+  // V3-18: the client cabinet of «Кабинет посетителя» on its page (/me).
+  const cabinet = clientCabinet(ctx.spec, ctx.plan);
+  const cabinetOf = (page: PlannedPage) =>
+    cabinet && page.kind === "account" && page.module === "visitor_cabinet" ? { cabinet } : {};
   // The request form of the site is the home page's form section (bound to useLeadForm): catalog items lead there.
   const home = planned.find((p) => p.kind === "home");
   const leadForm =
@@ -168,24 +183,30 @@ export function composeSite(ctx: V3BuildContext, lib: ComposeLibrary = {}): Skel
         continue;
       }
       if (bindingOf(page, type, ctx.publicFront, planned)) continue;
-      const c = context(facts, page, planned, primary, secondary, null, []);
+      const c = { ...context(facts, page, planned, primary, secondary, null, []), ...cabinetOf(page) };
       const props = sectionProps(type, c);
       if (!props) continue;
+      const places = sectionPhotos(type, c, props);
+      // The client cabinet reads the visitor's records (needs content, V3-18); other sections show the facts.
+      const needs = type === "account" ? "content" : null;
       const p = choosePattern(library, {
         type,
-        needs: null,
+        needs,
         props,
         archetype,
         seed,
         used,
         ...(layouts.length ? { prevLayout: layouts[layouts.length - 1] } : {}),
+        ...(places?.image && props.image === undefined ? { photo: true } : {}),
       });
       if (!p) {
-        missing.push({ route: page.route, type, needs: null });
+        missing.push({ route: page.route, type, needs });
         continue;
       }
       used.push(p.id);
-      sections.push({ id: type, type, pattern: p.id, props: slotProps(p, props) });
+      const kept = slotProps(p, props);
+      const photos = fitPhotos(p, places, kept);
+      sections.push({ id: type, type, pattern: p.id, props: kept, ...(photos ? { photos } : {}) });
       layouts.push(p.layout);
     }
     bodies.set(page.route, { sections, layouts });

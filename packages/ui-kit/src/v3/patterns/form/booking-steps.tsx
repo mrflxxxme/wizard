@@ -3,7 +3,13 @@
 // heading of each new step, a time taken meanwhile brings back the time step (catalog D2: no more than three steps).
 // The logic is the module's: useBooking (C4) gives the services, the working days, the free times from busySlots and
 // the schedule, the consent (G2-PII-04) and «booked». Own composition.
-import { type BookingModel, type FormModel, useBooking, useContent } from "@wizard/ui-kit/v3/headless";
+import {
+  type BookingModel,
+  bookingAddress,
+  type FormModel,
+  useBooking,
+  useContent,
+} from "@wizard/ui-kit/v3/headless";
 import { type FormEvent, type ReactNode, type RefObject, useEffect, useId, useRef, useState } from "react";
 
 type Field = FormModel["fields"][number];
@@ -517,16 +523,17 @@ function metaOf(r: Rec, durationField: string | undefined, priceField: string): 
   return out.join(" · ");
 }
 
-/** useBooking over the props: the module's schedule and names; ?service= of a showcase link preselects the service. */
+/**
+ * useBooking over the props: the module's schedule and names; ?service= of a showcase link preselects the service,
+ * ?reschedule= of the e-mail's link moves a booking (the service and specialist the runtime kept stay fixed).
+ */
 function useBookingOf(p: {
   entity?: string;
   booking: Binding;
   fields?: string[];
   daysAhead?: number;
 }): BookingModel {
-  const [preset] = useState(() =>
-    typeof location === "undefined" ? null : new URLSearchParams(location.search).get("service"),
-  );
+  const [address] = useState(() => bookingAddress());
   const b = p.booking;
   return useBooking({
     schedule: b.schedule,
@@ -538,7 +545,9 @@ function useBookingOf(p: {
     ...(b.packageCheckFn ? { packageCheckFn: b.packageCheckFn } : {}),
     ...(p.fields ? { fields: p.fields } : {}),
     ...(p.daysAhead ? { daysAhead: p.daysAhead } : {}),
-    ...(preset ? { service: preset } : {}),
+    ...(address.service ? { service: address.service } : {}),
+    ...(address.specialist ? { specialist: address.specialist } : {}),
+    ...(address.reschedule ? { reschedule: address.reschedule } : {}),
   });
 }
 
@@ -804,9 +813,38 @@ function DayStrip({ m }: { m: BookingModel }) {
 
 const STEPS = ["Услуга", "Время", "Контакты"] as const;
 
+/** A choice the reschedule keeps (the booked service or specialist): shown, not offered again (B2-14). */
+function Fixed({ testid, label, value }: { testid: string; label: string; value: string }) {
+  return (
+    <div data-testid={testid} className="min-w-0">
+      <p className="text-small font-bold">{label}</p>
+      <p className="mt-2 text-body">{value}</p>
+    </div>
+  );
+}
+
+/**
+ * The reschedule by the e-mail's link (?reschedule=): the chosen time and the link to the runtime's confirmation of it
+ * (the one-time link page moves the booking once; generated pages post no forms elsewhere, G0-SEC-01).
+ */
+function Move({ m, tz }: { m: BookingModel; tz: string }) {
+  const r = m.reschedule;
+  if (!r || !m.slot) return null;
+  return (
+    <div data-testid="booking-move">
+      <p className="text-body">{`${r.chosen}: ${dayOf(m.day).full}, ${timeOf(m.slot.start, tz)}`}</p>
+      <a href={r.href(m.slot)} className={`mt-5 w-full sm:w-auto ${primaryClass}`}>
+        {r.submit}
+      </a>
+    </div>
+  );
+}
+
 export default function FormBookingSteps(props: FormBookingStepsProps) {
   const { booking, priceField = "price", title, text, submit, sent, again, note, contact } = props;
   const m = useBookingOf(props);
+  // The reschedule of the e-mail's link has its own heading and intro (the v2 page's).
+  const heading = m.reschedule ? { title: m.reschedule.title, text: m.reschedule.intro } : { title, text };
   const uid = useId();
   const tz = booking.schedule.tz;
   const head = useRef<HTMLHeadingElement>(null);
@@ -852,7 +890,13 @@ export default function FormBookingSteps(props: FormBookingStepsProps) {
       <div className="rounded-lg border border-border bg-card p-6 text-card-foreground sm:p-10">
         <h3 ref={head} tabIndex={-1} className="font-display text-h3 font-bold outline-none">
           <span className="block font-sans text-small font-normal text-muted-foreground">{`Шаг ${step + 1} из ${STEPS.length}`}</span>
-          {step === 0 ? "Выберите услугу" : step === 1 ? "Выберите день и время" : "Оставьте контакты"}
+          {step === 0
+            ? "Выберите услугу"
+            : step === 1
+              ? "Выберите день и время"
+              : m.reschedule
+                ? "Подтвердите перенос"
+                : "Оставьте контакты"}
         </h3>
         {step > 0 ? (
           <p className="mt-2 text-body text-muted-foreground">
@@ -871,24 +915,32 @@ export default function FormBookingSteps(props: FormBookingStepsProps) {
               <Loading />
             ) : (
               <>
-                <Choice
-                  uid={uid}
-                  name="service"
-                  legend="Услуга"
-                  items={m.services.items}
-                  value={m.service?.id ?? null}
-                  onChange={m.selectService}
-                  describe={(r) => metaOf(r, booking.durationField, priceField)}
-                />
-                {m.specialists ? (
+                {m.fixed ? (
+                  <Fixed testid="booking-service" label="Услуга" value={nameOf(m.service)} />
+                ) : (
                   <Choice
                     uid={uid}
-                    name="specialist"
-                    legend="Специалист"
-                    items={m.specialists.items}
-                    value={m.specialist?.id ?? null}
-                    onChange={m.selectSpecialist}
+                    name="service"
+                    legend="Услуга"
+                    items={m.services.items}
+                    value={m.service?.id ?? null}
+                    onChange={m.selectService}
+                    describe={(r) => metaOf(r, booking.durationField, priceField)}
                   />
+                )}
+                {m.specialists ? (
+                  m.fixed ? (
+                    <Fixed testid="booking-specialist" label="Специалист" value={nameOf(m.specialist)} />
+                  ) : (
+                    <Choice
+                      uid={uid}
+                      name="specialist"
+                      legend="Специалист"
+                      items={m.specialists.items}
+                      value={m.specialist?.id ?? null}
+                      onChange={m.selectSpecialist}
+                    />
+                  )
                 ) : null}
               </>
             )
@@ -897,6 +949,8 @@ export default function FormBookingSteps(props: FormBookingStepsProps) {
               <DayStrip m={m} />
               <Times m={m} tz={tz} className="grid grid-cols-3 gap-2 sm:grid-cols-5" />
             </>
+          ) : m.reschedule ? (
+            <Move m={m} tz={tz} />
           ) : (
             <Contacts m={m} uid={uid} submit={submit} note={note} />
           )}
@@ -935,9 +989,9 @@ export default function FormBookingSteps(props: FormBookingStepsProps) {
     >
       <div className="mx-auto w-full max-w-3xl px-gutter">
         <h2 id={`${uid}-title`} className="font-display text-h2 font-bold text-balance wrap-break-word">
-          {title}
+          {heading.title}
         </h2>
-        {text ? <p className="mt-3 text-body text-muted-foreground">{text}</p> : null}
+        {heading.text ? <p className="mt-3 text-body text-muted-foreground">{heading.text}</p> : null}
         {!m.booked && !blocked(m) ? (
           <ol className="mt-8 grid grid-cols-3 gap-2">
             {STEPS.map((s, i) => (

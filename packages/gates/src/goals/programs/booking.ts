@@ -6,7 +6,7 @@
 import type { Locator } from "@playwright/test";
 import type { AppSpec } from "@wizard/appspec";
 import type { GoalOutboxMessage, GoalProgram, GoalRun } from "../types.js";
-import { ensurePackage } from "./packages.js";
+import { ensurePackage } from "./package-sale.js";
 import {
   enumLabel,
   formReady,
@@ -42,6 +42,15 @@ const V3_STEP = (id: string) => `${PAGE} [data-testid="booking-${id}"]`;
 /** Whether the open booking form is a v3 pattern (its steps are marked, its root is data-wz-component BookingForm). */
 async function isV3(t: GoalRun): Promise<boolean> {
   return (await t.page.locator(`${PAGE}[data-wz-component="BookingForm"]`).count()) > 0;
+}
+
+/**
+ * The open /booking is a v3 booking pattern (V3-18: «Абонементы» books through its steps): waits for the first choices
+ * of either form, then tells them apart.
+ */
+export async function isV3Booking(t: GoalRun): Promise<boolean> {
+  await stepsReady(t);
+  return isV3(t);
 }
 
 async function bookingSteps(t: GoalRun): Promise<BookingSteps> {

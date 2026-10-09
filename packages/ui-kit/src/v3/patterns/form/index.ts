@@ -20,6 +20,8 @@ import type Stepper from "./stepper.js";
 
 /** Entity and field names of the system (AppSpec identifiers). */
 const ident = z.string().regex(/^[a-z][a-z0-9_]{0,39}$/, "имя сущности или поля латиницей");
+/** Names of the system's functions (camelCase: busySlots, packageCheck — V3-18: the package check of «Абонементы»). */
+const fnName = z.string().regex(/^[a-z][A-Za-z0-9_]{0,63}$/, "имя функции системы латиницей");
 const minutes = z.number().int().min(0).max(1440);
 
 /** Texts of the answer after a successful write. */
@@ -67,8 +69,8 @@ export const bookingBindingSlot = z.object({
   serviceEntity: ident,
   durationField: ident.optional(),
   specialistEntity: ident.optional(),
-  busyFn: ident.optional(),
-  packageCheckFn: ident.optional(),
+  busyFn: fnName.optional(),
+  packageCheckFn: fnName.optional(),
 });
 
 /** Everything a booking form may show. */
