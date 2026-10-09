@@ -68,6 +68,8 @@ export async function runTechreview(
   const changed = new Map<string, string>();
   const extensions: TechreviewOutcome["extensions"] = [];
   let open: ReviewFinding[] = [];
+  /** The reviewer's findings about the owner's input (the operator's data): publication asks the owner, not the build. */
+  const ownerInput = new Map<string, string>();
   /** Titles of every finding seen: a finding raised again in the next round keeps the reason its fix was refused. */
   const titles = new Map<string, string>();
   let rounds = 0;
@@ -105,6 +107,7 @@ export async function runTechreview(
       break;
     }
     open = r.findings;
+    for (const f of r.ownerInput) ownerInput.set(f.title_ru, f.title_ru);
     for (const f of open) titles.set(f.id, f.title_ru);
     const fixable = open.filter((f) => f.fix.kind !== "none" && f.severity !== "minor");
     if (!fixable.length || round > maxRounds) break;
@@ -172,6 +175,7 @@ export async function runTechreview(
     `ревьюер ${reviewer.status === "done" ? (reviewer.model ?? "—") : `пропущен: ${reviewer.reason}`}`,
     `находок ${open.length}${open.length ? ` (${open.map((f) => SEVERITY_RU[f.severity]).join(", ")})` : ""}`,
     `раундов исправлений ${rounds}`,
+    ...(ownerInput.size ? [`данные владельца перед публикацией: ${ownerInput.size}`] : []),
   ].join("; ");
   return {
     checks,
@@ -180,6 +184,7 @@ export async function runTechreview(
     files: changed,
     extensions,
     blockers,
+    ownerInput: [...ownerInput.values()],
     notes,
     rounds,
     reviewer,

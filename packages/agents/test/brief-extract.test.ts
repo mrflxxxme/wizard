@@ -334,7 +334,8 @@ describe("draft on recorded answers of the model (three ТЗ samples)", () => {
     expect(r.method).toBe("model");
     expect(r.pii.found).toBe(2);
     expect(r.brief.audience).not.toMatch(/916|example\.test/);
-    expect(r.brief.audience).toMatch(/\[ТЕЛЕФОН_1\].*\[EMAIL_1\]/);
+    // V3-18: no scrub placeholder in the brief either — the neutral word of its kind (the site reads the brief).
+    expect(r.brief.audience).toBe("Клиенты мастерской, вопросы — по телефону или на почту");
     expect(systemBriefSchema.safeParse(r.brief).success).toBe(true);
   });
 });

@@ -9,6 +9,7 @@ import { z } from "zod";
 import type { RunStepFn } from "../core/events.js";
 import { type CallStats, callTool, type RouteFn } from "../core/loop.js";
 import { defineTool, type ToolIssue } from "../core/tool.js";
+import { stripScrubTokens } from "../interview-v3/scrub-tokens.js";
 import { chunkText } from "./chunk.js";
 import { BRIEF_DRAFT_TODO } from "./gaps.js";
 import { heuristicDraft } from "./heuristic.js";
@@ -218,7 +219,8 @@ export interface BriefDraftResult {
 function scrubbed(brief: SystemBrief): { brief: SystemBrief; pii: BriefDraftResult["pii"] } {
   const s = scrubJson(brief);
   const found = Object.values(s.counts).reduce((a, n) => a + (n ?? 0), 0);
-  const v = validateBrief(s.value);
+  // V3-18: the build and the site read the brief — a placeholder becomes the neutral word of its kind.
+  const v = validateBrief(stripScrubTokens(s.value));
   return { brief: v.ok ? v.brief : brief, pii: { found, strongIds: s.strongIds } };
 }
 

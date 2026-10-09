@@ -20,6 +20,7 @@ export {
   integrationChecks,
   localGates,
   migrationDryRun,
+  OWNER_INPUT_SUFFIX_RU,
   performanceChecks,
   rlsCoverage,
 } from "./checks.js";
@@ -30,6 +31,7 @@ export {
   evidenceFound,
   familyOf,
   MAX_FINDINGS,
+  ownerInputFinding,
   resolves,
   reviewRound,
   submitTechreview,

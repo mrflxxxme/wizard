@@ -23,6 +23,7 @@ import {
   designSystemV3,
   isArchetypeId,
 } from "@wizard/ui-kit/v3/design";
+import { stripScrubTokens } from "../../interview-v3/scrub-tokens.js";
 import { DEFAULT_REGISTRY } from "../../planner/catalog.js";
 import { buildBlockers } from "../v2/blockers.js";
 import { withOwnerFields } from "../v2/run.js";
@@ -83,8 +84,9 @@ class V3Failure extends Error {
 /** Files of a composer step as JSON (checkpoints): [path, source | null][]. */
 type FileEntries = [string, string | null][];
 
-const OWNER_INPUT_NOTE_RU =
-  "Перед публикацией укажите данные оператора персональных данных (название и контакт) — без них систему с персональными данными опубликовать нельзя.";
+/** The owner's input of G2 (G2-PII-06): the operator's data, asked before publication — the build is not failed. */
+export const OWNER_INPUT_NOTE_RU =
+  "Перед публикацией укажите данные оператора персональных данных — название (юрлицо, ИП или ФИО), e-mail для обращений и адрес — в настройках системы, раздел «Персональные данные». Без них систему с персональными данными опубликовать нельзя; сборку это не останавливает.";
 
 const toEntries = (m: ReadonlyMap<string, string | null>): FileEntries =>
   [...m].sort(([a], [b]) => a.localeCompare(b));
@@ -261,7 +263,8 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
         "У системы ещё нет брифа — ответьте на вопросы интервью, потом нажмите «Собрать».",
         false,
       );
-    return v;
+    // V3-18: a scrub placeholder of an older brief (`[КОНТАКТ_1]`) never reaches the pages — the word of its kind.
+    return { ...v, brief: stripScrubTokens(v.brief) };
   };
 
   // Non-blocking questions, their answers and the plan that follows from them.

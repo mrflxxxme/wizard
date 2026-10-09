@@ -10,6 +10,7 @@ import { DEFAULT_REGISTRY } from "../planner/catalog.js";
 import { clip } from "../planner/tolerant.js";
 import { capabilityMap, normText } from "./capability.js";
 import type { BriefPatch, ExtraRequirement } from "./schemas.js";
+import { stripScrubTokens, stripScrubTokensText } from "./scrub-tokens.js";
 
 const IDENT = /^[a-z][a-z0-9_]{0,39}$/;
 
@@ -84,8 +85,9 @@ export type PatchResult = { ok: true; brief: SystemBrief } | { ok: false; issues
 export function applyBriefPatch(brief: SystemBrief, patch: BriefPatch, o: PatchOptions): PatchResult {
   const registry = o.registry ?? DEFAULT_REGISTRY;
   const catalog = new Set(registry.modules.map((d) => d.manifest.id));
-  // Personal data never reaches the brief (it goes to T1 at later stages, D50): placeholders instead.
-  const p = scrubJson(patch).value;
+  // Personal data never reaches the brief (it goes to T1 at later stages, D50), nor do the scrub placeholders: the
+  // build and the site read the brief, a placeholder becomes the neutral word of its kind (scrub-tokens.ts, V3-18).
+  const p = stripScrubTokens(scrubJson(patch).value);
   const b: SystemBrief = structuredClone(brief);
 
   if (p.goals?.length)
@@ -193,7 +195,7 @@ export function addAssumption(b: SystemBrief, text: string, source: "default" | 
 export function addQa(b: SystemBrief, qa: BriefQa): void {
   b.qa.push({
     q: clip(qa.q, BRIEF_LIMITS.question),
-    a: clip(scrubJson(qa.a).value, BRIEF_LIMITS.longText),
+    a: clip(stripScrubTokensText(scrubJson(qa.a).value), BRIEF_LIMITS.longText),
     recommended: clip(qa.recommended, BRIEF_LIMITS.question),
     chosen: qa.chosen,
   });

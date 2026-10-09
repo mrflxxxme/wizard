@@ -23,6 +23,7 @@ export { type BlockingGap, blockingGaps, questionOrderIssues, stopReason } from 
 /** The interview: start / answer / say a turn at a time; session, outputs, the short brief for the chat. */
 export {
   adoptStoredBrief,
+  briefHasPii,
   briefSummaryText,
   createInterviewV3,
   InterviewV3,
@@ -32,7 +33,10 @@ export {
   type InterviewV3Result,
   isInterviewV3Session,
   MAX_DEFERRED,
+  MAX_TOKEN_REFUSALS,
   newInterviewV3Session,
+  OPERATOR_LINE_RU,
+  OPERATOR_QUESTION,
   publicQuestion,
   type V3Answer,
   type V3PublicQuestion,
@@ -71,5 +75,13 @@ export {
   v3OptionSchema,
   v3QuestionInputSchema,
 } from "./schemas.js";
+/** Scrub placeholders (`[КОНТАКТ_1]`) in brief strings: found with their paths, replaced by the word of their kind. */
+export {
+  SCRUB_TOKEN_RE,
+  type ScrubTokenPlace,
+  scrubTokenPlaces,
+  stripScrubTokens,
+  stripScrubTokensText,
+} from "./scrub-tokens.js";
 /** Tolerant reading of the tools before zod. */
 export { normalizeBriefPatchArgs, normalizeDeferArgs, normalizeQuestionArgs, topicOf } from "./tolerant.js";

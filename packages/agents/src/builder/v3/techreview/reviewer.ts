@@ -14,6 +14,7 @@ import {
 import { z } from "zod";
 import { callTool, type RouteFn } from "../../../core/loop.js";
 import { defineTool } from "../../../core/tool.js";
+import { OWNER_INPUT_CHECKS } from "../../v2/blockers.js";
 import type { TechDigest } from "./digest.js";
 import {
   REVIEW_AREAS,
@@ -78,6 +79,7 @@ const RULES = [
   "severity: blocker — с этим систему нельзя публиковать (утечка данных, потеря записей, сломанная цепочка); major — заметная ошибка; minor — улучшение.",
   `fix.kind: function_patch — только файл ${CUSTOM_FUNCTIONS_DIR}** из раздела custom, полный новый текст файла; extension — одна операция расширения (add_field, add_entity, add_role, add_function, add_automation), она только добавляет; none — безопасного исправления нет.`,
   "Модули платформы и их файлы не меняются. Данных клиентов в сводке нет — не придумывай их.",
+  "Данные оператора персональных данных (название, контакт, адрес, ИНН) вводит владелец перед публикацией — это не находка и не блокер сборки.",
   "Ответ — только вызов submit_techreview. Нечего исправлять — пустой список findings.",
 ];
 
@@ -154,6 +156,21 @@ export function evidenceFound(
   return system.files.has(ref.replace(/:\d+$/, ""));
 }
 
+/** What the owner fills before publication, not the build: the personal data operator's name, contact, address, ИНН. */
+const OWNER_INPUT_RE =
+  /оператор\p{L}*\s+(?:обработки\s+)?(?:персональн|пдн)|(?:данн|сведени|реквизит|назван|контакт|адрес|инн)\p{L}*\s+(?:об\s+)?оператор/iu;
+
+/**
+ * A finding about the owner's input (G2-PII-06 and the operator fields of /compliance): the owner fills them before
+ * publication (publish refuses without them), so they never block the build (builder.yaml#v2.stages.gates, B2-21).
+ */
+export function ownerInputFinding(f: Pick<ReviewFinding, "evidence" | "title_ru">): boolean {
+  const { kind, ref } = f.evidence;
+  if (kind === "check" && OWNER_INPUT_CHECKS.has(ref)) return true;
+  if (kind === "spec" && /^\/compliance(?:\/operator|$)/.test(ref)) return true;
+  return OWNER_INPUT_RE.test(f.title_ru);
+}
+
 /** One review round: the findings with valid evidence, the dropped count, the answer's model and cost. */
 export async function reviewRound(o: {
   route: RouteFn;
@@ -169,6 +186,8 @@ export async function reviewRound(o: {
   valid: boolean;
   findings: ReviewFinding[];
   unfounded: number;
+  /** Findings about the owner's input (ownerInputFinding): not the build's, publication asks the owner for them. */
+  ownerInput: ReviewFinding[];
   model: string | null;
   calls: number;
   creditsMilli: number;
@@ -198,8 +217,18 @@ export async function reviewRound(o: {
     maxRepairs: 2,
     textArgs: true,
   });
-  if (!r.ok) return { valid: false, findings: [], unfounded: 0, model, calls, creditsMilli };
+  if (!r.ok) return { valid: false, findings: [], unfounded: 0, ownerInput: [], model, calls, creditsMilli };
   const all = r.value.findings.map((f, i): ReviewFinding => ({ ...f, id: `r${o.round}-${i + 1}` }));
-  const findings = all.filter((f) => evidenceFound(f, o.system, o.checks));
-  return { valid: true, findings, unfounded: all.length - findings.length, model, calls, creditsMilli };
+  const founded = all.filter((f) => evidenceFound(f, o.system, o.checks));
+  const ownerInput = founded.filter(ownerInputFinding);
+  const findings = founded.filter((f) => !ownerInputFinding(f));
+  return {
+    valid: true,
+    findings,
+    unfounded: all.length - founded.length,
+    ownerInput,
+    model,
+    calls,
+    creditsMilli,
+  };
 }

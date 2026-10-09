@@ -70,14 +70,17 @@ const areaOf = (id: string): TechArea => AREA_BY_PREFIX.find(([re]) => re.test(i
 
 const clip = (s: string | undefined, n = 240) => (s && s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
+/** What an owner-input check of G2 adds to its message: the owner fills it before publication, the build goes on. */
+export const OWNER_INPUT_SUFFIX_RU = " (заполняет владелец перед публикацией — сборку не останавливает)";
+
 /** Gate checks as techreview checks: blockers that fail a build (buildBlockers) stay blockers, the rest are warnings. */
 export function fromGate(report: GateReport): TechCheck[] {
   return report.checks
     .filter((c) => c.id !== "G0" && c.id !== "G2")
     .map((c: Check): TechCheck => {
       const failed = c.status === "fail" || c.status === "error";
-      const blocker =
-        failed && c.severity === "blocker" && !(report.level === "G2" && OWNER_INPUT_CHECKS.has(c.id));
+      const owner = report.level === "G2" && OWNER_INPUT_CHECKS.has(c.id);
+      const blocker = failed && c.severity === "blocker" && !owner;
       const ref = c.path ?? (c.file ? `${c.file}${c.line ? `:${c.line}` : ""}` : undefined);
       const evidence = clip(c.evidence);
       return {
@@ -91,7 +94,8 @@ export function fromGate(report: GateReport): TechCheck[] {
               ? "skip"
               : "pass",
         severity: blocker ? "blocker" : "warning",
-        message_ru: clip(c.message_ru, 400) ?? c.id,
+        // The owner's input (the operator's data): said so, or the reviewer reads «нельзя опубликовать» as a blocker.
+        message_ru: `${clip(c.message_ru, 400) ?? c.id}${failed && owner ? OWNER_INPUT_SUFFIX_RU : ""}`,
         ...(evidence ? { evidence } : {}),
         ...(ref ? { ref } : {}),
       };

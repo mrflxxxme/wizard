@@ -4,6 +4,7 @@
 // → every turn a new brief version (author agent) → the owner's edit in the panel is kept by the next turn → the
 // ready brief: a short text in the chat, no pending question, stage card (D7). «Остальное по рекомендациям» is
 // «Дальше решай сам». The build queue and the monthly «не умею» share for /admin are read from the database.
+import { OPERATOR_QUESTION } from "@wizard/agents/interview-v3";
 import type { RouteInput, RouteOutput, Router, RouterOptions } from "@wizard/llm";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import {
@@ -189,7 +190,8 @@ describe("v3 grill interview through the platform", () => {
       payload: { interview: { ready: true, reason: "clear", briefVersion: 5 } },
     });
     expect(last.text).toContain("Бриф готов");
-    expect(last.payload.interview.buildQuestions).toHaveLength(1);
+    // The content question of the model and the operator's data asked by code (V3-18: the brief keeps personal data).
+    expect(last.payload.interview.buildQuestions).toHaveLength(2);
     const latest = (await api.req("GET", `/systems/${systemId}/brief`)).body.brief;
     expect(latest).toMatchObject({ version: 5, author: "agent" });
     expect(latest.brief.audience).toBe("Пациенты клиники и их родители");
@@ -204,6 +206,7 @@ describe("v3 grill interview through the platform", () => {
         text: "Какие услуги и цены показать на сайте?",
         assumption: "Покажем список услуг без цен",
       },
+      OPERATOR_QUESTION,
     ]);
     const month = new Date().toISOString().slice(0, 7);
     expect(await capabilityShareByMonth(api.deps.db)).toEqual([
