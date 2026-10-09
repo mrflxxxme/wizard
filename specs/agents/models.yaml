@@ -256,6 +256,7 @@ usage_record:          # одна запись на HTTP-попытку = стр
     - { name: attempt,            type: int }
     - { name: status,             type: "ok|error|timeout|circuit_open|aborted" }
     - { name: errorCode,          type: "string?", note: "в т. ч. PROVIDER_BALANCE_EXHAUSTED, MODEL_NOT_ALLOWED (gateway_allowlist)" }
+    - { name: byok,               type: bool, note: "V3-33: вызов на ключе пользователя — cost_rub 0, credits 0, billable false, tier T1 после scrub (CHECK llm_calls_byok_free)" }
     - { name: routeReason,        type: "policy_ru_only|policy_region_restricted|callType_forbidden_T1|pii_hint|pii_high_risk|pii_detected_interview|default_T1|default_T0|fallback_circuit_open|fallback_error" }
     - { name: fallbackFrom,       type: "string?", note: "modelId, с которого ушли" }
     - { name: policyVersion,      type: string, note: "хеш этого файла + версии packages/pii" }
