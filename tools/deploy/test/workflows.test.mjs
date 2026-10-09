@@ -185,13 +185,21 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     });
     expect(dep.doc.jobs.pilot.with).toMatchObject({
       build_pipeline: gh("inputs.build_pipeline"),
+      pipeline_orgs: gh("inputs.pipeline_orgs"),
       stock_mode: gh("inputs.stock_mode"),
     });
+    // V3-18: the orgs on v3 are a deploy parameter too (the variable is the fallback); the form stays ≤ 10 inputs.
+    expect(dep.on.workflow_dispatch.inputs.pipeline_orgs).toMatchObject({ type: "string", default: "" });
+    expect(load("pilot-reusable.yml").doc.jobs.pilot.env.WIZARD_BUILD_PIPELINE_ORGS).toBe(
+      gh("inputs.pipeline_orgs || vars.WIZARD_BUILD_PIPELINE_ORGS"),
+    );
     const penv = load("pilot-reusable.yml").doc.jobs.pilot.env;
     expect(penv.WIZARD_BUILD_PIPELINE).toBe(gh("inputs.build_pipeline || vars.WIZARD_BUILD_PIPELINE"));
     expect(penv.WIZARD_STOCK_MODE).toBe(gh("inputs.stock_mode || vars.WIZARD_STOCK_MODE"));
-    // V3-18: v3 per org (the measurement orgs, the founder's) is a repository variable of the release.
-    expect(penv.WIZARD_BUILD_PIPELINE_ORGS).toBe(gh("vars.WIZARD_BUILD_PIPELINE_ORGS"));
+    // V3-18: v3 per org (the measurement orgs, the founder's) — the deploy form field, the repository variable as fallback.
+    expect(penv.WIZARD_BUILD_PIPELINE_ORGS).toBe(
+      gh("inputs.pipeline_orgs || vars.WIZARD_BUILD_PIPELINE_ORGS"),
+    );
     for (const n of PILOT_PIPELINE_INPUTS) expect(penv, n).toHaveProperty(n);
   });
 

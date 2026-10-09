@@ -74,6 +74,10 @@ on:
         description: "deploy/bootstrap: the pipeline of new systems (modules | legacy); empty — the variable or modules (D76)"
         type: string
         default: ""
+      pipeline_orgs:
+        description: "deploy/bootstrap (V3-18): orgs whose new systems start on v3 (ids, kinds eval|staff); empty — the variable"
+        type: string
+        default: ""
       llm_daily_cap_rub:
         description: "deploy: the platform's daily model cap, ₽, until the next deploy (D75); empty — the variable or 3000 (V3)"
         type: string
@@ -224,7 +228,7 @@ jobs:
       WIZARD_BUILD_PIPELINE: ${{ inputs.build_pipeline || vars.WIZARD_BUILD_PIPELINE }}
       # V3-18: orgs whose new systems start on v3 (ids and kinds eval, staff), the clients stay on the pipeline above;
       # eval with threshold v3 needs eval here (checked in the worker's env before any spend).
-      WIZARD_BUILD_PIPELINE_ORGS: ${{ vars.WIZARD_BUILD_PIPELINE_ORGS }}
+      WIZARD_BUILD_PIPELINE_ORGS: ${{ inputs.pipeline_orgs || vars.WIZARD_BUILD_PIPELINE_ORGS }}
       WIZARD_G1_BROWSER: ${{ vars.WIZARD_G1_BROWSER }}
       WIZARD_G1_BROWSER_SLOTS: ${{ vars.WIZARD_G1_BROWSER_SLOTS }}
       WIZARD_MAIL_DOMAIN: ${{ vars.WIZARD_MAIL_DOMAIN }}
