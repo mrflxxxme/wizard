@@ -130,7 +130,7 @@ call_types:                        # список совпадает с models.y
   import_mapping:      { allowed: [T0, T1], t1_requires: "SyntheticPayload (import.payload); реальные значения → только T0" }
   interview_v3:        { allowed: [T0, T1], t1_requires: scrub, note: "V3-03, D77 (8): грилл-интервью; сырой ввод и ТЗ из файла — правило ПДн как у interview (V3-16: любая находка → T0 до M2-28)" }
   brief_extract:       { allowed: [T0], note: "V3-04: разбор ТЗ из файла — документ клиента может содержать ПДн и реквизиты; только T0" }
-  art_direction:       { allowed: [T0, T1], t1_requires: scrub, note: "V3-07: ниша, цели, голос и фирменный цвет — без ПДн" }
+  art_direction:       { allowed: [T0, T1], t1_requires: scrub, note: "V3-07, V3-09: ниша, цели, голос, фирменный цвет, аудитория и сценарии посетителя из брифа — после scrub, без ПДн; тексты первых экранов трёх направлений" }
   page_compose:        { allowed: [T0, T1], t1_requires: scrub, note: "V3-12: код страниц по брифу (тексты без ПДн, D77 (9)); записи систем не передаются" }
   signature_section:   { allowed: [T0, T1], t1_requires: scrub, note: "V3-12: фирменные секции по брифу и дизайн-системе — без ПДн" }
   critic_visual:       { allowed: [T0, T1], t1_requires: "изображение после packages/pii/image (D45, D62); до него — только T0", note: "V3-13: скриншоты сгенерированных страниц на тестовых данных" }
