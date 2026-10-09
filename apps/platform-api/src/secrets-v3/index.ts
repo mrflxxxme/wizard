@@ -47,6 +47,7 @@ export {
   checkSecret,
   listSecrets,
   type NeededKey,
+  openConnectorWindow,
   openIntegrationWindow,
   removeSecret,
   requestSecret,

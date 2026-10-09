@@ -12,6 +12,7 @@ import {
   cancelWindow,
   checkSecret,
   listSecrets,
+  openConnectorWindow,
   openIntegrationWindow,
   removeSecret,
   SECRET_WINDOW_NAME,
@@ -21,10 +22,17 @@ import {
 } from "./service.js";
 
 const envSchema = z.enum(["draft", "prod"]);
-const openBody = z.strictObject({
-  integrationId: z.string().regex(/^[a-z][a-z0-9_]{0,39}$/),
-  env: envSchema.optional(),
-});
+const openBody = z.union([
+  z.strictObject({
+    integrationId: z.string().regex(/^[a-z][a-z0-9_]{0,39}$/),
+    env: envSchema.optional(),
+  }),
+  // V3-23: a key of a module's connector (the shop's ЮKassa) by its name.
+  z.strictObject({
+    name: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/),
+    env: envSchema.optional(),
+  }),
+]);
 const b64url = (max: number) =>
   z
     .string()
@@ -78,12 +86,20 @@ export function secretWindowRoutes(d: SecretWindowRoutesDeps): Hono<AppEnv> {
     const user = c.get("user");
     const s = await loadSystem(user, c.req.param("id"), "editor");
     const body = await jsonBody(c, openBody);
-    const out = await openIntegrationWindow(deps, {
-      systemId: s.id,
-      integrationId: body.integrationId,
-      userId: user.id,
-      ...(body.env ? { env: body.env } : {}),
-    });
+    const out =
+      "name" in body
+        ? await openConnectorWindow(deps, {
+            systemId: s.id,
+            name: body.name,
+            userId: user.id,
+            ...(body.env ? { env: body.env } : {}),
+          })
+        : await openIntegrationWindow(deps, {
+            systemId: s.id,
+            integrationId: body.integrationId,
+            userId: user.id,
+            ...(body.env ? { env: body.env } : {}),
+          });
     c.header("Cache-Control", "no-store");
     return c.json({ window: out.window }, out.created ? 201 : 200);
   });

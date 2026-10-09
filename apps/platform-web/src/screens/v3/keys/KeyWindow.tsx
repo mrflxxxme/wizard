@@ -10,8 +10,10 @@ import { keysRu } from "./texts.js";
 const T = keysRu;
 
 /** Why a key cannot be sent (the server's rules of secrets-v3/vault.ts keyProblem), or null. */
-export function keyFormatProblem(value: string): string | null {
+export function keyFormatProblem(value: string, name = ""): string | null {
   const v = value.trim();
+  // V3-23: ЮKassa shopId next to its key — digits, no length minimum (mirror of the server's keyProblem).
+  if (/_shop_id$/.test(name)) return /^\d{3,12}$/.test(v) ? null : T.format.shopId;
   if (v.startsWith("secret://")) return T.format.ref;
   if (v.length < 8) return T.format.short;
   if (v.length > 4096) return T.format.long;
@@ -171,7 +173,9 @@ export function KeyWindowForm(p: KeyWindowFormProps): ReactNode {
   function submit(e: FormEvent) {
     e.preventDefault();
     const all = read();
-    const bad = form ? passportProblem(form, defs, all) : keyFormatProblem(all.key ?? "");
+    const bad = form
+      ? passportProblem(form, defs, all)
+      : keyFormatProblem(all.key ?? "", p.window?.name ?? "");
     if (bad) {
       setProblem(bad);
       first.current?.focus();
