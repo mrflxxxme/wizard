@@ -15,6 +15,7 @@
       "tools/supply-chain/**",
       "tools/deploy/**",
       "tools/progress/**",
+      "tools/integrations/**",
       "!**/dist",
       "!**/node_modules",
       "!.data"

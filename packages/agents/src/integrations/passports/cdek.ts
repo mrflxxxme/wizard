@@ -49,7 +49,7 @@ const entityAnswer = obj(
   ["entity", "requests"],
 );
 const status = obj(
-  { code: str("Код статуса: CREATED, ACCEPTED, DELIVERED…"), name: str(), date_time: str(), city: str() },
+  { code: str("Код статуса: ACCEPTED, CREATED, …, DELIVERED"), name: str(), date_time: str(), city: str() },
   ["code", "name", "date_time"],
 );
 const order = obj(
@@ -81,9 +81,10 @@ const ORDER = {
     tariff_code: 136,
     delivery_point: "MSK123",
     recipient: { name: "Покупатель Тестовый" },
+    // Newest first; «Принят» (ACCEPTED) comes before «Создан» (CREATED) — as the test contour answered on 09.10.2026.
     statuses: [
-      { code: "ACCEPTED", name: "Принят", date_time: "2026-10-09T12:20:00+0300", city: "Москва" },
-      { code: "CREATED", name: "Создан", date_time: "2026-10-09T12:15:00+0300", city: "Москва" },
+      { code: "CREATED", name: "Создан", date_time: "2026-10-09T12:15:01+0300", city: "Москва" },
+      { code: "ACCEPTED", name: "Принят", date_time: "2026-10-09T12:15:00+0300", city: "Москва" },
     ],
   },
   requests: [
@@ -633,14 +634,11 @@ export const cdek: Passport = {
     "Ключ интеграции — Account и Secure password (одно значение oauth2cc:): токен доступа рантайм получает при вызове, держит в памяти до истечения и нигде не сохраняет.",
     "Даты СДЭК — со смещением без двоеточия (+0300), в контракте они строки без формата.",
     "Печать накладных и вызов курьера в паспорт не вошли — добавляются по документации отдельной операцией.",
+    "Сверен с учебным контуром api.edu.cdek.ru 09.10.2026 (tools/integrations/sandbox-check.mjs): токен — по параметрам в теле формы, expires_in 3599; ответы всех операций, кроме createWebhook, совпали с паспортом; cdek_number — строка; statuses — новые первыми.",
   ],
   verify_ru: [
     "адреса страниц документации по операциям (портал api-docs.cdek.ru)",
     "лимиты частоты запросов (в документации не найдены)",
-    "cdek_number в ответе — строка или число",
     "uuid в вебхуке ORDER_STATUS — идентификатор заказа",
-    "порядок statuses (первым — последний статус)",
-    "параметры запроса токена — в теле x-www-form-urlencoded (в примерах СДЭК — в строке запроса)",
-    "срок жизни токена (expires_in около 3600 секунд)",
   ],
 };
