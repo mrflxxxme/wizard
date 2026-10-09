@@ -1222,6 +1222,70 @@ paths:
         '400': {description: 'VALIDATION_FAILED — и revision, и commit', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '404': {description: 'NOT_FOUND — нет системы или коммита', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
   # ==== конец блока V3-30 ====
+  # ==== V3-33: свои ключи моделей (BYOK; security/data-boundary.yaml#byok). За флагом до проверки юристом (V3-35) ====
+  /orgs/{orgId}/byok:
+    parameters: [{$ref: '#/components/parameters/orgId'}]
+    get:
+      operationId: getByok
+      x-milestone: V3
+      x-roles: [viewer]
+      summary: 'Условия (версия текста), список провайдеров и ключи организации — только последние 4 символа. Функция выключена для организации (флаг WIZARD_BYOK / WIZARD_BYOK_ORGS, нет KMS) → {available: false}'
+      responses: {'200': {description: Состояние, content: {application/json: {schema: {$ref: '#/components/schemas/ByokState'}}}}}
+  /orgs/{orgId}/byok/consent:
+    parameters: [{$ref: '#/components/parameters/orgId'}]
+    post:
+      operationId: acceptByokConsent
+      x-milestone: V3
+      x-roles: [owner]
+      summary: 'Однократное явное согласие с условиями (db.yaml#byok_consents: версия, sha256 текста, кто, когда); повтор — без изменений. Версия не совпала с текущей → 412 VERSION_CONFLICT; функция выключена → 403 FORBIDDEN'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, required: [version], properties: {version: {type: string}}}}}}
+      responses: {'200': {description: Состояние, content: {application/json: {schema: {$ref: '#/components/schemas/ByokState'}}}}}
+  /orgs/{orgId}/byok/keys:
+    parameters: [{$ref: '#/components/parameters/orgId'}]
+    post:
+      operationId: addByokKey
+      x-milestone: V3
+      x-roles: [owner]
+      summary: 'Ключ запечатывается сразу (конвертное шифрование, OpenBao Transit), затем проверочный вызов (GET /models, при необходимости «ping» ≤ 16 токенов). Ошибки валидации называют только поле (details.fields или details.field), значение ключа нигде не повторяется. Без согласия → 422 CONSENT_REQUIRED; провайдер, блокирующий РФ, без шлюза или с адресом самого провайдера → 400 VALIDATION_FAILED (details.reason); > 10 ключей → 402 PLAN_LIMIT; функция выключена → 403'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [provider, model, key]
+              properties:
+                provider: {type: string, description: id из packages/llm/src/byok/providers.json}
+                model: {type: string, maxLength: 128}
+                key: {type: string, minLength: 8, maxLength: 512, writeOnly: true}
+                gatewayUrl: {type: [string, 'null'], description: 'https-адрес OpenAI-совместимого шлюза пользователя; только для провайдеров с direct=false'}
+                callTypes: {type: array, items: {type: string}, description: 'подмножество ByokState.callTypes; нет или [] — все'}
+      responses: {'201': {description: Ключ сохранён и проверен, content: {application/json: {schema: {type: object, required: [key], properties: {key: {$ref: '#/components/schemas/ByokKey'}}}}}}}
+  /orgs/{orgId}/byok/keys/{keyId}:
+    parameters: [{$ref: '#/components/parameters/orgId'}, {name: keyId, in: path, required: true, schema: {type: string, format: uuid}}]
+    patch:
+      operationId: updateByokKey
+      x-milestone: V3
+      x-roles: [owner]
+      summary: '«Использовать в сборках»: active или paused'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, required: [status], properties: {status: {enum: [active, paused]}}}}}}
+      responses: {'200': {description: Обновлено, content: {application/json: {schema: {type: object, required: [key], properties: {key: {$ref: '#/components/schemas/ByokKey'}}}}}}}
+    delete:
+      operationId: revokeByokKey
+      x-milestone: V3
+      x-roles: [owner]
+      summary: 'Отзыв: шифртекст и обёрнутый ключ данных удаляются (status revoked); работает и после выключения флага'
+      responses: {'200': {description: Отозван, content: {application/json: {schema: {type: object, required: [key], properties: {key: {$ref: '#/components/schemas/ByokKey'}}}}}}}
+  /orgs/{orgId}/byok/keys/{keyId}/check:
+    parameters: [{$ref: '#/components/parameters/orgId'}, {name: keyId, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: checkByokKey
+      x-milestone: V3
+      x-roles: [owner]
+      summary: 'Повторный проверочный вызов (ключ расшифровывается на время вызова); итог — ByokKey.check'
+      responses: {'200': {description: Итог проверки, content: {application/json: {schema: {type: object, required: [key], properties: {key: {$ref: '#/components/schemas/ByokKey'}}}}}}}
+  # ==== конец блока V3-33 ====
 components:
   securitySchemes: {devUser: {type: apiKey, in: header, name: X-Wizard-Dev-User, description: M0; только WIZARD_AUTH_MODE=dev}, session: {type: apiKey, in: cookie, name: __Host-wizard_session, description: 'M1+ (локально по http — wizard_session); + заголовок X-Wizard-CSRF для мутаций'}}
   parameters:
@@ -1650,3 +1714,57 @@ components:
         committedAt: {type: string, format: date-time}
         parents: {type: array, items: {type: string}}
         tree: {type: string}
+    # ==== V3-33: BYOK ====
+    ByokKey:
+      type: object
+      description: 'V3-33: ключ организации к провайдеру моделей; сам ключ не возвращается никогда'
+      required: [id, provider, providerName, model, verified, direct, gatewayHost, last4, status, check, lastUsedAt, lastErrorCode, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        provider: {type: string}
+        providerName: {type: string}
+        model: {type: string}
+        verified: {type: boolean, description: 'false → в интерфейсе «не проверена нами»; гейты и техревью работают как обычно'}
+        direct: {type: boolean, description: 'true — провайдер принимает запросы из РФ и вызывается напрямую; false — через шлюз пользователя'}
+        gatewayHost: {type: [string, 'null']}
+        last4: {type: string, minLength: 4, maxLength: 4}
+        status: {enum: [active, paused, revoked]}
+        check:
+          type: object
+          required: [status, code, message_ru, checkedAt]
+          properties:
+            status: {enum: [pending, ok, failed]}
+            code: {enum: [KEY_INVALID, NO_BALANCE, RATE_LIMITED, REGION_BLOCKED, MODEL_NOT_FOUND, UNREACHABLE, PROVIDER_ERROR, KMS_UNAVAILABLE, null]}
+            message_ru: {type: [string, 'null']}
+            checkedAt: {type: [string, 'null'], format: date-time}
+        lastUsedAt: {type: [string, 'null'], format: date-time}
+        lastErrorCode: {type: [string, 'null'], description: код ошибки последнего вызова без тела ответа}
+        createdAt: {type: string, format: date-time}
+    ByokState:
+      type: object
+      description: 'V3-33: состояние своих ключей организации; при available=false остальных полей нет'
+      required: [available]
+      properties:
+        available: {type: boolean}
+        consent:
+          type: object
+          required: [version, title, paragraphs, acceptedAt]
+          properties:
+            version: {type: string, pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}[.][0-9]+$'}
+            title: {type: string}
+            paragraphs: {type: array, items: {type: string}}
+            acceptedAt: {type: [string, 'null'], format: date-time, description: 'null — согласия на эту версию текста нет'}
+        providers:
+          type: array
+          items:
+            type: object
+            required: [id, name, direct, location, verifiedModels, suggestedModels]
+            properties:
+              id: {type: string}
+              name: {type: string}
+              direct: {type: boolean}
+              location: {enum: [ru, foreign]}
+              verifiedModels: {type: array, items: {type: string}}
+              suggestedModels: {type: array, items: {type: string}}
+        keys: {type: array, items: {$ref: '#/components/schemas/ByokKey'}}
+        callTypes: {type: array, items: {type: string}, description: 'этапы сборки, которые могут идти на своём ключе (packages/llm BYOK_CALL_TYPES)'}

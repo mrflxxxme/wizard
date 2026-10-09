@@ -11,6 +11,42 @@ export {
   WESTERN_API_HOSTS,
   WESTERN_CLOSED_MODEL_RE,
 } from "./allowlist.js";
+/** V3-33 BYOK: router hook types, the check call of a key and the guarded fetch of users' gateways. */
+export {
+  BYOK_PREFIX,
+  type ByokCheck,
+  type ByokCheckCode,
+  type ByokCheckInput,
+  type ByokOutcome,
+  type ByokResolver,
+  type ByokRoute,
+  checkByokKey,
+} from "./byok/call.js";
+export { type ByokFetchOptions, byokFetch } from "./byok/net.js";
+/** V3-33 BYOK policy: provider list (providers.json), call types, base URL rules, key format, decision. */
+export {
+  assertByokInput,
+  BYOK_CALL_TYPES,
+  BYOK_CATALOG,
+  BYOK_KEY_RE,
+  BYOK_MODEL_RE,
+  type ByokBody,
+  type ByokCatalog,
+  type ByokDecision,
+  type ByokProviderDef,
+  type ByokRefusal,
+  type ByokUrlOptions,
+  type ByokUrlViolation,
+  byokBaseUrl,
+  byokDecision,
+  byokLast4,
+  byokModelVerified,
+  findByokProvider,
+  hostViolation,
+  isByokCallType,
+  isPrivateAddress,
+  validateByokCatalog,
+} from "./byok/policy.js";
 export { BALANCE_BLOCK_MS, CircuitBreaker } from "./circuit.js";
 export { LlmError, type LlmErrorCode } from "./errors.js";
 export {
@@ -61,7 +97,14 @@ export {
   type PolicyDecision,
   t1Forbidden,
 } from "./policy.js";
-export { isBalanceError, type LiveErrorCode, providerBaseUrl, transformBody } from "./providers.js";
+export {
+  type ChatCallInput,
+  chatCall,
+  isBalanceError,
+  type LiveErrorCode,
+  providerBaseUrl,
+  transformBody,
+} from "./providers.js";
 export {
   BUILD_TIER_ENV,
   buildDefaultTierFromEnv,

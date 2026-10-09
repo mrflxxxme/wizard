@@ -11,6 +11,8 @@ export type LlmErrorCode =
   | "RUNTIME_AI_INVALID"
   /** Gateway allowlist (D18): a western API host or closed western model with platform keys. */
   | "MODEL_NOT_ALLOWED"
+  /** V3-33: a malformed own key, model name or gateway address (the message never carries the value). */
+  | "BYOK_INVALID"
   | "ABORTED";
 
 /** Messages are user-facing (Russian); details never contain prompt text beyond what the spec allows (FIXTURE_MISS). */

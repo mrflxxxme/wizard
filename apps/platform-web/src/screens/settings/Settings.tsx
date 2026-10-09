@@ -29,6 +29,7 @@ import { PlatformPage } from "../../components/v2/Shell.js";
 import { ru } from "../../i18n/ru.js";
 import { initialRunState, type RunState, reduceRun } from "../../run/reducer.js";
 import { subscribeRun } from "../../run/stream.js";
+import { ByokKeys } from "./byok/ByokKeys.js";
 import s from "./Settings.module.css";
 
 const ROLES: OrgRole[] = ["owner", "editor", "viewer"];
@@ -628,6 +629,9 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
             )}
             {!restricted && <OwnerHint owner={owner} />}
           </section>
+
+          {/* V3-33: own model keys of the org; renders nothing while the feature is off for it. */}
+          <ByokKeys orgId={system.orgId} owner={owner} />
 
           <section className={s.block} aria-labelledby="data-title">
             <h2 id="data-title" className={s.blockTitle}>

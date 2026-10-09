@@ -216,3 +216,31 @@ tests:                             # MUST в CI (M0-06, M1-07, milestones M0 exi
   - "runtime_ai_*, support: при любых входах tier=T0 (M3-02 повторно)"
   - "Детекторы: корпус с порогами из detectors.quality; отдельные тесты контрольных сумм СНИЛС/ИНН/Луна (валидные и с одной изменённой цифрой)"
   - "Логгер: allowlist полей, свободный текст не логируется; канареечный e2e + grep логов всех процессов (platform-api, runtime, воркер, egress-proxy) — 0 вхождений канареек (deploy.yaml#cloud.observability)"
+
+byok:                              # V3-33, product.yaml#decisions.D77_v3 (14), (14б); D18 — запрет западных API на ключах ПЛАТФОРМЫ
+  principle: "Ключи пользователя к любым провайдерам — с его однократного явного согласия; ограничения только для защиты от юридических рисков. gateway_allowlist (models.yaml) охраняет ключи платформы и BYOK не касается"
+  flag:
+    default: "Выключено для всех. WIZARD_BYOK_ORGS=<uuid,…> — организации основателя для проверки; WIZARD_BYOK=on — для всех"
+    rule: "MUST NOT: WIZARD_BYOK=on до проверки схемы юристом (V3-35, docs/reviews/grill-8.md № 14б). Флаг выключен → GET /orgs/:id/byok отвечает {available: false}, раздел скрыт, роутер не получает хука"
+  providers:
+    source: "packages/llm/src/byok/providers.json (данные, не код): acceptsRu, baseUrl, officialHosts, verifiedModels"
+    direct: "acceptsRu=true (Z.ai, DeepSeek, Moonshot, Cloud.ru) — вызов напрямую по baseUrl списка; адрес шлюза не принимается"
+    gateway: "acceptsRu=false (OpenAI, Anthropic, Google, xAI, «другой провайдер») — только OpenAI-совместимый шлюз пользователя: https, без логина/пароля и параметров в адресе, не officialHosts провайдеров, блокирующих РФ, не частная сеть (проверка при сохранении и на каждом DNS-ответе при соединении; редиректы запрещены)"
+    no_workarounds: "MUST NOT: свои прокси, VPN или иные обходы геоблокировок; прямой вызов officialHosts провайдера, блокирующего РФ"
+    unverified: "Модель вне verifiedModels помечается «не проверена нами»; гейты, критик и техревью работают на моделях платформы"
+  call_types:
+    allowed: [interview, interview_v3, card, plan, system_plan, art_direction, build_texts, build_design, build_custom, build_ops, build_code, fix, page_compose, signature_section]
+    never: "T0-only (brief_extract, research, runtime_ai_*, support), import_mapping, и проверки качества — techreview, audit, qa_generate, qa_explain, critic_visual (скриншоты не маскируются до packages/pii/image, M2-97): они всегда на моделях платформы"
+    rule: "Вызов уходит на ключ пользователя только если на нём проходят правила T1 целиком (packages/llm byokDecision): не ruOnly, t1Restricted = false, нет containsPiiHint, нет strong/special ПДн, у сырого ввода интервью нет находок, нет вложений и токенов tok_*; переключатель уровня сборки (week0) не влияет"
+  scrub: "MUST: перед любым вызовом по ключу пользователя — pii.scrub всех сообщений (плейсхолдеры scrub.placeholders), независимо от страны провайдера: модель выбирает пользователь, её размещение нам не видно"
+  storage:
+    scheme: "Конвертное шифрование: ключ → AES-256-GCM ключом данных (AAD byok:<org>:<id>), ключ данных обёрнут OpenBao Transit (transit/datakey/plaintext, decrypt; ключ wizard-byok) или локальным KEK стенда (SecretStore, WIZARD_SECRETS_KEY) — тот же интерфейс TransitKms. В БД только шифртекст, обёрнутый ключ данных и последние 4 символа (db.yaml#byok_keys)"
+    kms: "WIZARD_BYOK_KMS=openbao (по умолчанию в production; WIZARD_OPENBAO_ADDR, WIZARD_OPENBAO_TOKEN с политикой только datakey и decrypt этого ключа) | local (dev, тесты)"
+    decrypt: "Расшифровка — только на время вызова (проверка ключа, вызов модели в воркере прогона); ключ не кэшируется"
+    revoke: "Отзыв удаляет шифртекст и обёрнутый ключ данных (CHECK в БД)"
+    rls: "platform.byok_keys и byok_consents — RLS ENABLE + FORCE по org_id = set_config('wizard.org_id', …, true) в транзакции"
+    logs: "MUST NOT: ключ в логах, текстах ошибок, ответах API, llm_calls и деталях валидации; ошибки провайдера сводятся к коду (без тела ответа)"
+  consent: "Однократное явное согласие организации (владелец) с текстом версии yyyy-mm-dd.n (apps/platform-api/src/byok/consent.ts): риски условий провайдера, счетов и блокировок несёт пользователь; ПДн маскируются; модельная часть не списывается; при сбое ключа шаг идёт на моделях платформы за кредиты. Запись — db.yaml#byok_consents (версия, sha256 текста, кто, когда). Новая версия текста → ключи не используются до нового согласия"
+  billing: "Попытки по ключу пользователя — строки llm_calls с byok = true, tier T1, scrubbed, cost_rub 0, credits_milli 0, billable false (CHECK llm_calls_byok_free): модельная часть сборки не списывается с баланса. Ошибка ключа → шаг идёт по цепочке платформы как обычно и оплачивается; 401/403 и нулевой баланс выключают ключ до новой проверки"
+  tests: "packages/llm/test/byok.test.ts (политика, URL, хук роутера, проверка ключа, guarded DNS), apps/platform-api/test/byok.test.ts (флаг, согласие, шифрование, отзыв, RLS, прогон на своём ключе, grep ключа в логах и ошибках), apps/platform-web/test/byok.*.test.ts (раздел настроек 390/1280)"
+  legal_v3_35: "До публичного включения юрист подтверждает: текст согласия; трансграничную передачу после маскирования (152-ФЗ, уведомление РКН); ответственность за условия провайдеров; запрет для restricted_regions; хранение у провайдеров КНР (DeepSeek, Moonshot)"

@@ -34,6 +34,7 @@ import * as m0036 from "../../migrations/0036_v3_system_briefs.js";
 import * as m0037 from "../../migrations/0037_v3_build_checkpoints.js";
 import * as m0038 from "../../migrations/0038_v3_site_fingerprints.js";
 import * as m0040 from "../../migrations/0040_v3_system_repos.js";
+import * as m0041 from "../../migrations/0041_v3_byok_keys.js";
 import type { DB } from "./types.js";
 
 export type { DB } from "./types.js";
@@ -95,6 +96,7 @@ const MIGRATIONS: Record<string, Migration> = {
   "0037_v3_build_checkpoints": m0037,
   "0038_v3_site_fingerprints": m0038,
   "0040_v3_system_repos": m0040,
+  "0041_v3_byok_keys": m0041,
 };
 
 const provider: MigrationProvider = { getMigrations: async () => MIGRATIONS };

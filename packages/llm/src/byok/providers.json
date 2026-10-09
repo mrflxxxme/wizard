@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "checkedAt": "2026-10-09",
+  "about": "V3-33 (product.yaml#decisions.D77_v3 (14б)): providers a user may connect an own key to. acceptsRu=true — the provider takes requests from our servers in RF, called directly at baseUrl; acceptsRu=false — only through the user's own OpenAI-compatible gateway (officialHosts are never called directly). verifiedModels — checked by us in the pipeline; any other model is marked «не проверена нами». A change of this list is a PR with the source of the provider's terms.",
+  "providers": [
+    {
+      "id": "zai",
+      "name": "Z.ai (GLM)",
+      "location": "foreign",
+      "acceptsRu": true,
+      "baseUrl": "https://api.z.ai/api/paas/v4",
+      "officialHosts": ["api.z.ai"],
+      "body": "zai",
+      "verifiedModels": ["glm-5.3"],
+      "suggestedModels": ["glm-5.3", "glm-5.3-flash", "glm-4.6v"],
+      "termsNote": "the platform calls Z.ai from RF on its own key (models.yaml#providers.zai, termsCheckedAt 2026-09-30)"
+    },
+    {
+      "id": "deepseek",
+      "name": "DeepSeek",
+      "location": "foreign",
+      "acceptsRu": true,
+      "baseUrl": "https://api.deepseek.com",
+      "officialHosts": ["api.deepseek.com"],
+      "body": "deepseek",
+      "verifiedModels": [],
+      "suggestedModels": ["deepseek-chat"],
+      "termsNote": "the eval challenger of the platform is called from RF (models.yaml#providers.deepseek, termsCheckedAt 2026-10-01); storage in China"
+    },
+    {
+      "id": "moonshot",
+      "name": "Moonshot (Kimi)",
+      "location": "foreign",
+      "acceptsRu": true,
+      "baseUrl": "https://api.moonshot.ai/v1",
+      "officialHosts": ["api.moonshot.ai", "api.moonshot.cn"],
+      "body": "openai",
+      "verifiedModels": [],
+      "suggestedModels": [],
+      "termsNote": "models.yaml#providers.moonshot (termsCheckedAt 2026-09-30); the API trains on content — the user decides under the consent"
+    },
+    {
+      "id": "cloudru",
+      "name": "Cloud.ru Foundation Models",
+      "location": "ru",
+      "acceptsRu": true,
+      "baseUrl": "https://foundation-models.api.cloud.ru/v1",
+      "officialHosts": ["foundation-models.api.cloud.ru"],
+      "body": "cloudru",
+      "verifiedModels": [
+        "zai-org/GLM-5.1",
+        "moonshotai/Kimi-K2.6",
+        "deepseek-ai/DeepSeek-V4-Pro",
+        "Qwen/Qwen3-Coder-Next",
+        "ai-sage/GigaChat3.5-432B-A28B",
+        "openai/gpt-oss-120b"
+      ],
+      "suggestedModels": ["zai-org/GLM-5.1", "moonshotai/Kimi-K2.6", "deepseek-ai/DeepSeek-V4-Pro"],
+      "termsNote": "partner models of the catalog are served outside RF — scrub applies to every BYOK call anyway"
+    },
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "location": "foreign",
+      "acceptsRu": false,
+      "officialHosts": ["api.openai.com"],
+      "body": "openai",
+      "verifiedModels": [],
+      "suggestedModels": [],
+      "termsNote": "blocks access from unsupported countries; RF is not supported"
+    },
+    {
+      "id": "anthropic",
+      "name": "Anthropic (Claude)",
+      "location": "foreign",
+      "acceptsRu": false,
+      "officialHosts": ["api.anthropic.com"],
+      "body": "openai",
+      "verifiedModels": [],
+      "suggestedModels": [],
+      "termsNote": "RF is not in the supported countries"
+    },
+    {
+      "id": "google",
+      "name": "Google (Gemini)",
+      "location": "foreign",
+      "acceptsRu": false,
+      "officialHosts": ["generativelanguage.googleapis.com", "aiplatform.googleapis.com"],
+      "body": "openai",
+      "verifiedModels": [],
+      "suggestedModels": [],
+      "termsNote": "RF is not in the available regions"
+    },
+    {
+      "id": "xai",
+      "name": "xAI (Grok)",
+      "location": "foreign",
+      "acceptsRu": false,
+      "officialHosts": ["api.x.ai"],
+      "body": "openai",
+      "verifiedModels": [],
+      "suggestedModels": [],
+      "termsNote": "RF is not supported"
+    },
+    {
+      "id": "gateway",
+      "name": "Другой провайдер через ваш шлюз",
+      "location": "foreign",
+      "acceptsRu": false,
+      "officialHosts": [],
+      "body": "openai",
+      "verifiedModels": [],
+      "suggestedModels": [],
+      "termsNote": "any OpenAI-compatible endpoint of the user (proxy, corporate Azure, OpenRouter, LiteLLM)"
+    }
+  ]
+}

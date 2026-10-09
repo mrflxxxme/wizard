@@ -339,8 +339,9 @@ tables:
       billable: "boolean not null default true"             # false: ошибка провайдера (status ≠ ok)
       mode: "text not null check (mode in ('live','fixture','record'))"
       request_hash: "text"                                  # sha256 scrubbed-запроса (ключ fixture); не содержимое
+      byok: "boolean not null default false"                # V3-33 (миграция 0041): попытка на ключе организации (provider byok:<id>, model_id byok:<модель>, tier T1); бесплатна для баланса
     indexes: ["(run_id)", "(org_id, created_at)", "(tier, call_type, created_at)", "(created_at)"]   # последний — платформенный лимит токенов месяца (M2-15; миграция 0015)
-    checks: ["check (tier = 'T0' or scrubbed)"]
+    checks: ["check (tier = 'T0' or scrubbed)", "llm_calls_byok_free: check (not byok or (cost_rub = 0 and credits_milli = 0 and not billable and scrubbed)) — V3-33, NOT VALID (старые строки byok = false)"]
 
   credit_ledger:
     milestone: M1
@@ -798,6 +799,54 @@ tables:
       - "Сборка и публикация не зависят от внешнего git: ни сети, ни бинарника git (тест v3-git)"
       - "Удаляется вместе с системой (workflows.yaml#delete_system)"
   # ==== конец блока V3-30 ====
+  # ==== V3-33: свои ключи моделей, BYOK (миграция 0041) ====
+  byok_consents:
+    milestone: V3
+    purpose: "V3-33 (D77 (14б)): однократное явное согласие организации с условиями своих ключей — версия текста и его sha256 (apps/platform-api/src/byok/consent.ts), кто и когда. Новая версия текста → ключи не используются до нового согласия"
+    columns:
+      id: "uuid pk"
+      org_id: "uuid not null references platform.orgs on delete cascade"
+      user_id: "uuid references platform.users on delete set null"
+      text_version: "text not null check (text_version ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}\\.[0-9]+$')"
+      text_sha256: "text not null"
+      accepted_at: "timestamptz not null default now()"
+    indexes: ["unique (org_id, text_version)"]
+    invariants:
+      - "RLS (ENABLE + FORCE): строки видны только при pg_catalog.set_config('wizard.org_id', <org>, true) в транзакции"
+  byok_keys:
+    milestone: V3
+    purpose: "V3-33 (D77 (14б), security/data-boundary.yaml#byok): ключи организации к провайдерам моделей. Хранится только шифртекст: ключ запечатан ключом данных (AES-256-GCM, AAD byok:<org>:<id>), ключ данных обёрнут OpenBao Transit (vault:v1:…) или локальным KEK стенда (local:v1:…, SecretStore)"
+    columns:
+      id: "uuid pk"
+      org_id: "uuid not null references platform.orgs on delete cascade"
+      provider: "text not null check (provider ~ '^[a-z][a-z0-9_]{1,31}$')"   # id из packages/llm/src/byok/providers.json
+      model: "text not null check (length(model) between 1 and 128)"
+      gateway_url: "text"                                  # шлюз пользователя (только для провайдеров с acceptsRu=false); null — напрямую
+      call_types: "jsonb not null default '[]'"            # подмножество BYOK_CALL_TYPES; [] — все
+      key_last4: "text not null check (length(key_last4) = 4)"
+      ciphertext: "text"                                   # base64(iv|tag|ct); null после отзыва
+      wrapped_dek: "text"                                  # vault:v1:… | local:v1:…; null после отзыва
+      kek_backend: "text not null check (kek_backend in ('local','openbao'))"
+      kek_name: "text not null"
+      status: "text not null default 'active' check (status in ('active','paused','revoked'))"
+      check_status: "text not null default 'pending' check (check_status in ('pending','ok','failed'))"
+      check_code: "text"                                   # KEY_INVALID | NO_BALANCE | RATE_LIMITED | REGION_BLOCKED | MODEL_NOT_FOUND | UNREACHABLE | PROVIDER_ERROR | KMS_UNAVAILABLE
+      checked_at: "timestamptz"
+      last_used_at: "timestamptz"
+      last_error_code: "text"                              # код ошибки последнего вызова (LiveErrorCode), без тела ответа
+      consent_id: "uuid not null references platform.byok_consents"
+      created_by: "uuid references platform.users on delete set null"
+      revoked_at: "timestamptz"
+      revoked_by: "uuid references platform.users on delete set null"
+    indexes: ["(org_id, created_at desc)", "(consent_id)"]
+    checks:
+      - "(status = 'revoked') = (ciphertext is null and wrapped_dek is null) — отзыв уничтожает шифртекст"
+      - "(status = 'revoked') = (revoked_at is not null)"
+      - "ciphertext ~ base64, wrapped_dek ~ '^(vault|local):v[0-9]+:' — открытый ключ в колонку не попадёт"
+    invariants:
+      - "RLS (ENABLE + FORCE): строки видны только при pg_catalog.set_config('wizard.org_id', <org>, true) в транзакции (apps/platform-api/src/byok/service.ts)"
+      - "Не больше 10 неотозванных ключей на организацию; роутер берёт активный ключ с check_status = ok, последний проверенный"
+  # ==== конец блока V3-33 ====
 
 views:
   wz_runtime.otp_sends:

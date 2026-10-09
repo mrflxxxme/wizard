@@ -86,6 +86,8 @@ const V3_TABLES = [
   "system_git_refs",
   "system_git_commits",
 ];
+// V3-33 own model keys (migration 0041).
+V3_TABLES.push("byok_consents", "byok_keys");
 /** Columns beyond db.yaml (none: card_fingerprint, payments.meta and draft_purge_notice_at are in db.yaml since the 2026-10-01 spec sync). */
 const EXTRA_COLUMNS: Record<string, Record<string, { type: string; notNull: boolean }>> = {};
 const checked = [
@@ -188,5 +190,23 @@ describe("migrations vs db.yaml", () => {
     expect(m?.role).toBe("owner");
     const [u] = await h.pg`select email from platform.users where id = ${DEV_USER_ID}`;
     expect(u?.email).toBe("dev@wizard.local");
+  });
+
+  test("0041 (V3-33): byok_* under forced RLS by org; llm_calls.byok rows must be free and scrubbed", async () => {
+    const rls = await h.pg<{ relname: string; on: boolean; forced: boolean }[]>`
+      select c.relname, c.relrowsecurity as on, c.relforcerowsecurity as forced
+      from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'platform' and c.relname in ('byok_consents', 'byok_keys') order by c.relname`;
+    expect(rls).toEqual([
+      { relname: "byok_consents", on: true, forced: true },
+      { relname: "byok_keys", on: true, forced: true },
+    ]);
+    const row = (byok: boolean, cost: number) => h.pg`
+      insert into platform.llm_calls (org_id, call_type, tier, provider, model_id, status, route_reason, policy_version,
+        scrubbed, cost_rub, credits_milli, billable, mode, byok)
+      values (${DEFAULT_ORG_ID}, 'page_compose', 'T1', 'byok:openai', 'byok:m', 'ok', 'default_T1', 'v', true,
+        ${cost}, 0, false, 'live', ${byok})`;
+    await row(true, 0);
+    await expect(row(true, 1.5)).rejects.toThrow(/llm_calls_byok_free/);
   });
 });

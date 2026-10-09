@@ -54,7 +54,7 @@ export const ZAI_REASONING_HEADROOM = 8192;
 
 /** Body rewrite applied to every outgoing request (models.yaml#call_policy.thinking, #structured_output). */
 export function transformBody(
-  providerId: ProviderDef["id"],
+  providerId: ProviderDef["id"] | "byok",
   body: Record<string, unknown>,
   reasoning: "low" | "high" = "high",
 ): Record<string, unknown> {
@@ -203,18 +203,57 @@ export async function liveCall(i: LiveCallInput): Promise<{ result: LlmResult; u
   if (modelViolation(i.provider, i.model, baseURL)) throw new LiveCallError("MODEL_NOT_ALLOWED");
   const apiKey = i.env[i.provider.apiKeyEnv];
   if (!apiKey && !i.provider.apiKeyOptional) throw new LiveCallError("NO_API_KEY");
-  const client = createOpenAICompatible({
-    name: i.provider.id,
+  const folder = i.provider.folderEnv ? i.env[i.provider.folderEnv] : undefined;
+  return chatCall({
+    bodyProfile: i.provider.id,
     baseURL,
     ...(apiKey ? { apiKey } : {}),
     ...(i.provider.requiredHeaders ? { headers: i.provider.requiredHeaders } : {}),
+    modelName: folder ? `gpt://${folder}/${i.model.providerModel}` : i.model.providerModel,
+    messages: i.messages,
+    ...(i.tools ? { tools: i.tools } : {}),
+    toolChoice: i.toolChoice,
+    temperature: i.temperature,
+    maxTokens: i.maxTokens,
+    signal: i.signal,
+    ...(i.fetch ? { fetch: i.fetch } : {}),
+    ...(i.reasoning ? { reasoning: i.reasoning } : {}),
+  });
+}
+
+/** One chat completion at an OpenAI-compatible endpoint; the caller has already chosen the URL and the key. */
+export interface ChatCallInput {
+  /** Which request-body rules apply (transformBody); "byok" — the generic ones. */
+  bodyProfile: ProviderDef["id"] | "byok";
+  baseURL: string;
+  apiKey?: string;
+  headers?: Record<string, string>;
+  modelName: string;
+  messages: readonly LlmMessage[];
+  tools?: readonly LlmTool[];
+  toolChoice: "auto" | "required";
+  temperature: number;
+  maxTokens: number;
+  signal: AbortSignal;
+  fetch?: typeof globalThis.fetch;
+  reasoning?: "low" | "high";
+}
+
+/**
+ * The HTTP call shared by platform providers (liveCall) and the users' own keys (byok/call.ts). Errors are reduced to a
+ * LiveCallError code: provider bodies, headers and the key never travel further (data-boundary.yaml#storage_of_content).
+ */
+export async function chatCall(i: ChatCallInput): Promise<{ result: LlmResult; usage: LlmUsage }> {
+  const client = createOpenAICompatible({
+    name: i.bodyProfile,
+    baseURL: i.baseURL,
+    ...(i.apiKey ? { apiKey: i.apiKey } : {}),
+    ...(i.headers ? { headers: i.headers } : {}),
     fetch: i.fetch ?? defaultFetch(),
     includeUsage: true,
     supportsStructuredOutputs: false,
-    transformRequestBody: (body) => transformBody(i.provider.id, body, i.reasoning ?? "high"),
+    transformRequestBody: (body) => transformBody(i.bodyProfile, body, i.reasoning ?? "high"),
   });
-  const folder = i.provider.folderEnv ? i.env[i.provider.folderEnv] : undefined;
-  const modelName = folder ? `gpt://${folder}/${i.model.providerModel}` : i.model.providerModel;
   const tools: ToolSet | undefined = i.tools?.length
     ? Object.fromEntries(
         i.tools.map((t) => [
@@ -225,7 +264,7 @@ export async function liveCall(i: LiveCallInput): Promise<{ result: LlmResult; u
     : undefined;
   try {
     const res = await generateText({
-      model: client.chatModel(modelName),
+      model: client.chatModel(i.modelName),
       messages: toModelMessages(i.messages),
       allowSystemInMessages: true,
       ...(tools ? { tools, toolChoice: i.toolChoice } : {}),

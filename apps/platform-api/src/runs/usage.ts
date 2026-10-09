@@ -38,6 +38,8 @@ export class DbUsageSink implements UsageSink {
         mode: r.mode,
         request_hash: r.requestHash,
         created_at: r.createdAt,
+        // V3-33: attempts on the org's own key (db.yaml#llm_calls.byok).
+        ...(r.byok ? { byok: true } : {}),
       })
       .execute();
   }

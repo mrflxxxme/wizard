@@ -99,7 +99,9 @@ describe("registry lint", () => {
 
   test("no provider keys in source", () => {
     const src = new URL("../src/", import.meta.url).pathname;
-    for (const f of readdirSync(src)) {
+    // Subfolders too (src/byok, V3-33).
+    for (const f of readdirSync(src, { recursive: true, encoding: "utf8" })) {
+      if (!/\.(ts|json)$/.test(f)) continue;
       const text = readFileSync(join(src, f), "utf8");
       expect(text, f).not.toMatch(
         /\b(sk-[A-Za-z0-9]{16,}|Bearer [A-Za-z0-9._-]{16,}|AQVN[A-Za-z0-9_-]{20,})/,

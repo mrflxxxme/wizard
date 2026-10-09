@@ -17,6 +17,7 @@ import { briefRoutes } from "./briefs/routes.js";
 import { sessionRoutes } from "./briefs/sessions.js";
 import { briefUploadRoutes } from "./briefs/upload.js";
 import { buildV3Routes } from "./builds-v3/routes.js";
+import { type ByokService, byokRoutes, byokServiceOf } from "./byok/index.js";
 import { assertStartupAllowed, type Config, loadConfig, StartupError } from "./config.js";
 import { createDb, type DbHandle, migrate } from "./db/index.js";
 import { directionPreviewRoutes, directionRoutes } from "./directions/routes.js";
@@ -133,6 +134,8 @@ export interface PlatformApiOptions {
   aiBackfill?: RuntimeAiBackfill | null;
   /** V3-09 «Три направления»: research of reference links (tests: recorded pages) and the model deadline. */
   directions?: Pick<DirectionsDeps, "researchFetch" | "researchMode" | "deadlineMs">;
+  /** V3-33 BYOK service (tests: flag, KMS, gateway fetch); default from env (byok/index.ts byokServiceOf). */
+  byok?: (d: { pg: DbHandle["pg"]; secrets: SecretStore }) => ByokService;
 }
 
 export interface PlatformApi {
@@ -185,6 +188,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     ...(opts.now ? { now: opts.now } : {}),
   });
   const secrets = new SecretStore(config.secretsFile, config.secretsKey);
+  const byok = opts.byok?.({ pg: handle.pg, secrets }) ?? byokServiceOf(handle.pg, secrets);
   const executors =
     typeof opts.executors === "function"
       ? opts.executors({ pg: handle.pg, config })
@@ -210,6 +214,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     role: dbos ? "client" : "inprocess",
     ...(dispatcher ? { dispatcher } : {}),
     secrets,
+    byok: byok.off ? null : byok.resolver(),
     ...(opts.createRouter ? { createRouter: opts.createRouter } : {}),
     publish: { alert, ...opts.publish },
     ...(opts.aiBackfill !== undefined ? { aiBackfill: opts.aiBackfill } : {}),
@@ -393,6 +398,8 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   api.route("/", privacyRoutes(deps));
   api.route("/", lockRoutes(deps));
   api.route("/", orgRoutes(deps, accounts));
+  // V3-33: own model keys of an org (behind the flag until V3-35).
+  api.route("/", byokRoutes(byok));
   api.route("/", creditRoutes(deps));
   api.route("/", billingRoutes(deps));
   const abuse = {
