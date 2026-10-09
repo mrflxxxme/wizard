@@ -32,6 +32,7 @@ import { claimOpsAlert } from "../ops/alert.js";
 import type { EventType } from "../runs/events.js";
 import { type BuildHost, type BuildParams, RunFailure } from "../runs/types.js";
 import { pgCheckpointStore, recentArchetypes } from "./checkpoints.js";
+import { templateGateHooks } from "./template-gate.js";
 
 /** ₽ per credit of the platform (models.yaml#credits.rub_per_credit). */
 const RUB_PER_CREDIT = createRegistry().rubPerCredit;
@@ -195,7 +196,17 @@ export async function buildByBrief(
     },
     checkScenario: (input) => checkScenario(host, provider, withBrowser, input),
     goalBrowser: withBrowser,
-    ...(o.hooks ? { hooks: o.hooks } : {}),
+    // V3-14: the template gate with the process browser (without one the stage stays skipped); o.hooks override.
+    hooks: {
+      ...templateGateHooks({
+        pg: o.pg,
+        runId: host.run.id,
+        browser: withBrowser ? provider : null,
+        signal: host.signal,
+        ...(o.log ? { log: o.log } : {}),
+      }),
+      ...o.hooks,
+    },
     recordDevelopmentRequest: (input) => host.recordDevelopmentRequest(input),
     notifyReady: (notice) =>
       notifyReady(

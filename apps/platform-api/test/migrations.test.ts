@@ -76,10 +76,12 @@ const M2_TABLES = [
 const M3_TABLES = ["ai_action_calls", "ai_backfills"];
 // B2 tables created so far (B2-20 system plans awaiting approval, B2-26 module factory).
 const B2_TABLES = ["system_plans", "module_candidates", "module_announcements"];
-// V3 tables created so far (V3-02 system briefs, V3-11 build checkpoints, V3-30 system repositories).
+// V3 tables created so far (V3-02 system briefs, V3-11 build checkpoints, V3-14 site fingerprints, V3-30 system
+// repositories).
 const V3_TABLES = [
   "system_briefs",
   "system_build_checkpoints",
+  "system_site_fingerprints",
   "system_git_objects",
   "system_git_refs",
   "system_git_commits",

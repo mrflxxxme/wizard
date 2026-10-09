@@ -100,6 +100,11 @@ export {
 } from "./goals/types.js";
 /** passed = no blocker with fail/error; summary counts by status. */
 export { isPassed, summarize } from "./report.js";
+/**
+ * V3-14 template gate: site fingerprint (site-model structure, DOM_SKETCH_SCRIPT shapes, pHash/dHash of screenshots),
+ * siteSimilarity and templateVerdict against the memory of recent sites with TEMPLATE_THRESHOLD; no model.
+ */
+export * from "./template/index.js";
 /** GateContext, GateReport, Check, GateLevel, Milestone (gates.yaml#report, architecture.yaml#interfaces.gate_context). */
 export type * from "./types.js";
 

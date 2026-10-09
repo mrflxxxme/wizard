@@ -733,6 +733,24 @@ tables:
       - "Удаляется вместе с системой (workflows.yaml#delete_system, как system_briefs)"
   # ==== конец блока V3-11 ====
 
+  # ==== V3-14: память гейта шаблонности (миграция 0038) ====
+  system_site_fingerprints:
+    milestone: V3
+    purpose: "V3-14 (D77 (6), specs/agents/builder-v3.md §3 C6, этап template_gate): последний отпечаток публичного сайта системы — последовательность секций модели сайта (тип, семейство раскладки, вариант паттерна), формы секций из DOM и перцептивные хэши (pHash, dHash) скриншотов первого экрана и всей страницы на 390 и 1440 px (SiteFingerprint из @wizard/gates). Новая сборка v3 сравнивается с последними сайтами своей ниши и своей организации; выше порога — арт-директор выбирает другой архетип"
+    columns:
+      system_id: "uuid pk references platform.systems on delete cascade"
+      niche: "text not null check (length(niche) between 1 and 200)"   # ниша брифа (briefNiche), как в чекпоинте design
+      archetype: "text not null check (archetype ~ '^[a-z][a-z0-9_]{0,39}$')"   # архетип дизайн-системы, с которым сайт сфотографирован
+      fingerprint: "jsonb not null check (jsonb_typeof(fingerprint) = 'object')"   # только структура, числа и хэши: текстов, картинок и ПДн нет
+      similarity: "numeric(4,3) check (similarity between 0 and 1)"   # сходство с ближайшим недавним сайтом при проверке; null — память была пуста
+      run_id: "uuid references platform.runs on delete set null"
+      updated_at: "timestamptz not null default now()"
+    indexes: ["(niche, updated_at desc)"]
+    invariants:
+      - "Одна строка на систему: upsert на этапе template_gate каждой сборки v3 (apps/platform-api/src/builds-v3/template-gate.ts)"
+      - "Память гейта — до 20 последних других живых систем той же ниши и до 10 той же организации (TEMPLATE_MEMORY_LIMITS)"
+      - "Удаляется вместе с системой (workflows.yaml#delete_system, как system_build_checkpoints)"
+  # ==== конец блока V3-14 ====
   # ==== V3-30: внутренний git систем в РФ (миграция 0040) ====
   system_git_objects:
     milestone: V3
