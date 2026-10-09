@@ -199,7 +199,9 @@ describe("generated client of the six passports", () => {
     // to a long host with digits as a secret).
     for (const id of ["telegram", "bitrix24"]) {
       const lines = (files.get(`functions/integrations/${id}/client.ts`) ?? "").split("\n");
-      expect(lines.filter((l) => /["`/]secret:\/\/[a-z]/.test(l))).toEqual([`const AUTH = "secret://${id}_key";`]);
+      expect(lines.filter((l) => /["`/]secret:\/\/[a-z]/.test(l))).toEqual([
+        `const AUTH = "secret://${id}_key";`,
+      ]);
     }
     expect(files.get("functions/integrations/yookassa/client.ts")).toContain(
       '"Idempotence-Key": text(input.idempotenceKey)',
