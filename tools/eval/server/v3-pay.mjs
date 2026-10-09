@@ -116,12 +116,28 @@ export async function payShopOrder({ client, systemId, launch, say = () => {}, t
     return ok;
   };
   let browser;
+  let page;
+  /** The failed step with where the visitor stood: the page's path and the first visible alert or error text. */
+  const fail = async (s, note = "") => {
+    let where = "";
+    try {
+      const u = new URL(page.url());
+      const alert = await page
+        .locator('[role="alert"], [data-testid$="-error"], .error')
+        .first()
+        .innerText({ timeout: 1000 })
+        .catch(() => "");
+      where = `${u.host}${u.pathname}${alert ? ` · «${alert.trim().slice(0, 160)}»` : ""}`;
+    } catch {}
+    step(s, false, [note, where].filter(Boolean).join(" · "));
+    return { status: "failed", steps };
+  };
   try {
     const link = (await client.get(`/systems/${systemId}/preview-url`)).body;
     if (!link?.url) return { status: "failed", steps: [step("ссылка на превью", false, "не получена")] };
     browser = await launch();
     const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: "ru-RU" });
-    const page = await context.newPage();
+    page = await context.newPage();
     await page.goto(link.url, { waitUntil: "load", timeout: 30_000 });
     const origin = new URL(page.url()).origin;
     await page.goto(`${origin}/shop`, { waitUntil: "load", timeout: 30_000 });
@@ -129,13 +145,14 @@ export async function payShopOrder({ client, systemId, launch, say = () => {}, t
     try {
       await add.waitFor({ state: "visible", timeout: 15_000 });
     } catch {
-      return { status: "failed", steps: [...steps, step("товар в каталоге с кнопкой «В корзину»", false)] };
+      return await fail("товар в каталоге с кнопкой «В корзину»");
     }
     await add.click();
     step("посетитель положил товар в корзину", true);
     await page.goto(`${origin}/cart`, { waitUntil: "load", timeout: 30_000 });
     const form = page.locator(`${sel("wz-checkout-submit")}`).first();
-    await form.waitFor({ state: "visible", timeout: 15_000 });
+    if (!(await form.waitFor({ state: "visible", timeout: 15_000 }).then(() => true, () => false)))
+      return await fail("корзина с кнопкой оформления заказа");
     const pickupSelect = page.locator(`${sel("wz-field-pickup_point")} select`).first();
     const pickupRadio = page.locator(`${sel("wz-field-pickup_point")} input[type="radio"]`).first();
     const delivery = page.locator(`${sel("wz-field-delivery")} input[value="pickup"]`).first();
@@ -157,17 +174,14 @@ export async function payShopOrder({ client, systemId, launch, say = () => {}, t
       .waitForURL((u) => /(^|\.)(yoomoney|yookassa)\.ru$/.test(u.hostname), { timeout: 30_000 })
       .then(() => true)
       .catch(() => false);
-    if (!toKassa)
-      return {
-        status: "failed",
-        steps: [...steps, step("переход на страницу оплаты ЮKassa", false, new URL(page.url()).pathname)],
-      };
+    if (!toKassa) return await fail("переход на страницу оплаты ЮKassa");
     step("заказ оформлен, открылась страница оплаты ЮKassa", true);
     // The test page: the bank card (a choice of methods may come first), the card's fields, «Заплатить».
     const card = page.getByText(/Банковская карта/i).first();
     if ((await card.count()) > 0) await card.click().catch(() => {});
     const num = page.locator('input[autocomplete="cc-number"], input[name*="number" i]').first();
-    await num.waitFor({ state: "visible", timeout: 30_000 });
+    if (!(await num.waitFor({ state: "visible", timeout: 30_000 }).then(() => true, () => false)))
+      return await fail("поле номера карты на странице оплаты");
     await num.fill(TEST_CARD.number);
     const exp = page.locator('input[autocomplete="cc-exp"], input[name*="expir" i]').first();
     if ((await exp.count()) > 0) await exp.fill(TEST_CARD.exp);
@@ -181,11 +195,7 @@ export async function payShopOrder({ client, systemId, launch, say = () => {}, t
       .waitForURL((u) => u.origin === origin && u.pathname.startsWith("/order/"), { timeout: timeoutMs })
       .then(() => true)
       .catch(() => false);
-    if (!back)
-      return {
-        status: "failed",
-        steps: [...steps, step("оплата тестовой картой и возврат на страницу заказа", false, new URL(page.url()).host)],
-      };
+    if (!back) return await fail("оплата тестовой картой и возврат на страницу заказа");
     step("оплачено тестовой картой, посетитель вернулся на страницу заказа", true);
     const status = page.locator(sel("wz-order-status")).first();
     let text = "";
@@ -198,7 +208,7 @@ export async function payShopOrder({ client, systemId, launch, say = () => {}, t
     step(`статус заказа «${text || "—"}»`, paid, paid ? "" : "заказ не стал оплаченным");
     return { status: paid ? "paid" : "failed", steps, orderStatus: text };
   } catch (e) {
-    return { status: "failed", steps: [...steps, step("сбой проверки", false, e?.message ?? e)] };
+    return page ? await fail("сбой проверки", e?.message ?? String(e)) : (step("сбой проверки", false, e?.message ?? e), { status: "failed", steps });
   } finally {
     await browser?.close().catch(() => {});
   }

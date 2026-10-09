@@ -2,7 +2,7 @@
 // encryption the platform opens, the owner's keys through the windows of the needed connector keys.
 import { describe, expect, test } from "vitest";
 import { newWindowKeyPair, openSealedSecret } from "../../../apps/platform-api/src/secrets-v3/crypto.js";
-import { fillShopKeys, kassaFromEnv, seal, shopPayment } from "../server/v3-pay.mjs";
+import { fillShopKeys, kassaFromEnv, payShopOrder, seal, shopPayment } from "../server/v3-pay.mjs";
 
 describe("kassaFromEnv", () => {
   test("the founder's two secrets, the single «shopId:key», the separate pair; a live key or half a pair refused", () => {
@@ -82,5 +82,55 @@ describe("fillShopKeys and shopPayment", () => {
     expect(await shopPayment({ kassa: { shop: "1234", secret: "test_x" } }, shop, "sys")).toMatchObject({
       status: "keys_only",
     });
+  });
+});
+
+/** A fake Playwright page: the catalog has no product, an alert explains why. */
+function fakeBrowser() {
+  let url = "about:blank";
+  const loc = (q: string) => {
+    const self = {
+      first: () => self,
+      locator: () => self,
+      async waitFor() {
+        throw new Error("timeout");
+      },
+      async count() {
+        return 0;
+      },
+      async innerText() {
+        if (q.includes("alert")) return "Товары скоро появятся";
+        throw new Error("no element");
+      },
+    };
+    return self;
+  };
+  const page = {
+    async goto(u: string) {
+      url = u;
+    },
+    url: () => url,
+    locator: loc,
+  };
+  return {
+    async newContext() {
+      return { newPage: async () => page };
+    },
+    async close() {},
+  };
+}
+
+describe("payShopOrder", () => {
+  test("a failed step is recorded with its reason: the page and the visible alert, never a bare false", async () => {
+    const client = { get: async () => ({ status: 200, body: { url: "https://shop-x.preview.example/" } }) };
+    const r = await payShopOrder({ client, systemId: "sys", launch: async () => fakeBrowser(), timeoutMs: 1000 });
+    expect(r.status).toBe("failed");
+    expect(r.steps).toEqual([
+      {
+        step: "товар в каталоге с кнопкой «В корзину»",
+        ok: false,
+        note: "shop-x.preview.example/shop · «Товары скоро появятся»",
+      },
+    ]);
   });
 });
