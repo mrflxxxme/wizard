@@ -215,7 +215,7 @@ export type PageComposeAnswer = {
 function factsBlock(f: SiteFacts, site: SiteModel): string {
   const texts = [...f.texts.entries()].map(([type, c]) => `- ${type}: ${JSON.stringify(c)}`);
   return [
-    `Бизнес: «${f.name}», ${f.niche}.`,
+    `Бизнес: ${f.copy.home}.`,
     f.description ? `Описание: ${f.description}` : "",
     f.audience ? `Аудитория: ${f.audience}` : "",
     `Цели: ${f.goals.join("; ") || "не указаны"}`,
@@ -697,7 +697,10 @@ export async function composeScenario(
 
   // The action rules of the site over the model's pages (siteFiles applies them as well).
   site = siteRules(site, (id) => library.find((p) => p.id === id) ?? patternById(id));
-  const files = changed(siteFiles(site, facts.name, ctx.design, ctx.files, signatures, library), ctx.files);
+  const files = changed(
+    siteFiles(site, facts.copy.site, ctx.design, ctx.files, signatures, library),
+    ctx.files,
+  );
   for (const page of site.pages.filter((p) => targets.some((t) => t.route === p.route))) {
     const errors = lintErrors(lintSitePage(site, page, facts, library, signatures));
     if (errors.length)
@@ -772,7 +775,7 @@ async function signature(
     const next = withSignature(page, idea.after, section);
     const site = { ...s.site, pages: s.site.pages.map((p) => (p.route === next.route ? next : p)) };
     const sig = new Map([...s.signatures, [file, v.source]]);
-    const files = merged(ctx.files, siteFiles(site, facts.name, ctx.design, ctx.files, sig, library));
+    const files = merged(ctx.files, siteFiles(site, facts.copy.site, ctx.design, ctx.files, sig, library));
     const check = await s.verify(withSitePages(ctx.spec, site), files, [file, next.file]);
     if (check.ok) {
       s.signatures.set(file, v.source);

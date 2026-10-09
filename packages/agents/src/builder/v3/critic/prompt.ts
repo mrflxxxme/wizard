@@ -148,7 +148,7 @@ export function critiqueMessages(o: CritiqueInput): LlmMessage[] {
   const pages = o.site.pages.filter((p) => routes.includes(p.route));
   const found = problemDigest(o.found).slice(0, 20);
   const text = [
-    `Сайт «${o.facts.name}» — ${o.facts.niche}.`,
+    `Сайт: ${o.facts.copy.home}.`,
     o.brief.audience ? `Аудитория: ${clip(o.brief.audience, 200)}.` : "",
     o.brief.goals.length ? `Цели: ${o.brief.goals.map((g) => clip(g.text, 100)).join("; ")}.` : "",
     `Стиль: «${o.design.name}» (архетип ${o.design.archetype}), шрифты ${o.design.fonts.display.family} / ${o.design.fonts.text.family}.`,

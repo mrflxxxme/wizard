@@ -17,7 +17,7 @@ export function createPageComposer(opts: PageComposerOptions = {}): PageComposer
     async skeleton(ctx: V3BuildContext): Promise<V3ComposeResult> {
       const r = composeSite(ctx, opts);
       const files = r.site.pages.length
-        ? siteFiles(r.site, r.facts.name, ctx.design, ctx.files, new Map(), opts.patterns)
+        ? siteFiles(r.site, r.facts.copy.site, ctx.design, ctx.files, new Map(), opts.patterns)
         : new Map<string, string | null>();
       return { files, pages: pagePlans(r.site), notes: r.notes, spentRub: 0 };
     },

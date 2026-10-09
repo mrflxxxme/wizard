@@ -350,6 +350,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
       systemId: host.systemId,
       brief,
       briefVersion: bv.version,
+      ...(p.request ? { request: p.request } : {}),
       plan: backend.plan,
       spec: specOf(files),
       publicFront: backend.publicFront,

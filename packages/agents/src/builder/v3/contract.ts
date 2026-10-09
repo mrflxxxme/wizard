@@ -15,6 +15,11 @@ export interface V3BuildContext {
   /** The latest brief version (agents re-read it before each stage, D77 (9)). */
   brief: SystemBrief;
   briefVersion: number;
+  /**
+   * The owner's own words about the business (the system's first message), when the host has them: the skeleton's
+   * texts read the business name, what it is and offers, and its place from them (V3-18). Never sent to a model as is.
+   */
+  request?: string;
   /** The backend plan (modules with params and extensions) compiled with {front: "backend"} (C5). */
   plan: SystemPlan;
   spec: AppSpec;

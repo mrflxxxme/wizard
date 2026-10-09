@@ -713,15 +713,19 @@ export function seoOf(
   hero: Props | null,
 ): { title: string; description: string; image?: string } {
   const clip = (s: string, n: number) => (s.length <= n ? s : `${s.slice(0, n - 1).trimEnd()}…`);
-  // What the business is (the brief's niche with its place, never the first words of the brief cut off).
-  const about = f.copy.about;
-  const home = about && about !== f.name ? `${f.name} — ${about}` : f.name;
-  const title = page.kind === "home" ? home : `${page.title} — ${f.name}`;
+  // The same source as the first screen (V3-18): the owner's business name, what the business is in his words and
+  // its place — never a placeholder name, never the first words of the brief cut off.
+  const { home, site } = f.copy;
+  const own = `${page.title} — ${site}`;
+  const title = page.kind === "home" ? home : own.length <= 70 ? own : page.title;
   const lead = typeof hero?.lead === "string" ? hero.lead : undefined;
+  const fit = (...xs: (string | undefined)[]) => xs.find((x) => x && x.length <= 160);
   const description =
-    page.kind === "home"
-      ? (lead ?? f.description ?? `${f.name}: ${about}.`)
-      : `${page.title}. ${f.name}: ${about}.`;
+    (page.kind === "home"
+      ? fit(lead && `${home}. ${lead}`, lead, f.description, `${home}.`)
+      : fit(`${page.title}. ${home}.`, `${page.title}. ${site}.`)) ??
+    lead ??
+    `${home}.`;
   const image = heroPhoto(hero);
   return {
     title: clip(title, 70),

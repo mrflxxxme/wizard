@@ -127,7 +127,7 @@ function briefTexts(brief: SystemBrief): string[] {
 }
 
 /** The facts of a build context. */
-export function siteFacts(ctx: Pick<V3BuildContext, "brief" | "plan" | "spec">): SiteFacts {
+export function siteFacts(ctx: Pick<V3BuildContext, "brief" | "plan" | "spec" | "request">): SiteFacts {
   const { brief, plan, spec } = ctx;
   const texts = landingTexts(plan);
   const c = spec.compliance ?? {};
@@ -159,6 +159,7 @@ export function siteFacts(ctx: Pick<V3BuildContext, "brief" | "plan" | "spec">):
       niche: plan.niche,
       keywordNiche: isKeywordNiche(plan.niche),
       brief,
+      ...(ctx.request ? { request: ctx.request } : {}),
     }),
     photos: photosOf(plan),
     places: spec.entities.some((e) => e.name === SITE_PHOTO.entity)

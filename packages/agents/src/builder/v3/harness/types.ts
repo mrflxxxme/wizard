@@ -222,6 +222,8 @@ export interface V3Params {
   registry?: ModuleRegistry;
   /** Name of the system (AppSpec app.name). */
   appName?: string;
+  /** The owner's own words about the business (the system's first message): the skeleton's texts (V3-18). */
+  request?: string;
   /** Origin of the platform (generators link the owner's page `${platformUrl}/s/${systemId}`). */
   platformUrl?: string;
   /** Spec extension operations (C5) — data; rejected ones go to «Запросы на развитие». */
