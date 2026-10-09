@@ -5,6 +5,7 @@
 import { ABOUT_PATTERNS } from "./about/index.js";
 import { ARTICLE_PATTERNS } from "./article/index.js";
 import { BLOG_PATTERNS } from "./blog/index.js";
+import { CART_PATTERNS } from "./cart/index.js";
 import { CATALOG_PATTERNS } from "./catalog/index.js";
 import { CONTACTS_PATTERNS } from "./contacts/index.js";
 import { CTA_PATTERNS } from "./cta/index.js";
@@ -14,10 +15,12 @@ import { FORM_PATTERNS } from "./form/index.js";
 import { GALLERY_PATTERNS } from "./gallery/index.js";
 import { HEADER_PATTERNS } from "./header/index.js";
 import { HERO_PATTERNS } from "./hero/index.js";
+import { ORDER_PATTERNS } from "./order/index.js";
 import { PRICING_PATTERNS } from "./pricing/index.js";
 import { RUBRIC_PATTERNS } from "./rubric/index.js";
 import { type PatternQuery, selectPattern } from "./select.js";
 import { SERVICES_PATTERNS } from "./services/index.js";
+import { SHOP_PATTERNS } from "./shop/index.js";
 import { TEAM_PATTERNS } from "./team/index.js";
 import { TESTIMONIALS_PATTERNS } from "./testimonials/index.js";
 import type { PatternMeta } from "./types.js";
@@ -41,6 +44,9 @@ export const PATTERNS: readonly PatternMeta[] = [
   ...BLOG_PATTERNS,
   ...ARTICLE_PATTERNS,
   ...RUBRIC_PATTERNS,
+  ...SHOP_PATTERNS,
+  ...CART_PATTERNS,
+  ...ORDER_PATTERNS,
 ];
 
 /** Deterministic choice of a variant for a section: by seed, archetype, without repeating used ones (C3). */

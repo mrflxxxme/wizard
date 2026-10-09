@@ -24,10 +24,12 @@ config_schema:                               # integration.config
     paymentEntity: "{name, refField} — сущность журнала платежей с полями provider_payment_id, kind, amount, status (pending | succeeded | canceled | needs_review)"
     description: "до 128 символов, подстановки {{field}} только с pii=none (G2)"
     returnRoute: "маршрут страницы возврата, :id → id записи"
-    receipt: "{customerEmailField?, customerPhoneField?, paymentSubject: commodity|service, paymentMode: full_prepayment|full_payment, vatCode: 1..6|11|12, settlePrepaymentOf?: <bindingId>}"
+    receipt: "{customerEmailField?, customerPhoneField?, paymentSubject: commodity|service, paymentMode: full_prepayment|full_payment, vatCode: 1..6|11|12, settlePrepaymentOf?: <bindingId>, lines?, deliveryField?}"
+    receipt_lines: "V3-23: lines {entity, refField, nameField, quantityField, amountField} — строки записи (позиции заказа) становятся позициями чека; deliveryField — поле money записи с ценой доставки, отдельная позиция «Доставка» (payment_subject service)"
+    accessField: "V3-23: поле записи с секретом покупателя (скрыто от ролей через hiddenFields): гость без права read платит свою запись, предъявив секрет (≥ 16 символов, сравнение за постоянное время)"
   refundWindowDays: "0..365; возврат через refund() разрешён не позже N дней после оплаты"
   testMode: "bool, только для prod: разрешить тестовый магазин (баннер «Тестовые платежи»)"
-  validation: "G0: поля и статусы существуют; amountField ∈ readonlyFields или роль-плательщик не имеет update на сущность; хотя бы одно из customerEmailField/customerPhoneField"
+  validation: "G0: поля и статусы существуют; amountField ∈ readonlyFields или роль-плательщик не имеет update на сущность; хотя бы одно из customerEmailField/customerPhoneField; receipt.lines — сущность, ref на запись, поля имени, количества (int) и суммы (money); deliveryField — money; accessField — string, скрыт (hiddenFields) у каждой роли, читающей сущность"
 
 api:
   base_url: "https://api.yookassa.ru/v3"
@@ -41,15 +43,15 @@ api:
     create_receipt: "POST /receipts {type:'payment', payment_id, send:true, customer, items[payment_mode:'full_payment'], settlements:[{type:'prepayment', amount}]} — закрывающий чек зачёта предоплаты"
 
 runtime_endpoint:                            # маршрут коннектора в apps/runtime
-  path: "POST /api/pay/:integration {binding, id}"
+  path: "POST /api/pay/:integration {binding, id, token?}"
   algorithm:
-    - "1. Прочитать запись от имени вызывающего (права read и rowFilter), иначе 404"
+    - "1. Прочитать запись от имени вызывающего (права read и rowFilter); нет прав, но у привязки есть accessField и token совпал с ним (V3-23, заказ гостя) — запись читается системой; иначе 404"
     - "2. status == payableStatus, иначе 409 NOT_PAYABLE «Заказ нельзя оплатить в текущем статусе»"
     - "3. Сумма = amountField записи; 0 → 409 NOTHING_TO_PAY"
     - "4. Есть незавершённый платёж той же привязки моложе 30 мин И его amount равен текущей сумме записи → вернуть его confirmationUrl; сумма изменилась → старый не переиспользуется (истечёт у ЮKassa), создаётся новый"
     - "5. create_payment; записать paymentEntity {kind:'payment', status:'pending', amount, provider_payment_id}; ответ {confirmationUrl}"
-  m0_stub: "M0: маршрут возвращает {confirmationUrl: '/_wizard/pay-mock?binding=<b>&id=<id>'} без обращения к ЮKassa; страница (только draft) обрабатывается как payment.succeeded (connector-interface.md §2 «M0»)"
-  receipt: "customer.email/phone берутся из полей записи на сервере; items — одна позиция: description, quantity '1', amount, vat_code, payment_mode, payment_subject"
+  m0_stub: "M0: маршрут возвращает {confirmationUrl: '/_wizard/pay-mock?binding=<b>&id=<id>'} без обращения к ЮKassa; страница (только draft) обрабатывается как payment.succeeded (connector-interface.md §2 «M0»); с token — '&t=<token>', страница проверяет его так же, как /api/pay"
+  receipt: "customer.email/phone берутся из полей записи на сервере; items — одна позиция: description, quantity '1', amount, vat_code, payment_mode, payment_subject; с receipt.lines — позиция на каждую строку (цена за штуку = сумма / количество) и «Доставка», если их сумма равна сумме платежа, иначе одна позиция"
 
 actions:                                     # ctx.connectors.<name> в action-функциях
   refund: { input: "{binding, id, amount?, reason?}", effect: true, rule: "только в пределах refundWindowDays; частичный возврат ≤ оплаченного; статус записи → refundedStatus после refund.succeeded при полном возврате" }
@@ -98,3 +100,4 @@ acceptance:
   - "Сумма из тела запроса клиента игнорируется: изменить сумму через /api/pay нельзя"
   - "Сумма записи изменилась, пока платёж был pending: /api/pay создаёт новый платёж; payment.succeeded по старому → needs_review, запись не paid"
   - "Уведомление с поддельным X-Forwarded-For из allowlist, пришедшее не через доверенный ingress → 401"
+  - "V3-23: чек заказа магазина — позиции по строкам заказа и доставка; гость оплачивает свой заказ только со своим секретом, чужой секрет → 404 (packages/modules/test/shop.test.ts)"

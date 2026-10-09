@@ -1,5 +1,5 @@
 // V3-18: the DOM contract of the modules' goal scenarios on the composed v3 site, without a model or a browser (the
-// browser rung: apps/platform-api/test/v3-goals.browser.test.ts). The four eval briefs of checkpoint 1 composed the way
+// browser rung: apps/platform-api/test/v3-goals.browser.test.ts). The eval briefs of checkpoint 1 (and the shop of V3-23) composed the way
 // the harness does it (plan of the brief, design of its direction, backend, skeleton): every first screen's main action
 // leads to the form of its page, else to the form of the site; catalog items lead to the booking or the request form;
 // the library sections the pages use carry the hooks the goal programs look for (Hero, LeadForm, BookingForm, item
@@ -73,7 +73,9 @@ describe("eval briefs without a model: the skeleton keeps the goal scenarios' DO
       const { files, site, front } = await composed(id, input);
       expect(site.pages.length).toBeGreaterThan(0);
       const forms = site.pages.flatMap((p) => p.sections.filter(isForm).map((s) => ({ page: p, s })));
-      expect(forms.length).toBeGreaterThan(0);
+      // V3-23: a shop without request forms sells through its pages (the goods, the cart, the order).
+      const shop = site.pages.find((p) => p.kind === "shop");
+      if (!shop) expect(forms.length).toBeGreaterThan(0);
       const lead = forms.find((f) => f.s.props.booking === undefined);
       const booking = forms.find((f) => f.s.props.booking !== undefined);
       const main = booking && !lead ? booking : (lead ?? booking);
@@ -81,8 +83,11 @@ describe("eval briefs without a model: the skeleton keeps the goal scenarios' DO
         const hero = page.sections.find((s) => s.type === "hero");
         if (!hero) continue;
         const own = page.sections.find(isForm);
-        // GS-landing-1: the main action of the first screen leads to the form of this page, else of the site.
-        expect(href(hero), page.route).toBe(own ? `#${own.id}` : `${main?.page.route}#${main?.s.id}`);
+        // GS-landing-1: the main action of the first screen leads to the form of this page, else of the site; a shop
+        // without forms leads to its goods.
+        expect(href(hero), page.route).toBe(
+          own ? `#${own.id}` : main ? `${main.page.route}#${main.s.id}` : shop?.route,
+        );
       }
       // GS-catalog-4: every catalog item leads to its booking, else to the request form of the site.
       for (const page of site.pages)
@@ -118,9 +123,32 @@ describe("eval briefs without a model: the skeleton keeps the goal scenarios' DO
         if (meta.needs === "catalog") expect(src).toContain('data-testid="wz-itemcard"');
         if (meta.needs === "catalog" && slotNames(meta.slots).includes("itemAction"))
           expect(src).toContain('data-testid="wz-itemcard-cta"');
+        // V3-23: GS-shop-* find the goods with «В корзину», the cart lines, the checkout and the order.
+        if (meta.sectionType === "shop")
+          for (const hook of ['data-wz-component="ShopProducts"', "wz-product", "wz-cart-add"])
+            expect(src, `${pattern}: ${hook}`).toContain(hook);
+        if (meta.sectionType === "cart")
+          for (const hook of [
+            'data-wz-component="ShopCart"',
+            'data-wz-component="ShopCheckout"',
+            "wz-cart-line",
+            "wz-field-delivery",
+            "wz-consent",
+            "wz-checkout-submit",
+          ])
+            expect(src, `${pattern}: ${hook}`).toContain(hook);
+        if (meta.sectionType === "order")
+          for (const hook of ['data-wz-component="ShopOrder"', "wz-order-status", "wz-order-pay"])
+            expect(src, `${pattern}: ${hook}`).toContain(hook);
       }
-      // The public front has the actions the forms bind (a site of a CRM too: its request form).
-      expect(front.actions.some((a) => a.hook === "useLeadForm" || a.hook === "useBooking")).toBe(true);
+      if (shop)
+        expect(site.pages.map((p) => p.kind)).toEqual(expect.arrayContaining(["shop", "cart", "order"]));
+      // The public front has the actions the forms bind (a site of a CRM too: its request form), or the shop's goods.
+      expect(
+        front.actions.some(
+          (a) => a.hook === "useLeadForm" || a.hook === "useBooking" || a.hook === "useShop",
+        ),
+      ).toBe(true);
     });
 });
 
