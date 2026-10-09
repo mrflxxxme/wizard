@@ -115,17 +115,44 @@ export function platformClient({ base, session, fetch: f = fetch, sleep = defaul
     }
   }
 
+  /**
+   * V3-18: a file as multipart/form-data (POST, sent once like every mutating request): `file` {name, type, data} goes
+   * in the form field `field` (default «file», as uploadSystemBrief takes the ТЗ).
+   */
+  async function upload(path, file, field = "file") {
+    const form = new FormData();
+    form.set(field, new Blob([file.data], { type: file.type ?? "application/octet-stream" }), file.name);
+    const res = await f(`${origin}/api/v1${path}`, {
+      method: "POST",
+      headers: { accept: "application/json", cookie, origin, "x-wizard-csrf": session.csrf },
+      body: form,
+      redirect: "manual",
+    }).catch((e) => {
+      throw new Error(`POST ${path}: сеть недоступна (${e?.message ?? e})`);
+    });
+    const text = await res.text();
+    let parsed = text;
+    if (text && (res.headers.get("content-type") ?? "").includes("json")) {
+      try {
+        parsed = JSON.parse(text);
+      } catch {}
+    }
+    if (res.status >= 400) throw new ApiError("POST", path, res.status, parsed);
+    return { status: res.status, body: parsed };
+  }
+
   return {
     base: origin,
     get: (p) => request("GET", p),
     post: (p, b = {}) => request("POST", p, b),
     put: (p, b) => request("PUT", p, b),
     patch: (p, b) => request("PATCH", p, b),
+    upload,
     readEvents,
   };
 }
 
-/** One SSE frame → {seq, type, payload}; comments (": ping") and frames without data are skipped. */
+/** One SSE frame → {seq, type, payload, ts?}; comments (": ping") and frames without data are skipped. */
 export function parseFrame(block) {
   let event;
   let id;
@@ -150,6 +177,8 @@ export function parseFrame(block) {
     seq: Number(env.seq ?? id ?? 0),
     type: String(env.type ?? event ?? ""),
     payload: env.payload ?? {},
+    // V3-18: the server time of the event (stage times and the preview of the v3 measurement).
+    ...(typeof env.ts === "string" ? { ts: env.ts } : {}),
   };
 }
 

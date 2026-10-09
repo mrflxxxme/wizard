@@ -35,8 +35,8 @@ export function newEvalSession(rand = randomBytes) {
   return { token, csrf, tokenHash: sha256Hex(token), csrfHash: sha256Hex(csrf) };
 }
 
-/** Labels of the measurements in the org name (D67 of the MVP, D76 of beta v2). */
-export const EVAL_LABELS = ["D67", "D76"];
+/** Labels of the measurements in the org name (D67 of the MVP, D76 of beta v2, V3 — V3-18 measurements and probes). */
+export const EVAL_LABELS = ["D67", "D76", "V3"];
 
 /** Address and org name of a measurement: eval+<runid>@<domain>, «Замер D67 · <runid>» (label D76 for beta v2). */
 export function evalIdentity(runid, domain = "borntobuild.ru", label = "D67") {
@@ -78,7 +78,7 @@ export function seedSql({
     throw new Error("seed: сессия 1…7 дней");
   return [
     setLine("email", email, /^eval\+[a-z0-9-]+@[a-z0-9.-]+$/),
-    setLine("org_name", orgName, /^Замер D(67|76) · [a-z0-9-]+$/),
+    setLine("org_name", orgName, /^Замер (D67|D76|V3) · [a-z0-9-]+$/),
     setLine("runid", runid, RUNID),
     setLine("offer_version", OFFER_VERSION, /^[a-z0-9-]+$/),
     setLine("token_hash", tokenHash, HEX64),
@@ -138,7 +138,7 @@ export function revokeSql({ tokenHash }) {
  * `invalid=<json>` (B2-41: orch_invalid of the systems);
  * ::jsonb::text keeps each on one line (json_agg puts a newline between elements).
  */
-export function collectSql({ orgId, b2Since }) {
+export function collectSql({ orgId, b2Since, v3 = false }) {
   // B2-04: spend of every eval org (probes and measurements) since the start of the beta v2 development budget, as
   // llm-spend.ts counts it (billable live/record calls, the Moscow day of b2Since) — `b2=<json>`.
   const b2 = b2Since
@@ -208,8 +208,68 @@ export function collectSql({ orgId, b2Since }) {
     JOIN platform.systems s ON s.id = r.system_id
    WHERE s.org_id = :'org_id' AND e.type = 'orch_invalid'
    ORDER BY e.ts LIMIT 200) x;`,
+    ...(v3 ? v3CollectSql() : []),
     "",
   ].join("\n");
+}
+
+/** T1 call types that must never see personal data (agents/models.yaml#pii_forbidden_for_T1.always). */
+export const PII_FORBIDDEN_T1 = ["runtime_ai_extract", "runtime_ai_generate", "support"];
+
+/**
+ * V3-18: what the v3 measurement reads after the run (the org's systems only; never texts or files):
+ * `v3calls=` — model calls by system, call type, tier and the model actually served (attempts, ok, fallbacks, ₽,
+ * tokens); `v3hooks=` — the checkpoints of the critic, the template gate and the techreview (status, notes, blockers,
+ * redesign, ₽ and time) and the template note of the skeleton; `v3similarity=` — the site fingerprint's similarity to
+ * the nearest recent site of the niche; `v3events=` — build_stage events of the v3 builds with their time (stage
+ * times and the preview when the stream was not read); `v3t1forbidden=` — T1 calls of pii_forbidden_for_T1 (must be 0).
+ */
+export function v3CollectSql() {
+  const forbidden = PII_FORBIDDEN_T1.map((c) => `'${c}'`).join(", ");
+  return [
+    `SELECT 'v3calls=' || coalesce(json_agg(x), '[]'::json)::jsonb::text FROM (
+  SELECT c.system_id, c.call_type, c.tier, c.model_id, count(*)::int AS attempts,
+         count(*) FILTER (WHERE c.status = 'ok')::int AS ok,
+         count(*) FILTER (WHERE c.route_reason IN ('fallback_circuit_open', 'fallback_error'))::int AS fallback,
+         bool_or(c.scrubbed) AS scrubbed,
+         round(sum(c.cost_rub), 2)::float8 AS rub,
+         sum(c.input_tokens)::bigint AS input_tokens, sum(c.output_tokens)::bigint AS output_tokens,
+         round(avg(c.latency_ms))::int AS latency_ms
+    FROM platform.llm_calls c
+   WHERE c.org_id = :'org_id'
+   GROUP BY 1, 2, 3, 4) x;`,
+    `SELECT to_regclass('platform.system_build_checkpoints')::text AS cp_table \\gset`,
+    `\\if :{?cp_table}`,
+    `SELECT 'v3hooks=' || coalesce(json_agg(x), '[]'::json)::jsonb::text FROM (
+  SELECT k.system_id, k.key, k.checkpoint #>> '{data,status}' AS status,
+         k.checkpoint #> '{data,notes}' AS notes, k.checkpoint #> '{data,blockers}' AS blockers,
+         k.checkpoint #> '{data,redesign}' AS redesign, k.checkpoint #> '{data,template}' AS template,
+         (k.checkpoint ->> 'costMilli')::bigint AS cost_milli, (k.checkpoint ->> 'durationMs')::bigint AS duration_ms
+    FROM platform.system_build_checkpoints k
+    JOIN platform.systems s ON s.id = k.system_id
+   WHERE s.org_id = :'org_id' AND k.key IN ('skeleton', 'critic', 'template_gate', 'techreview')) x;`,
+    `\\endif`,
+    `SELECT to_regclass('platform.system_site_fingerprints')::text AS fp_table \\gset`,
+    `\\if :{?fp_table}`,
+    `SELECT 'v3similarity=' || coalesce(json_agg(x), '[]'::json)::jsonb::text FROM (
+  SELECT f.system_id, f.archetype, f.similarity::float8 AS similarity
+    FROM platform.system_site_fingerprints f
+    JOIN platform.systems s ON s.id = f.system_id
+   WHERE s.org_id = :'org_id') x;`,
+    `\\endif`,
+    `SELECT 'v3events=' || coalesce(json_agg(x ORDER BY x.ts), '[]'::json)::jsonb::text FROM (
+  SELECT r.system_id, r.id AS run_id, e.seq, e.ts, e.type, e.payload ->> 'stage' AS stage,
+         e.payload ->> 'status' AS status, e.payload ->> 'label_ru' AS label,
+         e.payload #> '{progress,previewRevision}' AS preview
+    FROM platform.runs r
+    JOIN platform.systems s ON s.id = r.system_id
+    JOIN platform.run_events e ON e.run_id = r.id
+   WHERE s.org_id = :'org_id' AND r.kind = 'build' AND r.input ->> 'pipeline' = 'v3'
+     AND e.type IN ('run_started', 'build_stage', 'run_finished', 'run_failed')
+   ORDER BY e.ts LIMIT 2000) x;`,
+    `SELECT 'v3t1forbidden=' || count(*)::text FROM platform.llm_calls c
+   WHERE c.org_id = :'org_id' AND c.tier = 'T1' AND c.call_type IN (${forbidden});`,
+  ];
 }
 
 /**
@@ -273,10 +333,81 @@ export function parseCollectOutput(stdout) {
       built: !!x.built,
     };
   }
+  const v3 = parseV3Collect(value);
   const b2raw = value("b2");
   const b2 =
     b2raw && typeof b2raw === "object" && Number.isFinite(Number(b2raw.rub))
       ? { since: String(b2raw.since ?? ""), rub: Number(b2raw.rub) }
       : null;
-  return { costs, gaps, metrics, invalid, photos, ...(b2 ? { b2 } : {}) };
+  return { costs, gaps, metrics, invalid, photos, ...(b2 ? { b2 } : {}), ...(v3 ? { v3 } : {}) };
+}
+
+/**
+ * The v3 lines of collectSql (null when the run was not a v3 one) → {calls: {systemId: [{callType, tier, model,
+ * attempts, ok, fallback, scrubbed, rub, inputTokens, outputTokens, latencyMs}]}, hooks: {systemId: {key: {...}}},
+ * similarity: {systemId: {archetype, similarity}}, events: {systemId: [{runId, seq, ts, type, stage, status, label,
+ * preview}]}, t1Forbidden}.
+ */
+function parseV3Collect(value) {
+  const rows = value("v3calls");
+  if (rows === undefined) return null;
+  const calls = {};
+  for (const c of rows ?? [])
+    (calls[c.system_id ?? "none"] ??= []).push({
+      callType: String(c.call_type),
+      tier: c.tier,
+      model: c.model_id,
+      attempts: Number(c.attempts) || 0,
+      ok: Number(c.ok) || 0,
+      fallback: Number(c.fallback) || 0,
+      scrubbed: !!c.scrubbed,
+      rub: Number(c.rub) || 0,
+      inputTokens: Number(c.input_tokens) || 0,
+      outputTokens: Number(c.output_tokens) || 0,
+      latencyMs: c.latency_ms === null || c.latency_ms === undefined ? null : Number(c.latency_ms),
+    });
+  const hooks = {};
+  const list = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string").map((x) => x.slice(0, 300)) : []);
+  for (const h of value("v3hooks") ?? []) {
+    if (!h?.system_id || !h.key) continue;
+    (hooks[h.system_id] ??= {})[h.key] = {
+      status: h.status ?? null,
+      notes: list(h.notes),
+      blockers: list(h.blockers),
+      ...(h.redesign && typeof h.redesign === "object" ? { redesign: h.redesign } : {}),
+      ...(h.template && typeof h.template === "object"
+        ? {
+            template: {
+              note: typeof h.template.note === "string" ? h.template.note.slice(0, 300) : null,
+              notes: list(h.template.notes),
+              redesign: h.template.redesign && typeof h.template.redesign === "object" ? h.template.redesign : null,
+            },
+          }
+        : {}),
+      costRub: Number.isFinite(Number(h.cost_milli)) ? Math.round(Number(h.cost_milli) * 5) / 1000 : 0,
+      durationMs: Number(h.duration_ms) || 0,
+    };
+  }
+  const similarity = {};
+  for (const f of value("v3similarity") ?? [])
+    if (f?.system_id)
+      similarity[f.system_id] = {
+        archetype: f.archetype ?? null,
+        similarity: f.similarity === null || f.similarity === undefined ? null : Number(f.similarity),
+      };
+  const events = {};
+  for (const e of value("v3events") ?? [])
+    if (e?.system_id)
+      (events[e.system_id] ??= []).push({
+        runId: e.run_id,
+        seq: Number(e.seq),
+        ts: e.ts,
+        type: e.type,
+        stage: e.stage ?? null,
+        status: e.status ?? null,
+        label: e.label ?? null,
+        preview: e.preview ?? null,
+      });
+  const t1 = value("v3t1forbidden");
+  return { calls, hooks, similarity, events, t1Forbidden: Number.isFinite(Number(t1)) ? Number(t1) : null };
 }

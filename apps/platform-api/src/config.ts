@@ -105,6 +105,12 @@ export interface Config {
    */
   buildPipeline: "legacy" | "modules" | "v3";
   /**
+   * WIZARD_BUILD_PIPELINE_ORGS (V3-18): orgs whose new systems start on v3 whatever buildPipeline says — org ids and
+   * org kinds (eval — measurement orgs, staff — the founder's); the pilot's clients stay on buildPipeline until the
+   * v3 checkpoint is accepted. A system keeps the pipeline it started with.
+   */
+  buildPipelineOrgs: BuildPipelineOrgs;
+  /**
    * WIZARD_G1_BROWSER (B2-28, gates.yaml#G1.browser.platform): "chromium" (default) — G1 of a plan build runs the goal
    * scenarios and the 390 px check in the process's headless Chromium; "off" — without them (build_metrics
    * goals.checked=false). A missing Chromium works as "off" and is logged (g1_browser_failed).
@@ -296,6 +302,50 @@ export function buildPipelineOf(v: string | undefined): Config["buildPipeline"] 
   return p === "modules" || p === "v3" ? p : "legacy";
 }
 
+/** Org kinds WIZARD_BUILD_PIPELINE_ORGS takes besides org ids (db.yaml#orgs.kind; clients follow the pipeline). */
+export const PIPELINE_ORG_KINDS = ["eval", "staff"] as const;
+export type PipelineOrgKind = (typeof PIPELINE_ORG_KINDS)[number];
+/** Orgs of WIZARD_BUILD_PIPELINE_ORGS: by id and by kind. */
+export interface BuildPipelineOrgs {
+  ids: string[];
+  kinds: PipelineOrgKind[];
+}
+
+const ORG_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * WIZARD_BUILD_PIPELINE_ORGS (V3-18) → the orgs whose new systems start on v3: a comma list of org ids (uuid) and org
+ * kinds (eval, staff), case-insensitive; anything else in the list is ignored.
+ */
+export function buildPipelineOrgsOf(v: string | undefined): BuildPipelineOrgs {
+  const out: BuildPipelineOrgs = { ids: [], kinds: [] };
+  for (const raw of (v ?? "").split(",")) {
+    const x = raw.trim().toLowerCase();
+    if (ORG_ID.test(x) && !out.ids.includes(x)) out.ids.push(x);
+    else if (
+      (PIPELINE_ORG_KINDS as readonly string[]).includes(x) &&
+      !out.kinds.includes(x as PipelineOrgKind)
+    )
+      out.kinds.push(x as PipelineOrgKind);
+  }
+  return out;
+}
+
+/** WIZARD_BUILD_PIPELINE_ORGS names at least one org (the v3 build executor must then be on). */
+export const pipelineOrgsOn = (c: Pick<Config, "buildPipelineOrgs">): boolean =>
+  (c.buildPipelineOrgs?.ids.length ?? 0) + (c.buildPipelineOrgs?.kinds.length ?? 0) > 0;
+
+/** The pipeline a new system of `org` starts on: v3 for an org of WIZARD_BUILD_PIPELINE_ORGS, else buildPipeline. */
+export function pipelineOfOrg(
+  c: Pick<Config, "buildPipeline" | "buildPipelineOrgs">,
+  org: { id: string; kind?: string | null },
+): Config["buildPipeline"] {
+  const o = c.buildPipelineOrgs;
+  if (o?.ids.includes(org.id.toLowerCase())) return "v3";
+  if (org.kind && (o?.kinds as readonly string[] | undefined)?.includes(org.kind)) return "v3";
+  return c.buildPipeline;
+}
+
 const milestoneRank = (m: string | undefined): number => Number(/^M(\d+)$/.exec(m ?? "")?.[1] ?? 0);
 
 /** M2 platform rules: milestone ≥ M2 (WIZARD_MILESTONE) or NODE_ENV=production. */
@@ -345,6 +395,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, over: Partial<C
     founderEmail: env.WIZARD_FOUNDER_EMAIL?.trim().toLowerCase() || null,
     payments: !["off", "false", "0"].includes((env.WIZARD_PAYMENTS ?? "").trim().toLowerCase()),
     buildPipeline: buildPipelineOf(env.WIZARD_BUILD_PIPELINE),
+    buildPipelineOrgs: buildPipelineOrgsOf(env.WIZARD_BUILD_PIPELINE_ORGS),
     g1Browser: ["off", "false", "0"].includes((env.WIZARD_G1_BROWSER ?? "").trim().toLowerCase())
       ? "off"
       : "chromium",
