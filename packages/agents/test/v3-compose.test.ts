@@ -6,9 +6,10 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AppSpec } from "@wizard/appspec";
-import { checkFile, runG0 } from "@wizard/gates";
+import { checkFile, runG0, runG2 } from "@wizard/gates";
 import { compilePlan } from "@wizard/modules";
 import { toRoleSpec } from "@wizard/ui-kit";
+import { designSystemV3 } from "@wizard/ui-kit/v3/design";
 import { PATTERNS } from "@wizard/ui-kit/v3/patterns";
 import { describe, expect, test } from "vitest";
 import { buildRenderBundle } from "../../gates/src/g1/render/bundle.js";
@@ -266,6 +267,32 @@ describe("gates on the composed system (v3 allowances)", () => {
       ).toEqual([]);
     }
   }, 120_000);
+
+  test("V3-18: a system id ending in 8+ digits does not read as a Telegram token in ui/site.json (G2-SECRET-01)", async () => {
+    // The platform seeds the design with the system id, so the site model's seed is `<uuid>:<uuid>`; this id once
+    // failed the techreview at random (CI on a23b263): «…735f83595416:566a…» matched `\d{8,10}:[A-Za-z0-9_-]{35}`.
+    const id = "566a07ec-2235-4082-85c6-735f83595416";
+    const base = composeContext({ systemId: id });
+    const ctx = {
+      ...base,
+      design: designSystemV3({ archetype: base.design.archetype, seed: id, niche: base.plan.niche }),
+    };
+    const { files, spec } = await skeleton(ctx);
+    expect(files.get("ui/site.json")).toContain(`"seed": "${id}:${id}"`);
+    const report = await runG2(
+      {
+        spec,
+        prevSpec: null,
+        specVersion: 0,
+        files,
+        env: "draft",
+        systemKey: "v3_compose",
+        db: undefined as never,
+      },
+      { only: ["G2-SECRET-01"] },
+    );
+    expect(report.checks.find((c) => c.id === "G2-SECRET-01")?.status).toBe("pass");
+  });
 
   test("v2 systems keep the old rules; in v3 only the public page files get react, motion and the headless hooks", async () => {
     const pattern =

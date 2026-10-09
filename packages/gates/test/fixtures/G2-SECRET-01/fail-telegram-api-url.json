@@ -1,0 +1,10 @@
+{
+  "check": "G2-SECRET-01",
+  "description": "токен Telegram-бота в адресе Bot API",
+  "files": {
+    "functions/lib/notify.ts": "export const URL = \"https://api.telegram.org/bot1234567890:AAHx7Qx7Qx7Qx7Qx7Qx7Qx7Qx7Qx7Qx7Qx7/sendMessage\";\n"
+  },
+  "match": "шаблон ключа",
+  "base": "forum",
+  "expect": "fail"
+}

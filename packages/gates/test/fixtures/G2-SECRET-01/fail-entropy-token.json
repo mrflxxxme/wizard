@@ -1,0 +1,10 @@
+{
+  "check": "G2-SECRET-01",
+  "description": "случайная строка рядом с token в коде страницы",
+  "files": {
+    "ui/lib/api.ts": "export const token = \"Zq8vN3xLp5Rt7Wc2Yb9Kd4Hs6Je1Mf0G\";\n"
+  },
+  "match": "key/token/secret",
+  "base": "forum",
+  "expect": "fail"
+}
