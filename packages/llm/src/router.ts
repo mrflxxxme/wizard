@@ -108,6 +108,7 @@ export interface RouterOptions {
    */
   byok?: ByokResolver;
   backoffMs?: readonly number[];
+  /** Pause between attempts; the router also ends it early when the call's signal aborts (V3-18). */
   sleep?: (ms: number) => Promise<void>;
   random?: () => number;
   now?: () => number;
@@ -135,6 +136,41 @@ class PolicyAbort extends Error {
 const MAX_ATTEMPTS = 3;
 const DEFAULT_BACKOFF = [1000, 4000, 16000];
 
+/**
+ * V3-18: the longest Retry-After the router waits, ms. A provider asking for more is not waited for: the call goes to
+ * the next model of the chain (the reserve) or fails as LLM_UNAVAILABLE.
+ */
+export const MAX_RETRY_AFTER_MS = 30_000;
+
+/**
+ * `sleep(ms)` that ends early (rejects with LlmError ABORTED) when `signal` aborts: a cancelled run never waits out a
+ * backoff or a Retry-After (V3-18).
+ */
+export async function abortableSleep(
+  sleep: (ms: number) => Promise<void>,
+  ms: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  const aborted = () => new LlmError("ABORTED", "Вызов модели отменён.");
+  if (!signal) return sleep(ms);
+  if (signal.aborted) throw aborted();
+  let onAbort: (() => void) | undefined;
+  const stop = new Promise<never>((_, reject) => {
+    onAbort = () => reject(aborted());
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  // Rejections of `stop` outside the race are expected (the abort came before or after it).
+  stop.catch(() => {});
+  try {
+    const pause = sleep(ms);
+    // The signal may abort while the pause starts.
+    if (signal.aborted) throw aborted();
+    await Promise.race([pause, stop]);
+  } finally {
+    if (onAbort) signal.removeEventListener("abort", onAbort);
+  }
+}
+
 function fixtureFromEnv(env: Env): FixtureOptions | undefined {
   const spec = env.WIZARD_FIXTURE;
   if (!spec) return undefined;
@@ -154,7 +190,13 @@ export function createRouter(opts: RouterOptions = {}): Router {
   const sink = opts.sink ?? new JsonlUsageSink();
   const circuit = opts.circuit ?? new CircuitBreaker(opts.now);
   const now = opts.now ?? Date.now;
-  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((res) => setTimeout(res, ms)));
+  const sleep =
+    opts.sleep ??
+    ((ms: number) =>
+      new Promise<void>((res) => {
+        // A pending pause never keeps the process alive (a cancelled call stops waiting through its signal).
+        setTimeout(res, ms).unref?.();
+      }));
   const random = opts.random ?? Math.random;
   const backoff = opts.backoffMs ?? DEFAULT_BACKOFF;
   const version = policyVersion(reg);
@@ -259,7 +301,7 @@ export function createRouter(opts: RouterOptions = {}): Router {
           policyVersion: version,
           mode,
           now,
-          sleep,
+          sleep: (ms) => abortableSleep(sleep, ms, input.signal),
           policySignal: policyCtrl.signal,
         });
         if (out) return out;
@@ -547,9 +589,11 @@ export function createRouter(opts: RouterOptions = {}): Router {
           });
           if (err.code === "ABORTED") throw new LlmError("ABORTED", "Вызов модели отменён.");
           if (!err.retryable || attempt === MAX_ATTEMPTS) break;
+          // V3-18: a Retry-After past the cap is not waited for — the next model of the chain (or LLM_UNAVAILABLE).
+          if (err.retryAfterMs !== null && err.retryAfterMs > MAX_RETRY_AFTER_MS) break;
           const base = backoff[attempt - 1] ?? backoff[backoff.length - 1] ?? 0;
           const jittered = base * (0.8 + 0.4 * random());
-          await sleep(err.retryAfterMs ?? jittered);
+          await abortableSleep(sleep, err.retryAfterMs ?? jittered, input.signal);
         } finally {
           if (policyCtrl) untrack(input.ctx.orgId, policyCtrl);
         }

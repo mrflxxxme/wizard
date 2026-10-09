@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { detect, isPlaceholder } from "@wizard/pii";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import {
+  abortableSleep,
   CALL_TYPES,
   costRub,
   createRegistry,
@@ -15,6 +16,7 @@ import {
   type LlmEvent,
   type LlmMessage,
   type LlmTool,
+  MAX_RETRY_AFTER_MS,
   MemoryUsageSink,
   PII_FORBIDDEN_FOR_T1,
   type RouterOptions,
@@ -335,6 +337,48 @@ describe("fallback, retries, circuit breaker", () => {
     const out = await router.route({ callType: "plan", messages: msgs("План"), orgPolicy: OPEN, ctx });
     expect(out.model).toBe("glm-5.3");
     expect(waits).toEqual([2000, 4000]);
+  });
+
+  test("V3-18: Retry-After past 30 s is not waited for — the next model of the chain takes the call", async () => {
+    stub.respond.zai = (req) =>
+      req.body.model === "glm-5.3"
+        ? { status: 429, body: {}, headers: { "retry-after": "120" } }
+        : okText(req);
+    const waits: number[] = [];
+    const { router, events } = mk({ sleep: async (ms) => void waits.push(ms) });
+    const out = await router.route({ callType: "plan", messages: msgs("План"), orgPolicy: OPEN, ctx });
+    expect(out.model).not.toBe("glm-5.3");
+    expect(waits).toEqual([]);
+    expect(stub.requests.filter((r) => r.body.model === "glm-5.3")).toHaveLength(1);
+    expect(events).toContainEqual(expect.objectContaining({ type: "model_switched", fromModel: "glm-5.3" }));
+    expect(MAX_RETRY_AFTER_MS).toBe(30_000);
+  });
+
+  test("V3-18: a cancelled call stops waiting out the pause at once (ABORTED)", async () => {
+    stub.respond.zai = () => ({ status: 429, body: {}, headers: { "retry-after": "20" } });
+    const ac = new AbortController();
+    let waiting = false;
+    // A pause that never ends by itself: only the call's signal ends it.
+    const { router } = mk({
+      sleep: () => {
+        waiting = true;
+        ac.abort();
+        return new Promise<void>(() => {});
+      },
+    });
+    await expect(
+      router.route({ callType: "plan", messages: msgs("План"), orgPolicy: OPEN, ctx, signal: ac.signal }),
+    ).rejects.toMatchObject({ code: "ABORTED" });
+    expect(waiting).toBe(true);
+  });
+
+  test("V3-18: abortableSleep — a plain sleep without a signal, an aborted signal rejects at once", async () => {
+    const waits: number[] = [];
+    await abortableSleep(async (ms) => void waits.push(ms), 5);
+    expect(waits).toEqual([5]);
+    const ac = new AbortController();
+    ac.abort();
+    await expect(abortableSleep(async () => {}, 5, ac.signal)).rejects.toMatchObject({ code: "ABORTED" });
   });
 
   test("5 failures open the circuit: the next call goes to the next model without a request to the first", async () => {

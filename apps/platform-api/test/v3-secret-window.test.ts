@@ -490,6 +490,13 @@ describe("rotation, re-check, D37, removal", () => {
     expect(issues).toEqual([expect.objectContaining({ path: "/functions/1/egress/0" })]);
     const hook = withKeyWindow(async () => ({ spec }), { pg: api.deps.pg, systemId });
     await expect(hook({})).rejects.toThrow(/collector\.example\.com/);
+    // V3-18: a deterministic stop — RunFailure in Russian, not retryable (not «Внутренняя ошибка прогона»).
+    await expect(hook({})).rejects.toMatchObject({
+      name: "RunFailure",
+      code: "GATES_FAILED",
+      retryable: false,
+      message_ru: expect.stringMatching(/^Сборка остановлена: ключ доступа.*collector\.example\.com/),
+    });
     const fine = withKeyWindow(async () => ({ spec: { functions: spec.functions.slice(0, 1) } }), {
       pg: api.deps.pg,
       systemId,

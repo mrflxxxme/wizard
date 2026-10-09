@@ -13,7 +13,7 @@
 // recomposes the skeleton before any scenario is paid for.
 import { createHash } from "node:crypto";
 import type { AppSpec, SystemBrief } from "@wizard/appspec";
-import type { GateReport, GoalScenarioInput } from "@wizard/gates";
+import { G0_CHECKS, G1_CHECKS, G2_CHECKS, type GateReport, type GoalScenarioInput } from "@wizard/gates";
 import { createRegistry } from "@wizard/llm";
 import { canonical, type ModuleRegistry } from "@wizard/modules";
 import { scrub } from "@wizard/pii";
@@ -25,7 +25,7 @@ import {
 } from "@wizard/ui-kit/v3/design";
 import { stripScrubTokens } from "../../interview-v3/scrub-tokens.js";
 import { DEFAULT_REGISTRY } from "../../planner/catalog.js";
-import { buildBlockers } from "../v2/blockers.js";
+import { erroredBlockers, failedBlockers } from "../v2/blockers.js";
 import { withOwnerFields } from "../v2/run.js";
 import { runArtDirector } from "./art-director.js";
 import { readSite, withSitePages } from "./compose/index.js";
@@ -80,6 +80,30 @@ class V3Failure extends Error {
     super(`${code}: ${message_ru}`);
   }
 }
+
+/**
+ * Version of the verdict rules of the hook stages (critic, template gate, techreview) and the gates: bump it when a
+ * check, its severity or a stage's verdict logic changes. With the gate catalogs it is part of the fingerprints of
+ * those stages, so a verdict of older rules is never reused (V3-18).
+ */
+export const V3_RULES_VERSION = 1;
+
+/** The rules fingerprint: V3_RULES_VERSION and the gate catalogs (id, severity, since of every check). */
+export const V3_RULES_FINGERPRINT = sha256({
+  v: V3_RULES_VERSION,
+  checks: [...G0_CHECKS, ...G1_CHECKS, ...G2_CHECKS].map((c) => [c.id, c.severity, c.since ?? null]),
+});
+
+/**
+ * V3-18: a check that could not run (status error — the browser, a timeout, a process) is not the system's failure:
+ * the build is not failed with GATES_FAILED and the paid stages stay.
+ */
+export const CHECKS_UNAVAILABLE_RU =
+  "Проверка не выполнена из-за временного сбоя, повторите сборку — оплаченные этапы сохранятся.";
+
+/** The reason of a scenario kept without its browser check (the check could not run, V3-18). */
+const SCENARIO_UNCHECKED_RU =
+  "проверка в браузере не выполнена из-за временного сбоя — сценарий проверяют итоговые проверки";
 
 /** Files of a composer step as JSON (checkpoints): [path, source | null][]. */
 type FileEntries = [string, string | null][];
@@ -184,7 +208,10 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
     },
   ): Promise<{ data: T; reused: boolean }> {
     const cp = saved.get(id);
-    if (o.reuse !== false && cp && cp.fingerprint === o.fingerprint && !o.skip) {
+    // V3-18: a verdict with blockers is never reused — a retry checks again (a transient error is not forever).
+    const prior = cp?.data.blockers;
+    const blocked = Array.isArray(prior) && prior.length > 0;
+    if (o.reuse !== false && cp && cp.fingerprint === o.fingerprint && !o.skip && !blocked) {
       priorMilli += cp.costMilli;
       metrics[id] = { status: "reused", costRub: 0, durationMs: 0 };
       await stageEvent(id, "reused");
@@ -713,6 +740,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
     revision = await commit("Каркас страниц в выбранном стиле");
     if (host.preview && (revision !== before || previewRevision === null)) {
       const pr = await host.runStep("v3:preview", () => (host.preview as NonNullable<V3Host["preview"]>)());
+      if (!pr.ok && pr.unavailable) throw new V3Failure("CHECKS_UNAVAILABLE", CHECKS_UNAVAILABLE_RU, true);
       if (!pr.ok)
         throw new V3Failure(
           "GATES_FAILED",
@@ -823,7 +851,29 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
       scenarioSec = Math.round(durations.reduce((s, x) => s + x, 0) / durations.length / 1000);
       scenariosLeft -= 1;
       const costRub = milliRub(costMilli, rpc);
-      if (check.ok) {
+      if (!check.ok && check.unavailable) {
+        // V3-18: the check could not run (infrastructure): the scenario stays on the system, the final gates check it;
+        // its checkpoint is not reused by a later build (it was never checked).
+        states.set(next.id, {
+          id: next.id,
+          title: next.title,
+          priority: next.priority,
+          status: "passed",
+          reason: SCENARIO_UNCHECKED_RU,
+          costRub,
+        });
+        await save({
+          key,
+          fingerprint: fp,
+          data: { status: "unchecked", files: toEntries(r.files), pages: r.pages, notes: r.notes },
+          costMilli,
+          durationMs,
+        });
+        await say(
+          `v3s_${next.id}`,
+          `Готово: ${next.title}. Проверить в браузере не удалось из-за временного сбоя — сценарий проверят итоговые проверки. Сейчас ${spendLine(spentRub(), limits.capRub)}.`,
+        );
+      } else if (check.ok) {
         states.set(next.id, {
           id: next.id,
           title: next.title,
@@ -894,7 +944,11 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
     for (const st of V3_HOOK_STAGES) {
       await sync();
       const hook = hooks[st];
-      const stateFp = sha256({ files: [...mergedFiles()].sort(([a], [b]) => a.localeCompare(b)), st });
+      const stateFp = sha256({
+        files: [...mergedFiles()].sort(([a], [b]) => a.localeCompare(b)),
+        st,
+        rules: V3_RULES_FINGERPRINT,
+      });
       const budget = st === "template_gate" ? 0 : budgets[st];
       const h = await stage<Record<string, unknown>>(st, {
         fingerprint: stateFp,
@@ -971,16 +1025,23 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
     );
     let ownerInput = false;
     const gates = await stage("gates", {
-      fingerprint: sha256({ revision, state: committed?.hash ?? "" }),
+      fingerprint: sha256({ revision, state: committed?.hash ?? "", rules: V3_RULES_FINGERPRINT }),
       run: async () => {
         const reports: GateReport[] = [];
         for (const level of ["G0", "G1", "G2"] as const) {
-          const r = await host.runGates(
-            level,
-            level === "G1" && host.goalBrowser && goalScenarios.length ? { goalScenarios } : undefined,
-          );
+          const gate = () =>
+            host.runGates(
+              level,
+              level === "G1" && host.goalBrowser && goalScenarios.length ? { goalScenarios } : undefined,
+            );
+          let r = await gate();
+          // V3-18: a check that could not run (status error) is run once more; still not — a retryable failure of the
+          // infrastructure, not GATES_FAILED.
+          if (!r.passed && failedBlockers(r).length === 0 && erroredBlockers(r).length > 0) r = await gate();
           reports.push(r);
-          const blockers = r.passed ? [] : buildBlockers(r);
+          const blockers = r.passed ? [] : failedBlockers(r);
+          if (!r.passed && blockers.length === 0 && erroredBlockers(r).length > 0)
+            throw new V3Failure("CHECKS_UNAVAILABLE", CHECKS_UNAVAILABLE_RU, true, reports);
           if (!r.passed && blockers.length === 0) ownerInput = true;
           if (blockers.length > 0)
             throw new V3Failure(

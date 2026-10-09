@@ -92,6 +92,11 @@ export interface ScenarioCheckResult {
   problems: string[];
   /** false — the host had no browser and checked without it (renders only). */
   browser: boolean;
+  /**
+   * V3-18: the check could not run even after a retry (a check with status error: the browser, a timeout) — not the
+   * scenario's failure: it is kept, not rolled back, and the final gates check it.
+   */
+  unavailable?: boolean;
 }
 
 /** What a stage hook (critic V3-13, template_gate V3-14, techreview V3-15) returns. */
@@ -168,7 +173,7 @@ export interface V3Host {
   /** The page writer of V3-12. */
   composer: PageComposer;
   /** Live preview of the draft (platform: G0 → bundle → preview revision); absent — no preview step. */
-  preview?(): Promise<{ ok: boolean; problems: string[] }>;
+  preview?(): Promise<{ ok: boolean; problems: string[]; unavailable?: boolean }>;
   /** Browser check of one scenario on the committed draft; absent — scenarios are accepted after the composer's lint. */
   checkScenario?(input: ScenarioCheckInput): Promise<ScenarioCheckResult>;
   /** true: the final G1 gets the goal scenarios of the done brief scenarios (a browser runs them). */
@@ -244,6 +249,8 @@ export type V3FailureCode =
   | "MODULE_BUG"
   | "STAGE_BUDGET_EXCEEDED"
   | "GATES_FAILED"
+  /** V3-18: a check could not run (infrastructure) even after a retry; retryable, the paid stages stay. */
+  | "CHECKS_UNAVAILABLE"
   | "INTERNAL";
 
 /** Per-stage line of build_metrics. */

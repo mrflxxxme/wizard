@@ -12,11 +12,13 @@ import { type DesignSystemV3, designSystemV3 } from "@wizard/ui-kit/v3/design";
 import { describe, expect, test } from "vitest";
 import {
   briefNiche,
+  CHECKS_UNAVAILABLE_RU,
   DESIGN_CSS_FILE,
   designCss,
   runBuildV3,
   type ScenarioCheckInput,
   type ScenarioCheckResult,
+  V3_RULES_FINGERPRINT,
   V3_STAGES,
   type V3BriefVersion,
   type V3Checkpoint,
@@ -97,6 +99,10 @@ interface HostOptions {
   /** Called after each browser check (e.g. the owner edits the brief meanwhile). */
   afterCheck?: (input: ScenarioCheckInput, sys: Sys) => void;
   gateFails?: (level: string) => boolean;
+  /** Checks of the n-th run of a gate level (V3-18: errors and retries); null — the default report. */
+  gateChecks?: (level: string, n: number) => GateReport["checks"] | null;
+  /** The skeleton preview's answer (default ok). */
+  preview?: () => { ok: boolean; problems: string[]; unavailable?: boolean };
   hooks?: V3Host["hooks"];
   goalBrowser?: boolean;
   /** Recorded answers: pages (page_compose answers), heavier usage, the art director's answer. */
@@ -175,13 +181,22 @@ function memHost(sys: Sys, o: HostOptions = {}) {
     runGates: async (level, ov) => {
       clock.t += 30_000;
       rec.gates.push({ level, ...(ov?.goalScenarios ? { goalScenarios: ov.goalScenarios } : {}) });
+      const checks = o.gateChecks?.(level, rec.gates.filter((g) => g.level === level).length);
+      if (checks)
+        return {
+          ...passing(level, sys.version),
+          checks,
+          passed: !checks.some(
+            (c) => c.severity === "blocker" && (c.status === "fail" || c.status === "error"),
+          ),
+        };
       return passing(level, sys.version, !o.gateFails?.(level));
     },
     composer,
     preview: async () => {
       clock.t += 15_000;
       rec.callsAtPreview = rec.calls.length;
-      return { ok: true, problems: [] };
+      return o.preview?.() ?? { ok: true, problems: [] };
     },
     checkScenario: async (input) => {
       clock.t += 20_000;
@@ -707,5 +722,119 @@ describe("harness v3: the template check right after the skeleton (V3-14)", () =
     expect(calls).toBe(0);
     expect(stagesOf(again.rec, "reused")).toContain("critic");
     expect(sys.files[DESIGN_CSS_FILE]).toBe(designCss(tuned));
+  });
+});
+
+describe("harness v3: V3-18 — a retry after a blocker, a check that could not run", () => {
+  const errored = (id = "G1-RENDER-01"): GateReport["checks"][number] => ({
+    id,
+    status: "error",
+    severity: "blocker",
+    message_ru: "Не удалось проверить: браузер не запустился",
+  });
+  const failed: GateReport["checks"][number] = {
+    id: "G1-RENDER-02",
+    status: "fail",
+    severity: "blocker",
+    message_ru: "Страница «/» не открылась",
+  };
+
+  test("a techreview verdict with blockers is never reused: the retry checks again; a clean verdict is reused", async () => {
+    let calls = 0;
+    const techreview: V3StageHook = async () => {
+      calls += 1;
+      return calls === 1
+        ? { status: "done", blockers: ["Сборка: не удалось проверить типы"] }
+        : { status: "done", blockers: [] };
+    };
+    const sys = newSys();
+    const first = await build(sys, { hooks: { techreview } });
+    expect(first.out).toMatchObject({ status: "failed", code: "GATES_FAILED", retryable: true });
+    expect(sys.checkpoints.get("techreview")?.data.blockers).toEqual(["Сборка: не удалось проверить типы"]);
+    // The same files: before V3-18 the stored blockers came back and the build failed at once, forever.
+    const second = await build(sys, { hooks: { techreview } });
+    ok(second.out);
+    expect(calls).toBe(2);
+    expect(second.out?.stages.techreview?.status).toBe("done");
+    const third = await build(sys, { hooks: { techreview } });
+    ok(third.out);
+    expect(calls).toBe(2);
+    expect(third.out?.stages.techreview?.status).toBe("reused");
+  });
+
+  test("the hook checkpoints carry the rules fingerprint: other rules → the verdict is made again", async () => {
+    let calls = 0;
+    const techreview: V3StageHook = async () => {
+      calls += 1;
+      return { status: "done" };
+    };
+    const sys = newSys();
+    ok((await build(sys, { hooks: { techreview } })).out);
+    const cp = sys.checkpoints.get("techreview") as V3Checkpoint;
+    expect(V3_RULES_FINGERPRINT).toMatch(/^[0-9a-f]{64}$/);
+    // A checkpoint of older rules has another fingerprint for the same files.
+    sys.checkpoints.set("techreview", { ...cp, fingerprint: `${cp.fingerprint.slice(0, 63)}x` });
+    ok((await build(sys, { hooks: { techreview } })).out);
+    expect(calls).toBe(2);
+  });
+
+  test("final gates: a check that could not run is run once more; passed then — the build succeeds", async () => {
+    const sys = newSys();
+    const { out, rec } = await build(sys, {
+      gateChecks: (l, n) => (l === "G1" && n === 1 ? [errored()] : null),
+    });
+    ok(out);
+    expect(rec.gates.filter((g) => g.level === "G1")).toHaveLength(2);
+  });
+
+  test("final gates: still not run after the retry → CHECKS_UNAVAILABLE retryable in Russian, not GATES_FAILED", async () => {
+    const sys = newSys();
+    const first = await build(sys, { gateChecks: (l) => (l === "G1" ? [errored()] : null) });
+    expect(first.out).toMatchObject({
+      status: "failed",
+      code: "CHECKS_UNAVAILABLE",
+      retryable: true,
+      message_ru: CHECKS_UNAVAILABLE_RU,
+    });
+    expect(CHECKS_UNAVAILABLE_RU).toBe(
+      "Проверка не выполнена из-за временного сбоя, повторите сборку — оплаченные этапы сохранятся.",
+    );
+    expect(first.rec.gates.filter((g) => g.level === "G1")).toHaveLength(2);
+    // The paid stages stay: the repeat makes no model call.
+    const second = await build(sys);
+    ok(second.out);
+    expect(second.rec.calls).toEqual([]);
+    // A real failure next to an error is the system's: GATES_FAILED, no retry.
+    const third = await build(newSys(), { gateChecks: (l) => (l === "G1" ? [errored(), failed] : null) });
+    expect(third.out).toMatchObject({ status: "failed", code: "GATES_FAILED" });
+    expect(third.rec.gates.filter((g) => g.level === "G1")).toHaveLength(1);
+  });
+
+  test("a scenario check that could not run: the scenario stays (no rollback, no request); the repeat checks it again", async () => {
+    const sys = newSys();
+    const { out } = await build(sys, {
+      check: (c) =>
+        c.scenario.id === "s_lead"
+          ? { ok: false, problems: ["Не удалось проверить: браузер"], browser: true, unavailable: true }
+          : { ok: true, problems: [], browser: true },
+    });
+    const r = ok(out);
+    expect(r.scenarios.find((s) => s.id === "s_lead")).toMatchObject({
+      status: "passed",
+      reason: expect.stringContaining("временного сбоя"),
+    });
+    expect(Object.values(sys.files).some((src) => src.includes("сохраняет заявку"))).toBe(true);
+    expect(sys.requests).toEqual([]);
+    expect(sys.checkpoints.get("scenario:s_lead")?.data.status).toBe("unchecked");
+    const again = await build(sys);
+    ok(again.out);
+    expect(scenarioCalls(again.composer)).toEqual(["s_lead"]);
+  });
+
+  test("the skeleton preview could not be checked → CHECKS_UNAVAILABLE, not GATES_FAILED", async () => {
+    const { out } = await build(newSys(), {
+      preview: () => ({ ok: false, problems: ["Не удалось проверить"], unavailable: true }),
+    });
+    expect(out).toMatchObject({ status: "failed", code: "CHECKS_UNAVAILABLE", retryable: true });
   });
 });

@@ -7,6 +7,7 @@ import type postgres from "postgres";
 import { z } from "zod";
 import { ApiError } from "../errors.js";
 import { latestContracts } from "../integrations-v3/store.js";
+import { RunFailure } from "../runs/types.js";
 import { requestSecret, SECRET_WINDOW_NAME } from "./service.js";
 import { listBindings, secretRefExists, systemOrg, withOrg } from "./store.js";
 
@@ -182,7 +183,13 @@ export function withKeyWindow<I, R extends { spec: SpecFunctions } | null>(
     const out = await hook(input);
     if (out) {
       const issues = await systemSecretEgressIssues(o.pg, o.systemId, out.spec);
-      if (issues.length) throw new Error(`secret egress: ${issues.map((i) => i.message_ru).join("; ")}`);
+      // V3-18: deterministic — a repeat of the same build stops the same way (retryable: false), said in Russian.
+      if (issues.length)
+        throw new RunFailure(
+          "GATES_FAILED",
+          `Сборка остановлена: ключ доступа ушёл бы на адрес, которого владелец не видел в окне ключа. ${issues.map((i) => i.message_ru).join("; ")}. Повтор сборки этого не исправит — напишите команде, мы поправим интеграцию.`,
+          false,
+        );
       await requestMissingKeys({ pg: o.pg }, { systemId: o.systemId, runId: o.runId ?? null }).catch((e) =>
         o.log?.("key window request failed", e),
       );

@@ -27,6 +27,7 @@ import { saveBriefVersion } from "../src/briefs/store.js";
 import { isV3Build, V3_BUILD_CAP_CREDITS, v3PipelineOn } from "../src/builds-v3/host.js";
 import { startV3Build } from "../src/builds-v3/start.js";
 import { DEFAULT_ORG_ID, DEV_USER_EMAIL, DEV_USER_ID, json } from "../src/db/index.js";
+import { type Durable, inProcessDurable, LocalMailboxes } from "../src/runs/durable.js";
 import { listEvents } from "../src/runs/events.js";
 import { loadEventSchemas } from "./event-schemas.js";
 import { createTestDb, startApi, type TestApi, waitRun } from "./helpers.js";
@@ -86,7 +87,8 @@ afterAll(async () => {
   await tdb?.drop();
   rmSync(outboxDir, { recursive: true, force: true });
   rmSync(fixtureDir, { recursive: true, force: true });
-});
+  // Dropping the database of two built systems (their draft schemas) takes ~25 s on a loaded machine.
+}, 120_000);
 
 async function addSystem(name: string): Promise<string> {
   const key = randomUUID().replace(/-/g, "").slice(0, 12);
@@ -226,5 +228,71 @@ describe("platform: a build by the brief on the harness v3 (WIZARD_BUILD_PIPELIN
     expect(after.draft_revision).toBe(sys.draft_revision);
     expect(await llmCalls(again.id)).toEqual([]);
     expect(new OutboxMailer(outboxDir).list(DEV_USER_EMAIL)).toHaveLength(2);
+  }, 480_000);
+
+  test("V3-18: a worker restart replays the build step by step (DBOS) — checkpoints and the brief are durable reads", async () => {
+    const systemId = await addSystem("Клиника повтор");
+    await saveBriefVersion(api.deps.db, { systemId, brief: smallBrief(), author: "agent" });
+    // The step journal of the first execution, as DBOS keeps it (results and errors of top-level steps, in order).
+    type Entry = { name: string; value?: unknown; error?: unknown };
+    const journal: Entry[] = [];
+    let replay = false;
+    let at = 0;
+    const diverged: string[] = [];
+    const orig = api.engine.executeRun.bind(api.engine);
+    api.engine.executeRun = (id: string, D: Durable) => {
+      let depth = 0;
+      const w = {
+        durable: D.durable,
+        replayed: false,
+        async step<T>(name: string, fn: () => Promise<T>, o?: { offload?: boolean }): Promise<T> {
+          if (depth > 0) return fn();
+          if (replay && at < journal.length) {
+            const e = journal[at++] as Entry;
+            // DBOS: another step at this position is DBOSUnexpectedStepError — the workflow fails.
+            if (e.name !== name) {
+              diverged.push(`${at - 1}: ${e.name} → ${name}`);
+              throw new Error(`unexpected step ${name}`);
+            }
+            w.replayed = true;
+            if ("error" in e) throw e.error;
+            return structuredClone(e.value) as T;
+          }
+          depth++;
+          try {
+            const v = await D.step(name, fn, o);
+            if (!replay) journal.push({ name, value: structuredClone(v) });
+            w.replayed = false;
+            return v;
+          } catch (err) {
+            if (!replay) journal.push({ name, error: err });
+            throw err;
+          } finally {
+            depth--;
+          }
+        },
+        recv: <T>(topic: string, ms: number) => D.recv<T>(topic, ms),
+        send: (to: string, topic: string, m: unknown) => D.send(to, topic, m),
+      };
+      return orig(id, w);
+    };
+    try {
+      const run = await startV3Build(api.deps, { systemId, userId: DEV_USER_ID });
+      const done = await waitRun(api, run.id, ["succeeded", "failed"], 240_000);
+      expect(done.status, JSON.stringify(done.failure)).toBe("succeeded");
+      expect(journal.map((e) => e.name)).toEqual(
+        expect.arrayContaining(["v3_checkpoints_load", "v3_brief", "v3_request", "v3_run_cap"]),
+      );
+      // The restart: the same workflow again — the journal answers its steps, the code between them runs again (it now
+      // sees the checkpoints and the brief this run wrote itself, which must not change its path).
+      replay = true;
+      await api.engine.executeRun(run.id, inProcessDurable(run.id, new LocalMailboxes()));
+      expect(diverged).toEqual([]);
+      expect(at).toBe(journal.length);
+      const after = await waitRun(api, run.id, ["succeeded", "failed"]);
+      expect(after.status).toBe("succeeded");
+    } finally {
+      api.engine.executeRun = orig;
+    }
   }, 480_000);
 });

@@ -274,6 +274,17 @@ function toResult(e: unknown, aborted: boolean): Result {
   };
 }
 
+/** V3-18: the run deadline passed (watchdog): failed, retryable, in Russian. */
+function runTimeoutResult(deadlineMs: number): Result {
+  const min = Math.max(1, Math.round(deadlineMs / 60_000));
+  return {
+    status: "failed",
+    code: "RUN_TIMEOUT",
+    message_ru: `Прогон шёл дольше отведённого времени (${min} мин) и остановлен. Запустите его ещё раз — готовые этапы сборки сохранены.`,
+    retryable: true,
+  };
+}
+
 /**
  * Routing policy of an org (product.yaml#decisions.D26_models_default): only a known restricted region (orgs.t1_restricted,
  * set by data-boundary.yaml#region_restriction sources) or «Только РФ» keeps the org on T0; an unknown region (NULL)
@@ -313,6 +324,11 @@ interface Ctx {
   slot: boolean;
   /** needs_input calls so far in this execution: a replay reaches the same ordinal at the same call. */
   inputs: number;
+  /** V3-18: ms this execution waited for input (not counted by the run deadline), and the start of a current wait. */
+  waitedMs: number;
+  waitingSince: number | null;
+  /** V3-18: the run deadline stopped this run (failed RUN_TIMEOUT, not cancelled). */
+  timedOut?: boolean;
 }
 
 interface Routers {
@@ -523,6 +539,7 @@ export class RunEngine {
     this.#watchCancels();
     let result: Result | undefined;
     let heartbeat: NodeJS.Timeout | undefined;
+    let watchdog: (() => void) | undefined;
     let locked = false;
     let x: Ctx | undefined;
     try {
@@ -531,7 +548,7 @@ export class RunEngine {
       // Fields read outside steps are immutable for the life of the run (kind, mode, org, system, input).
       const run = await this.#loadRun(id);
       if (!run) return;
-      x = { run, D, ac, slot: false, inputs: 0 };
+      x = { run, D, ac, slot: false, inputs: 0, waitedMs: 0, waitingSince: null };
       if (NEEDS_LOCK.has(run.kind) && run.system_id) {
         let holder = await D.step("acquire_lock", () => this.#acquireLock(run, D.durable));
         if (holder === TERMINAL) return;
@@ -564,6 +581,7 @@ export class RunEngine {
         }, HEARTBEAT_MS);
         heartbeat.unref();
       }
+      watchdog = this.#watchdog(x);
       if (run.kind === "interview_turn") result = await this.#interview(x);
       else if (run.kind === "build") result = await this.#build(x, started.cap);
       else if (run.kind === "publish" || run.kind === "rollback") result = await this.#flow(x);
@@ -586,8 +604,9 @@ export class RunEngine {
           alert: this.#d.publish?.alert,
         }).catch((err) => this.#log(`run ${id}: models_unavailable report failed`, err));
       }
-      result = toResult(e, ac.signal.aborted);
+      result = x?.timedOut ? runTimeoutResult(this.#d.config.runDeadlineMs) : toResult(e, ac.signal.aborted);
     } finally {
+      watchdog?.();
       if (heartbeat) clearInterval(heartbeat);
       this.#controllers.delete(id);
       if (x) this.#giveSlot(x);
@@ -602,6 +621,60 @@ export class RunEngine {
         if (D.durable) throw e;
       }
     }
+  }
+
+  /**
+   * V3-18: the run deadline and the forced end of a stop. A run executing longer than config.runDeadlineMs (waits for
+   * input not counted) is aborted; an aborted run (cancel or deadline) that has not ended config.cancelGraceMs later is
+   * finalized by force — failed RUN_TIMEOUT or cancelled — and its lock handed over (the executor's own finalize is
+   * then a no-op). A stopping process (close) never finalizes. Returns the disposer.
+   */
+  #watchdog(x: Ctx): () => void {
+    const deadline = this.#d.config.runDeadlineMs;
+    const t0 = Date.now();
+    let force: NodeJS.Timeout | undefined;
+    const tick = setInterval(
+      () => {
+        if (x.ac.signal.aborted) return;
+        const waiting = x.waitingSince === null ? 0 : Date.now() - x.waitingSince;
+        if (Date.now() - t0 - x.waitedMs - waiting < deadline) return;
+        x.timedOut = true;
+        x.ac.abort();
+      },
+      Math.max(20, Math.min(10_000, Math.floor(deadline / 4))),
+    );
+    tick.unref();
+    const onAbort = () => {
+      clearInterval(tick);
+      force = setTimeout(() => {
+        if (this.#closed) return;
+        this.#forceFinalize(x).catch((e) => this.#log(`force finalize ${x.run.id} failed`, e));
+      }, this.#d.config.cancelGraceMs);
+      force.unref();
+    };
+    if (x.ac.signal.aborted) onAbort();
+    else x.ac.signal.addEventListener("abort", onAbort, { once: true });
+    return () => {
+      clearInterval(tick);
+      if (force) clearTimeout(force);
+      x.ac.signal.removeEventListener("abort", onAbort);
+    };
+  }
+
+  /** V3-18: the terminal transaction of a run that did not stop by itself (outside its workflow's steps). */
+  async #forceFinalize(x: Ctx): Promise<void> {
+    const r: Result = x.timedOut
+      ? runTimeoutResult(this.#d.config.runDeadlineMs)
+      : { status: "cancelled", summary_ru: "Прогон остановлен" };
+    const sys = await this.#tx((t) => this.#finalize(t, x.run.id, r));
+    if (!sys) return;
+    this.#log(`run ${x.run.id} finalized by force`, new Error(x.timedOut ? "RUN_TIMEOUT" : "cancel"));
+    if (!x.D.durable) {
+      this.#wakeLock(sys);
+      return;
+    }
+    const next = await this.#nextWaiter(sys);
+    if (next) await this.#deliver(next, TOPIC_LOCK, { systemId: sys });
   }
 
   /** The lock of `systemId` was released: the next waiter takes it (FIFO by created_at). */
@@ -1429,6 +1502,8 @@ export class RunEngine {
       this.#pump();
     }
     this.#giveSlot(x);
+    // V3-18: the wait for the owner is not counted by the run deadline.
+    x.waitingSince = Date.now();
     try {
       for (;;) {
         const left = Math.max(1000, Date.parse(pending.expiresAt) - Date.now());
@@ -1442,6 +1517,8 @@ export class RunEngine {
       }
     } finally {
       if (inproc) this.#active.add(x.run.id);
+      if (x.waitingSince !== null) x.waitedMs += Date.now() - x.waitingSince;
+      x.waitingSince = null;
     }
   }
 
@@ -1844,6 +1921,7 @@ export class RunEngine {
       ...base,
       managesBudget: true,
       routeBatch: (inputs) => this.#routeBatch(x, routers, inputs, needsInput),
+      once: (name, fn) => D.step(name, fn, { offload: true }),
       needsInput,
       qa: this.#d.executors.qa ?? {
         generate: async () => {

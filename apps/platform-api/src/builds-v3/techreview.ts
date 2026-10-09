@@ -49,6 +49,8 @@ export interface PlatformTechreviewOptions {
   db: Db;
   registry?: ModuleRegistry;
   milestone?: string;
+  /** V3-18: the durable read of the run (BuildHost.once) — reads that decide whether a step runs replay the same. */
+  once?: <T>(name: string, fn: () => Promise<T>) => Promise<T>;
 }
 
 /** The techreview hook of a v3 build run (builds-v3/host.ts wires it into V3Host.hooks.techreview). */
@@ -101,10 +103,14 @@ export function platformTechreviewDeps(
     builderFamilies: () => runBuilderFamilies(o.pg, host.run.id),
     request: async (r) => {
       // Once per system: a later build of the same system does not repeat the request.
-      const [seen] = await o.pg<{ n: number }[]>`
-        select count(*)::int as n from platform.development_requests d
-        where d.system_id = ${systemId} and d.quote = ${r.quote_ru}`;
-      if ((seen?.n ?? 0) > 0) return;
+      const read = o.once ?? ((_name, fn) => fn());
+      const seen = await read("v3_techreview_request_seen", async () => {
+        const [row] = await o.pg<{ n: number }[]>`
+          select count(*)::int as n from platform.development_requests d
+          where d.system_id = ${systemId} and d.quote = ${r.quote_ru}`;
+        return row?.n ?? 0;
+      });
+      if (seen > 0) return;
       await host.recordDevelopmentRequest({ category: "other", quote: r.quote_ru, offered: r.offered_ru });
     },
     ...(o.registry ? { registry: o.registry } : {}),

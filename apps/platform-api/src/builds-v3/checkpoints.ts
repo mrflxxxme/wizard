@@ -5,14 +5,28 @@
 import type { V3Checkpoint, V3CheckpointStore } from "@wizard/agents/builder";
 import type postgres from "postgres";
 
-/** Checkpoints of one system's v3 builds; `runId` marks the run that wrote a row. */
-export function pgCheckpointStore(pg: postgres.Sql, systemId: string, runId: string): V3CheckpointStore {
+/** A durable read of the run (BuildHost.once); without one — a plain call. */
+export type DurableRead = <T>(name: string, fn: () => Promise<T>) => Promise<T>;
+const plainRead: DurableRead = (_name, fn) => fn();
+
+/**
+ * Checkpoints of one system's v3 builds; `runId` marks the run that wrote a row. V3-18: `load` is a durable read — a
+ * replay after a worker restart gets the checkpoints the run started with, not the ones it saved itself since (else
+ * its stages turn «reused» and the step sequence of the workflow diverges).
+ */
+export function pgCheckpointStore(
+  pg: postgres.Sql,
+  systemId: string,
+  runId: string,
+  once: DurableRead = plainRead,
+): V3CheckpointStore {
   return {
-    load: async () => {
-      const rows = await pg<{ checkpoint: V3Checkpoint }[]>`
-        select c.checkpoint from platform.system_build_checkpoints c where c.system_id = ${systemId}`;
-      return rows.map((r) => r.checkpoint);
-    },
+    load: () =>
+      once("v3_checkpoints_load", async () => {
+        const rows = await pg<{ checkpoint: V3Checkpoint }[]>`
+          select c.checkpoint from platform.system_build_checkpoints c where c.system_id = ${systemId}`;
+        return rows.map((r) => r.checkpoint);
+      }),
     save: async (cp) => {
       await pg`
         insert into platform.system_build_checkpoints (system_id, key, checkpoint, run_id)

@@ -33,6 +33,13 @@ export interface Config {
   unsafeLocalExec: boolean;
   platformOrigin: string;
   runConcurrency: number;
+  /**
+   * V3-18: a run executing longer than this (time waiting in needs_input not counted) is stopped and finalized failed
+   * RUN_TIMEOUT (WIZARD_RUN_DEADLINE_MIN, default 45 min).
+   */
+  runDeadlineMs: number;
+  /** V3-18: a cancelled or timed-out run that does not stop by itself is finalized by force after this (default 20 s). */
+  cancelGraceMs: number;
   milestone: string;
   /** Root of .data/artifacts (deploy.yaml#local.artifacts). */
   artifactsDir: string;
@@ -357,6 +364,12 @@ const m2OrProd = (env: NodeJS.ProcessEnv, over: Partial<Config>): boolean =>
 
 export const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 
+/** Minutes of an env variable as ms; not a positive number — the default. */
+const positiveMinutes = (v: string | undefined, def: number): number => {
+  const n = Number(v);
+  return (v !== undefined && v !== "" && Number.isFinite(n) && n > 0 ? n : def) * 60_000;
+};
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env, over: Partial<Config> = {}): Config {
   const conc = Number(env.WIZARD_RUN_CONCURRENCY ?? 2);
   const mail = smtpFromEnv(env);
@@ -375,6 +388,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, over: Partial<C
     unsafeLocalExec: env.WIZARD_UNSAFE_LOCAL_EXEC === "1",
     platformOrigin: env.WIZARD_PLATFORM_ORIGIN || "http://localhost:5173",
     runConcurrency: Number.isInteger(conc) && conc > 0 ? conc : 2,
+    runDeadlineMs: positiveMinutes(env.WIZARD_RUN_DEADLINE_MIN, 45),
+    cancelGraceMs: 20_000,
     milestone: env.WIZARD_MILESTONE || "M0",
     artifactsDir: join(REPO_ROOT, ".data", "artifacts"),
     runtimePort: 4100,

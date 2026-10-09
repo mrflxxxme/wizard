@@ -5,8 +5,9 @@
 // Chromium of B2-28), «Запросы на развитие», the ready notice by e-mail and the niche memory of the art director.
 // platform-api runs it behind WIZARD_BUILD_PIPELINE=v3 (agents/executors.ts).
 import {
-  buildBlockers,
   createPageComposer,
+  erroredBlockers,
+  failedBlockers,
   type PageComposer,
   runBuildV3,
   type ScenarioCheckInput,
@@ -36,7 +37,7 @@ import type { EventType } from "../runs/events.js";
 import { type BuildHost, type BuildParams, RunFailure } from "../runs/types.js";
 import { withKeyWindow } from "../secrets-v3/agent.js";
 import { loadBrief } from "../services/plans.js";
-import { pgCheckpointStore, recentArchetypes } from "./checkpoints.js";
+import { type DurableRead, pgCheckpointStore, recentArchetypes } from "./checkpoints.js";
 import { platformCritic } from "./critic.js";
 import { liveStats, withLiveProgress } from "./progress.js";
 import { platformTechreview } from "./techreview.js";
@@ -126,8 +127,18 @@ async function passedG0(pg: postgres.Sql, runId: string, systemId: string): Prom
 }
 
 /**
+ * V3-18: a gate run once more when its blockers are only checks that could not run (status error: the browser, a
+ * timeout, a process) — the infrastructure, not the system.
+ */
+export async function gateWithRetry(run: () => Promise<GateReport>): Promise<GateReport> {
+  const r = await run();
+  return failedBlockers(r).length === 0 && erroredBlockers(r).length > 0 ? run() : r;
+}
+
+/**
  * Browser check of one brief scenario on the committed draft: G0 (it also bundles the revision for the live preview),
- * then G1 with the scenario's goal scenarios in the browser (renders only without one). Blockers are the problems.
+ * then G1 with the scenario's goal scenarios in the browser (renders only without one). Failed blockers are the
+ * problems; checks that could not run even after a retry make the check `unavailable` (V3-18: not the scenario's fault).
  */
 export async function checkScenario(
   host: BuildHost,
@@ -135,12 +146,21 @@ export async function checkScenario(
   withBrowser: boolean,
   input: ScenarioCheckInput,
 ): Promise<ScenarioCheckResult> {
-  const g0 = buildBlockers(await host.runGates("G0"));
+  const r0 = await gateWithRetry(() => host.runGates("G0"));
+  const g0 = failedBlockers(r0);
   if (g0.length) return { ok: false, problems: g0.map((c) => c.message_ru), browser: false };
-  const g1 = buildBlockers(
-    await runGates(host, provider, withBrowser, "G1", withBrowser ? input.goalScenarios : undefined),
+  const e0 = erroredBlockers(r0);
+  if (e0.length)
+    return { ok: false, problems: e0.map((c) => c.message_ru), browser: false, unavailable: true };
+  const r1 = await gateWithRetry(() =>
+    runGates(host, provider, withBrowser, "G1", withBrowser ? input.goalScenarios : undefined),
   );
-  return { ok: g1.length === 0, problems: g1.map((c) => c.message_ru), browser: withBrowser };
+  const g1 = failedBlockers(r1);
+  if (g1.length) return { ok: false, problems: g1.map((c) => c.message_ru), browser: withBrowser };
+  const e1 = erroredBlockers(r1);
+  if (e1.length)
+    return { ok: false, problems: e1.map((c) => c.message_ru), browser: withBrowser, unavailable: true };
+  return { ok: true, problems: [], browser: withBrowser };
 }
 
 /** The ready notice (D77 (10)): one letter per run to the one who started the build, with the link to the system. */
@@ -204,12 +224,14 @@ export async function buildByBrief(
   const composer = o.composer ?? createPageComposer();
   const systemId = host.run.systemId;
   const provider = o.browser ?? null;
+  // V3-18: reads that steer the stages are durable (BuildHost.once): a replay after a worker restart takes the same path.
+  const once: DurableRead = host.once ? (name, fn) => (host.once as DurableRead)(name, fn) : (_n, fn) => fn();
   // The browser starts here (once per process): the build knows before its stages whether scenarios run in it.
-  const withBrowser = provider ? await provider.available() : false;
+  const withBrowser = provider ? await once("v3_browser", () => provider.available()) : false;
   const current = await host.store.getSpec();
-  const cap = await runCapRub(o.pg, host.run.id);
+  const cap = await once("v3_run_cap", () => runCapRub(o.pg, host.run.id));
   // V3-18: the owner's first words about the business — the skeleton's heading, lead and SEO read them.
-  const request = await loadBrief(o.db, systemId);
+  const request = await once("v3_request", () => loadBrief(o.db, systemId));
   const v3: V3Host = {
     route: host.route,
     runStep: host.runStep,
@@ -217,20 +239,25 @@ export async function buildByBrief(
     signal: host.signal,
     run: { id: host.run.id },
     systemId,
-    brief: async () => {
-      const v = await getLatestBrief(o.db, systemId);
-      return v ? { version: v.version, brief: v.brief } : null;
-    },
-    checkpoints: pgCheckpointStore(o.pg, systemId, host.run.id),
+    brief: () =>
+      once("v3_brief", async () => {
+        const v = await getLatestBrief(o.db, systemId);
+        return v ? { version: v.version, brief: v.brief } : null;
+      }),
+    checkpoints: pgCheckpointStore(o.pg, systemId, host.run.id, once),
     currentSpec: () => host.store.getSpec(),
     commit: (input) => host.store.commitCompiled(input),
     runGates: async (level, ov) =>
-      (level === "G0" ? await passedG0(o.pg, host.run.id, systemId) : null) ??
+      (level === "G0" ? await once("v3_passed_g0", () => passedG0(o.pg, host.run.id, systemId)) : null) ??
       runGates(host, provider, withBrowser, level, ov?.goalScenarios),
     composer,
     preview: async () => {
-      const blockers = buildBlockers(await host.runGates("G0"));
-      return { ok: blockers.length === 0, problems: blockers.map((c) => c.message_ru) };
+      const r = await gateWithRetry(() => host.runGates("G0"));
+      const failed = failedBlockers(r);
+      const errored = erroredBlockers(r);
+      if (failed.length) return { ok: false, problems: failed.map((c) => c.message_ru) };
+      if (errored.length) return { ok: false, problems: errored.map((c) => c.message_ru), unavailable: true };
+      return { ok: true, problems: [] };
     },
     checkScenario: (input) => checkScenario(host, provider, withBrowser, input),
     goalBrowser: withBrowser,
@@ -249,6 +276,7 @@ export async function buildByBrief(
       techreview: platformTechreview(host, {
         pg: o.pg,
         db: o.db,
+        once,
         ...(o.registry ? { registry: o.registry } : {}),
       }),
       ...o.hooks,
@@ -261,7 +289,7 @@ export async function buildByBrief(
         { runId: host.run.id, systemId, platformOrigin: o.platformOrigin, notice },
         o.log,
       ),
-    recentArchetypes: (niche) => recentArchetypes(o.pg, systemId, niche),
+    recentArchetypes: (niche) => once("v3_recent_archetypes", () => recentArchetypes(o.pg, systemId, niche)),
     // V3-20: the brief's integrations (stored contracts: mock until the key check, then live) over the backend;
     // V3-21: window keys stay within their hosts, and the agent opens key windows for the keys still missing.
     integrations: withKeyWindow(integrationsBuildHook(o.pg, systemId), {

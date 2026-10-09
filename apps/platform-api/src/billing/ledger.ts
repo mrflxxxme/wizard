@@ -76,6 +76,9 @@ export const REFUND_CODES: ReadonlySet<string> = new Set([
   "WORKER_RESTARTED",
   "LLM_UNAVAILABLE",
   "MIGRATION_FAILED",
+  // V3-18: a check that could not run and a run past its deadline are the platform's failures too.
+  "CHECKS_UNAVAILABLE",
+  "RUN_TIMEOUT",
 ]);
 
 export const fmtCredits = (milli: number): string =>

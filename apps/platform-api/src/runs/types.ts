@@ -83,6 +83,11 @@ export interface BuildHost
   needsInput(req: InputRequest | SecretInputRequest): Promise<InputAnswer & { secretRef?: string }>;
   /** One budget check (Σ upperBoundCredits) and one durable step llm_batch:<steps> for a wave of calls. */
   routeBatch(inputs: HostRouteInput[]): Promise<RouteBatchItem[]>;
+  /**
+   * V3-18: a durable read — a step whose result is kept by reference and replayed after a worker restart (DBOS), so a
+   * read of state the run itself changes (checkpoints, the brief) takes the same path on replay.
+   */
+  once?<T>(name: string, fn: () => Promise<T>): Promise<T>;
   managesBudget: true;
   /**
    * B2-21: stage checkpoints of a build by a system plan (platform.system_plans.checkpoints of params.plan.revision);

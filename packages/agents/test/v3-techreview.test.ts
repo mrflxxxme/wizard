@@ -145,6 +145,45 @@ describe("V3-15 techreview: the deterministic part", () => {
     expect(status("TR-INT-mail")).toBe("pass");
   }, 120_000);
 
+  test("V3-18: a gate check that could not run (error) is run once more before it counts as a blocker", async () => {
+    const calls: string[] = [];
+    const errored = (level: "G0" | "G2"): GateReport => ({
+      level,
+      passed: false,
+      specVersion: 0,
+      startedAt: "2026-10-09T00:00:00.000Z",
+      durationMs: 1,
+      checks: [
+        { id: "G0-TS-01", status: "error", severity: "blocker", message_ru: "Не удалось проверить: таймаут" },
+      ],
+      summary: { pass: 0, fail: 0, warn: 0, skip: 0, error: 1 },
+    });
+    const flaky = (fails: number) => async (level: "G0" | "G2", s: Parameters<typeof localGates>[1]) => {
+      calls.push(level);
+      return level === "G0" && calls.filter((l) => l === "G0").length <= fails
+        ? errored(level)
+        : localGates(level, s);
+    };
+    const system = { spec: ctx.spec, files: ctx.files };
+    const once = await deterministicChecks(system, {
+      plan: ctx.plan,
+      reference,
+      evidence: [],
+      gates: flaky(1),
+    });
+    expect(calls.filter((l) => l === "G0")).toHaveLength(2);
+    expect(once.find((c) => c.id === "G0-TS-01")?.status).toBe("pass");
+    calls.length = 0;
+    const still = await deterministicChecks(system, {
+      plan: ctx.plan,
+      reference,
+      evidence: [],
+      gates: flaky(2),
+    });
+    expect(calls.filter((l) => l === "G0")).toHaveLength(2);
+    expect(still.find((c) => c.id === "G0-TS-01")).toMatchObject({ status: "fail", severity: "blocker" });
+  }, 120_000);
+
   test("a chain link the build lost, or one pointing at a missing channel or function, is a blocker", () => {
     const spec = structuredClone(ctx.spec) as AppSpec;
     spec.workflows = (spec.workflows ?? []).filter((w) => w.name !== "lead_notify");

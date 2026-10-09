@@ -99,6 +99,8 @@ export {
   WRITE_PATH_RE,
 } from "./tools.js";
 export type * from "./types.js";
+/** V3-18: gate blockers split into checks the system failed and checks that could not run (infrastructure). */
+export { erroredBlockers, failedBlockers } from "./v2/blockers.js";
 /** B2-23: custom code of the plan's custom parts on top of the compiled draft, within the limits; failures isolated. */
 export {
   buildCustom,
@@ -295,7 +297,14 @@ export {
   type V3StopReason,
 } from "./v3/harness/types.js";
 export { milliRub, V3BudgetError, V3Wallet } from "./v3/harness/wallet.js";
-export { OWNER_INPUT_NOTE_RU, runBuildV3, stopMessage } from "./v3/run.js";
+export {
+  CHECKS_UNAVAILABLE_RU,
+  OWNER_INPUT_NOTE_RU,
+  runBuildV3,
+  stopMessage,
+  V3_RULES_FINGERPRINT,
+  V3_RULES_VERSION,
+} from "./v3/run.js";
 /**
  * V3-15 techreview (builder-v3.md C6 stage 7, D77 (10)): createTechreview(deps) — the hook of stage techreview: the
  * deterministic part first (G0 and the static G2 on the uncommitted system, the migration dry run, RLS, ПДн, integration

@@ -18,3 +18,11 @@ export function buildBlockers(r: GateReport): GateReport["checks"] {
       !(r.level === "G2" && OWNER_INPUT_CHECKS.has(c.id)),
   );
 }
+
+/** V3-18: blockers the system really failed (status fail) — not a check that could not run. */
+export const failedBlockers = (r: GateReport): GateReport["checks"] =>
+  buildBlockers(r).filter((c) => c.status === "fail");
+
+/** V3-18: blocker checks that could not run (status error: browser, timeout, process) — infrastructure, not the system. */
+export const erroredBlockers = (r: GateReport): GateReport["checks"] =>
+  buildBlockers(r).filter((c) => c.status === "error");
