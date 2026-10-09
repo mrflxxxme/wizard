@@ -370,7 +370,28 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
       (s) => s.name === `Pilot (${gh("inputs.command")})`,
     ).run;
     expect(run).toContain(
-      'v3-probe) node tools/deploy/pilot.mjs v3-probe --env "$DEPLOY_ENV" --wave "$EVAL_WAVE" --purpose "$EVAL_PURPOSE" --hypothesis "$EVAL_HYPOTHESIS" --expect-rub "$EVAL_EXPECT_RUB" --cap-rub "$EVAL_CAP_RUB" --founder-ok "$EVAL_FOUNDER_OK"',
+      'v3-probe) node tools/deploy/pilot.mjs v3-probe --env "$DEPLOY_ENV" --wave "$EVAL_WAVE" --purpose "$EVAL_PURPOSE" --hypothesis "$EVAL_HYPOTHESIS" --expect-rub "$EVAL_EXPECT_RUB" --cap-rub "$EVAL_CAP_RUB" --founder-ok "$EVAL_FOUNDER_OK" --shape "$PROBE_SHAPE"',
+    );
+    // The shape probe: one more field of the form (empty — the route probe), checked before any secret, for
+    // v3-probe only; it reaches the script as an environment variable.
+    expect(inputs.probe_shape).toMatchObject({ type: "string", default: "" });
+    expect(pr.doc.jobs.pilot.with.probe_shape).toBe(gh("inputs.probe_shape"));
+    const reusable = load("pilot-reusable.yml").doc;
+    expect(load("pilot-reusable.yml").on.workflow_call.inputs.probe_shape).toMatchObject({
+      type: "string",
+      default: "",
+    });
+    expect(reusable.jobs.pilot.env.PROBE_SHAPE).toBe(gh("inputs.probe_shape"));
+    expect(reusable.jobs.authorize.steps[0].env.PROBE_SHAPE).toBe(gh("inputs.probe_shape"));
+    for (const v of ["critic", "techreview", "critic,techreview", "techreview,critic"])
+      expect(authorize({ ...ok, PROBE_SHAPE: v }).code, v).toBe(0);
+    for (const v of ["page", "critic;curl x", "critic,", "critic,techreview,critic"]) {
+      const r = authorize({ ...ok, PROBE_SHAPE: v });
+      expect(r.code, v).toBe(1);
+      expect(r.out, v).toContain("probe_shape — critic, techreview или critic,techreview");
+    }
+    expect(authorize({ COMMAND: "deploy", CONFIRM: "PROD", PROBE_SHAPE: "critic" }).out).toContain(
+      "probe_shape — только для v3-probe",
     );
   });
 
@@ -385,7 +406,7 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     const job = doc.jobs.pilot;
     expect(job["timeout-minutes"]).toBe(
       gh(
-        "inputs.command == 'check' && 5 || inputs.command == 'eval' && 330 || inputs.command == 'v3-probe' && 30 || 90",
+        "inputs.command == 'check' && 5 || inputs.command == 'eval' && 330 || inputs.command == 'v3-probe' && inputs.probe_shape != '' && 90 || inputs.command == 'v3-probe' && 30 || 90",
       ),
     );
     const step = (k) => job.steps.find((s) => s.name === k || s.uses?.startsWith(k));

@@ -22,7 +22,10 @@
 //        WIZARD_BUILD_PIPELINE_ORGS=eval on the server, checked before anything is spent)
 //   node tools/deploy/pilot.mjs v3-probe --env … --wave A --purpose … --hypothesis … --expect-rub 5 --cap-rub 30
 //        V3-18: one minimal real call per v3 callType route head through the server's gateway (worker pod, usage of an
-//        eval org in platform.llm_calls): status, model served, tier, scrub, latency, ₽; cap ≤ 30 ₽, pre-registered
+//        eval org in platform.llm_calls): status, model served, tier, scrub, latency, ₽; cap ≤ 30 ₽, pre-registered.
+//        --shape critic,techreview: the production request shapes of critic_visual / techreview on synthetic content,
+//        model by model of the chain, with variants of analysis and the provider's own words on a refusal
+//        (tools/eval/server/probe-shape.mjs)
 //   node tools/deploy/pilot.mjs close-access --env …             removes temporary SSH rules (workflow `always()`)
 //   node tools/deploy/pilot.mjs show-secrets --env …             founder's laptop only: prints the decrypted bundle
 // The heavy lifting is tools/deploy/infra.mjs (main with deps.hooks); this file only adds what the founder used to do
@@ -45,6 +48,14 @@ import {
   probeSpendSql,
   renderProbeReport,
 } from "../eval/server/probe.mjs";
+import {
+  expectedShapeRub,
+  parseShapeGroups,
+  parseShapeOutput,
+  renderShapeReport,
+  shapeAnnotations,
+  shapeScript,
+} from "../eval/server/probe-shape.mjs";
 import { githubProgress, progressText } from "../eval/server/progress.mjs";
 import { evaluate, photosAnnotation, renderReport } from "../eval/server/report.mjs";
 import { previewScreenshots } from "../eval/server/screenshots.mjs";
@@ -173,6 +184,8 @@ export function parseArgs(argv) {
     else if (a === "--tag") o.tag = rest[++i] ?? null;
     else if (command === "eval" && a === "--briefs") o.briefs = rest[++i] || "all";
     else if (command === "eval" && a === "--threshold") o.threshold = rest[++i] || "d76";
+    // V3-18: the shape probe (production request shapes per model of the chain); empty — the route probe.
+    else if (command === "v3-probe" && a === "--shape") o.shape = parseShapeGroups(rest[++i] ?? "");
     else if (PAID.includes(command) && SPEND_FLAGS[a]) spend[SPEND_FLAGS[a]] = rest[++i] ?? "";
     else throw new Error(`unknown argument ${a}`);
   }
@@ -182,6 +195,7 @@ export function parseArgs(argv) {
     if (o.spend.capRub > PROBE_MAX_CAP_RUB)
       throw new Error(`v3-probe: потолок пробы — не больше ${PROBE_MAX_CAP_RUB} ₽ (cap_rub)`);
     o.maxCostRub = o.spend.capRub;
+    if (!o.shape) delete o.shape;
   }
   if (command === "eval") {
     o.briefs ??= "all";
@@ -1724,6 +1738,126 @@ export async function pilotV3Probe({
 }
 
 /**
+ * `v3-probe --shape` (V3-18): the shape probe (tools/eval/server/probe-shape.mjs) the way the route probe runs — an
+ * eval org, the script in the worker pod over stdin (the request content travels inside it), the exact ₽ from the
+ * database; the report, the summary, the annotations (one per call type and model) and the entry for the spend
+ * journal. Exit 0 — every build shape worked, 1 — not (the variants say why).
+ */
+export async function pilotV3Shape({
+  o,
+  vars,
+  journal = null,
+  log,
+  now,
+  rand,
+  outDir,
+  inCluster,
+  fake = false,
+  fakeFail = [],
+}) {
+  const sp = o.spend;
+  const runid = newRunId(now(), rand);
+  const session = newEvalSession(rand);
+  mask([session.token, session.csrf], vars, log);
+  const registered = `волна ${sp.wave}, ожидаем ${sp.expectRub} ₽, потолок ${sp.capRub} ₽${sp.founderOk ? " («да» основателя)" : ""} — цель: ${sp.purpose}; гипотеза: ${sp.hypothesis}`;
+  log(`::notice title=Журнал трат v3::${registered}`);
+  const e = expectedShapeRub({ groups: o.shape });
+  log(
+    `проба формы запросов v3 ${runid} (${o.shape.join(", ")}): ожидаемо ≈ ${e.base} ₽, если формы как в сборке проходят; с вариантами разбора — до ≈ ${e.worst} ₽; потолок ${sp.capRub} ₽`,
+  );
+  let probe = { results: [], total: null };
+  let exact = null;
+  let orgId = null;
+  const code = await inCluster(async ({ kubectl }) => {
+    const seed = parseSeedOutput(
+      psqlInPod(
+        kubectl,
+        seedSql({
+          runid,
+          domain: vars.WIZARD_PLATFORM_DOMAIN,
+          tokenHash: session.tokenHash,
+          csrfHash: session.csrfHash,
+          credits: evalCredits(sp.capRub),
+          label: "V3",
+        }),
+      ),
+    );
+    orgId = seed.orgId;
+    psqlInPod(kubectl, revokeSql({ tokenHash: session.tokenHash }));
+    log(`организация пробы: ${orgId} (служебная, вид eval)`);
+    const r = kubectl(["-n", PLATFORM_NS, "exec", "-i", "deploy/wizard-worker", "--", ...PROBE_IN_POD], {
+      input: shapeScript({ orgId, capRub: sp.capRub, groups: o.shape, fake, fakeFail }),
+      capture: true,
+      allowFail: true,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    probe = parseShapeOutput(r.stdout);
+    if (r.status !== 0 || !probe.total) {
+      const why = String(r.stderr ?? "")
+        .split("\n")
+        .find((l) => /Error|ошибк/i.test(l));
+      log(
+        `::warning title=V3 форма::скрипт пробы в поде worker завершился с кодом ${r.status}${why ? `: ${why.trim().slice(0, 200)}` : ""}`,
+      );
+    }
+    try {
+      exact = Number(String(psqlInPod(kubectl, probeSpendSql({ orgId }))).match(/probe_rub=([\d.]+)/)?.[1]);
+    } catch (err) {
+      log(`::warning::расход пробы из базы: ${err.message}`);
+    }
+    return 0;
+  });
+  if (code !== 0) return code;
+  const date = moscowDate(now());
+  const unrecorded = Number(probe.total?.unrecordedRub ?? 0);
+  const notes = [
+    `Организация пробы \`${orgId}\` (вид eval): вызовы и прямые вызовы разбора записаны в журнал вызовов моделей и входят в бюджет v3.`,
+    Number.isFinite(exact)
+      ? `Расход по журналу вызовов моделей: ${exact} ₽.`
+      : "Расход из базы прочитать не удалось — в отчёте сумма по записям пробы.",
+    ...(unrecorded > 0
+      ? [
+          `Ещё ≈ ${unrecorded} ₽ — оценка ответов, которые шлюз отверг как NETWORK/EMPTY_RESPONSE (провайдер мог их выставить, в журнале 0 ₽); потолок их учитывал.`,
+        ]
+      : []),
+  ];
+  const report = renderShapeReport(probe, {
+    date,
+    platform: `https://${vars.WIZARD_PLATFORM_DOMAIN}`,
+    notes,
+  });
+  const summary = {
+    ...report.summary,
+    ...(Number.isFinite(exact) ? { costRub: exact, costExact: true } : {}),
+  };
+  const spend = evalSpend({
+    spend: sp,
+    journal,
+    runid,
+    summary,
+    stopped: probe.total?.stopped ?? null,
+    now,
+    verdict: `форма: как в сборке прошли ${summary.prodOk} из ${summary.prodTotal} моделей, вариантов годны ${summary.ready} из ${summary.total}`,
+  });
+  const text = `${report.text}\n${spend.text}`;
+  mkdirSync(outDir, { recursive: true });
+  writeFileSync(join(outDir, `v3-shape-${date}-${runid}.md`), text);
+  writeFileSync(
+    join(outDir, `v3-shape-${date}-${runid}.json`),
+    `${JSON.stringify({ runid, orgId, ...probe, exactRub: exact }, null, 2)}\n`,
+  );
+  writeFileSync(join(outDir, "spend-entry.json"), `${JSON.stringify(spend.entry, null, 2)}\n`);
+  log(text);
+  if (vars.GITHUB_STEP_SUMMARY) appendFileSync(vars.GITHUB_STEP_SUMMARY, `${text}\n`);
+  for (const line of shapeAnnotations(probe.results ?? [])) log(line);
+  log(`::notice title=Траты v3::${spend.line}`);
+  log(
+    `::${summary.passed ? "notice" : "error"} title=V3 форма::Как в сборке прошли ${summary.prodOk} из ${summary.prodTotal} моделей, вариантов годны ${summary.ready} из ${summary.total}; ${Number.isFinite(exact) ? `${exact} ₽ по журналу` : `≈ ${summary.costRub} ₽`}${unrecorded > 0 ? ` + ≈ ${unrecorded} ₽ вне журнала` : ""}${probe.total?.stopped ? `; остановлена: ${probe.total.stopped}` : ""}`,
+  );
+  return summary.passed ? 0 : 1;
+}
+
+/**
  * V3-01: the spend section of a measurement report — «потрачено X ₽ из плана Y ₽ волны …» with this run added to its
  * wave in the journal, the run's pre-registration against its outcome, the platform's eval spend since the start of
  * the v3 budget (`v3Server` — collectSql) and the entry for the journal (spend.mjs register --entry).
@@ -2250,6 +2384,19 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
       exists: deps.exists,
       sleep: deps.sleep,
       fetch: deps.fetch,
+    });
+  if (o.command === "v3-probe" && o.shape)
+    return pilotV3Shape({
+      o,
+      vars,
+      journal,
+      log,
+      now,
+      rand,
+      outDir: join(vars.RUNNER_TEMP || deps.tmpRoot || tmpdir(), `wizard-eval-${o.env}`),
+      inCluster,
+      fake: deps.probeFake === true,
+      fakeFail: deps.probeShapeFail ?? [],
     });
   if (o.command === "v3-probe")
     return pilotV3Probe({
