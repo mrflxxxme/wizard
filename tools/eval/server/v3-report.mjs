@@ -139,6 +139,7 @@ export function evaluateV3(doc, db = {}) {
       ...criticOf(stageMetric("critic")?.note),
       status: stageMetric("critic")?.status ?? hooks.critic?.status ?? null,
       note: stageMetric("critic")?.note ?? null,
+      notes: hooks.critic?.notes ?? [],
     };
     const skeletonTemplate = hooks.skeleton?.template ?? null;
     const template = {
@@ -375,11 +376,14 @@ export function renderV3Report(doc, db = {}, meta = {}) {
     if (x.techreview.status || x.techreview.blockers.length) {
       L.push(`- Техревью: ${x.techreview.verdict}${x.techreview.note ? ` (${x.techreview.note})` : ""}.`);
       for (const bl of x.techreview.blockers) L.push(`  - блокер: ${bl}`);
+      for (const n of x.techreview.notes.slice(0, 5)) L.push(`  - ${n}`);
     }
-    if (x.critic.status)
+    if (x.critic.status) {
       L.push(
         `- Критик: ${x.critic.status === "skipped" ? "пропущен (нет браузера или бюджета этапа)" : `оценка ${x.critic.scores.length ? x.critic.scores.join(" → ") : "—"}, циклов ${x.critic.cycles ?? "—"}`}${x.critic.note && x.critic.status !== "done" ? ` (${x.critic.note})` : ""}.`,
       );
+      for (const n of x.critic.notes.slice(0, 3)) L.push(`  - ${n}`);
+    }
     if (x.template.status === "skipped" && x.template.similarity === null)
       L.push("- Гейт шаблонности: пропущен (нет браузера для снимков сайта).");
     else if (x.template.status || x.template.similarity !== null)
