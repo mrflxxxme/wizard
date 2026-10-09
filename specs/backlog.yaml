@@ -3808,8 +3808,8 @@ tasks:
     owner: qa
     parallel_group: v3-a
     estimate_days: 2
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "Скриншоты в Playwright; критик (Qwen3-VL на T0 или GLM-V на T1 по D45 и D62) возвращает правки JSON по рубрике из design-agent-catalog; ≤ 3 цикла, ≤ 40 ₽"
       - "Детерминированные проверки без модели: контраст, переполнение, загрузка шрифтов, CLS"
@@ -3822,8 +3822,8 @@ tasks:
     owner: qa
     parallel_group: v3-a
     estimate_days: 1.5
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "Метрика без платной модели (структура DOM + pHash скриншотов); память последних сборок ниши; превышение порога возвращает сборку к арт-директору с другим архетипом (тест)"
 
@@ -3835,8 +3835,8 @@ tasks:
     owner: qa
     parallel_group: v3-a
     estimate_days: 3
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "Детерминированная часть: сборка и типы, пробный прогон миграций, RLS и ПДн, контрактные тесты интеграций, сквозные цепочки между модулями (заявка → сделка → уведомление ответственному), производительность и доступность"
       - "Ревьюер на модели другого семейства, чем сборщик: связность данных между модулями, права, обработка ошибок, краевые случаи; ≤ 2 раундов исправлений; блокеры → система не публикуется (тест на записанных ответах)"
@@ -3864,8 +3864,8 @@ tasks:
     owner: frontend
     parallel_group: v3-a
     estimate_days: 2
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "На холсте — растущая система, чек-лист сценариев брифа, оставшееся время; технические детали под «Подробнее»"
       - "Можно уйти со страницы: прогресс восстанавливается при возврате; уведомление о готовности (браузерный тест)"
@@ -3904,7 +3904,7 @@ tasks:
     owner: founder
     parallel_group: v3-a
     estimate_days: 0.1
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Секрет YANDEX_SEARCH_API_KEY и folder id в GitHub Secrets; без ключа V3-05 работает в режиме чтения известных адресов"
@@ -3917,8 +3917,8 @@ tasks:
     owner: platform
     parallel_group: v3-b
     estimate_days: 4
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "Документация → контракт (подмножество OpenAPI 3.1, сопоставление полей, разрешённые хосты, secret://) → типизированный клиент → мок и контрактные тесты → проверка ключом; контракт хранится в брифе"
       - "Функции интеграций получают egress только к хостам контракта (D37); без ключа сборка идёт на моке, интеграция включается после ключа"
@@ -3974,8 +3974,8 @@ tasks:
     owner: frontend
     parallel_group: v3-b
     estimate_days: 3
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "Модуль «Контент и блог»: страницы, статьи, рубрики; владелец пишет и публикует из кабинета; sitemap и robots"
       - "Многостраничная навигация на паттернах библиотеки; G1 и сценарии в браузере"
@@ -3988,8 +3988,8 @@ tasks:
     owner: platform
     parallel_group: v3-c
     estimate_days: 3
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "У каждой системы — git-репозиторий в хранилище платформы; ревизия = коммит; структура: бриф, спека, ui, functions, токены, тесты, AGENTS.md"
       - "Сборка и публикация не зависят от внешнего git (тест без сети)"
@@ -4032,8 +4032,8 @@ tasks:
     owner: platform
     parallel_group: v3-c
     estimate_days: 3
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "Ключ хранится в конвертном шифровании (OpenBao Transit), видны последние 4 символа, есть проверочный вызов и отзыв; ключ не попадает в логи и тексты ошибок (тест)"
       - "Провайдеры, принимающие запросы из РФ, — напрямую; для блокирующих РФ — адрес шлюза пользователя (OpenAI-совместимый); своих обходов геоблокировок нет"
