@@ -30,7 +30,7 @@ import type {
   SystemPlanRevision,
   SystemView,
 } from "../../api/types.js";
-import { canEdit, usePlatform } from "../../app/context.js";
+import { canEdit, canOwn, usePlatform } from "../../app/context.js";
 import { AppLink } from "../../components/v2/Shell.js";
 import { openSupport } from "../../features/support/SupportWidget.js";
 import { canvas } from "../../i18n/ru/canvas.js";
@@ -41,7 +41,7 @@ import { subscribeRun } from "../../run/stream.js";
 import { useCanvasBrief } from "../brief/CanvasBrief.js";
 import { briefRu } from "../brief/ru.js";
 import { useBriefUpload } from "../v3/BriefUpload.js";
-import { lastReportRun, useV3Live } from "../v3/build/index.js";
+import { LivePreview, lastReportRun, useV3Live } from "../v3/build/index.js";
 import { useKeyWindows } from "../v3/keys/index.js";
 import { publishRu, publishRunState, V3PublishCard } from "../v3/publish/index.js";
 import { DELEGATE_OPTION_ID, v3Question } from "../v3/question.js";
@@ -95,6 +95,8 @@ const XRAY_AUTO = { from: 0.3, to: 0.7 } as const;
 const THEME_KEY = "wz.canvas.theme";
 const NO_EVENTS: RunEvent[] = [];
 const TOUCH_MS = 1800;
+/** api.yaml postAnswers: an answer in own words is at most this long (longer — refused before the request). */
+const ANSWER_MAX = 500;
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : ru.errors.generic);
 
@@ -159,6 +161,8 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
   const [publishRunId, setPublishRunId] = useState<string | null>(null);
   const [events, setEvents] = useState<RunEvent[]>([]);
   const [answers, setAnswers] = useState<LocalAnswerRow[]>([]);
+  /** V3-18: the last chat turn sent (answers or a message) — «Повторить» of a failed turn sends it again. */
+  const retryTurn = useRef<(() => Promise<unknown>) | null>(null);
   const [sent, setSent] = useState<string[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -271,6 +275,8 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
         }
       }
       if (e.type === "run_finished" || e.type === "run_failed") {
+        // V3-18: a failed turn leaves its question pending — it is asked again, not hidden by the answer given.
+        if (e.type === "run_failed") setAnswers([]);
         setSent([]);
         setManualXray(null);
         void reload().catch(() => {});
@@ -308,12 +314,19 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
 
   const runKind = events.find((e) => e.type === "run_started")?.payload.kind;
   const progress = useMemo(() => buildProgress(runKind === "build" ? events : []), [runKind, events]);
+  const role = roleIn(view.system.orgId);
+  const editable = canEdit(role, auth);
+  // V3-18: «Остановить сборку» of the followed build (POST /runs/:id/cancel), for those who may edit the system.
+  const stopBuild = useCallback(async () => {
+    if (runId) await api.cancelRun(runId);
+  }, [api, runId]);
   // V3-17: the live v3 build from the structured progress of the run's events (main, ready dock, toast, time).
   const v3live = useV3Live({
     systemId,
     name: view.system.name,
     events: runKind === "build" ? events : NO_EVENTS,
     announce,
+    ...(runKind === "build" && editable ? { onStop: stopBuild } : {}),
   });
   // V3-06: «потрачено X ₽ из Y» while a build runs — the v3 progress, else the harness v3 lines.
   const spend = runKind === "build" ? (v3live.spend ?? spentLine(events)) : null;
@@ -328,7 +341,9 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
   const keys = useKeyWindows({
     systemId,
     enabled: brief.available,
-    editable: canEdit(roleIn(view.system.orgId), auth),
+    editable,
+    // V3-18: prod keys are the owner's (the server answers NOT_OWNER); unknown role — the server decides.
+    ...(role ? { owner: canOwn(role) } : {}),
     live: runActive,
     refresh: `${view.messages.length}:${stage}:${runActive}`,
     composer: text,
@@ -344,7 +359,20 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
     if (questions.some((q) => v3Question(q) !== null)) setAnswers([]);
   }, [qKey]);
   const qIndex = answers.length;
-  const question = stage === "interview" && !thinking ? questions[qIndex] : undefined;
+  // V3-18: a pending question is asked at any stage (the edit loop of a built v3 system asks too), not during a build.
+  const question = !thinking && stage !== "building" ? questions[qIndex] : undefined;
+  // V3-18: a chat turn that failed says why and offers to send it again (a build or a publication say it themselves).
+  const failedEvent = events.find((e) => e.type === "run_failed");
+  const turnFailure =
+    failedEvent && runKind !== "build" && !publishing
+      ? {
+          text:
+            typeof failedEvent.payload.message_ru === "string" && failedEvent.payload.message_ru
+              ? failedEvent.payload.message_ru
+              : canvas.chat.turnFailed,
+          retry: failedEvent.payload.retryable !== false ? retryTurn.current : null,
+        }
+      : null;
   const localAnswers = useMemo<LocalAnswer[]>(
     () => answers.map((a) => ({ ...(a.module ? { module: a.module } : {}), label: a.label })),
     [answers],
@@ -476,24 +504,38 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
     }
   }
 
-  async function submitAnswers(rows: LocalAnswerRow[], rest = false) {
+  async function submitAnswers(rows: LocalAnswerRow[], rest = false): Promise<boolean> {
     const r = await act("answers", () =>
       api.postAnswers(systemId, {
         answers: rows.map((a) => a.answer),
         ...(rest ? { restByRecommendation: true } : {}),
       }),
     );
-    if (!r) return;
+    if (!r) return false;
+    retryTurn.current = () => submitAnswers(rows, rest);
     setRunId(r.run.id);
     await reload().catch(() => {});
+    return true;
   }
 
-  function answer(q: GoalQuestion, a: Answer, label: string) {
+  /** An answer to the question; `typed` — the own words from the composer, put back if the answer is refused. */
+  function answer(q: GoalQuestion, a: Answer, label: string, typed?: string) {
+    const before = answers;
     const rows = [...answers, { answer: a, label, ...(q.module ? { module: q.module } : {}) }];
     setAnswers(rows);
     setSent((x) => [...x, label]);
     announce(canvas.chat.answered(label));
-    if (rows.length >= questions.length) void submitAnswers(rows);
+    if (rows.length < questions.length) return;
+    void submitAnswers(rows).then((ok) => {
+      if (ok) return;
+      // V3-18: the answer did not go — the question comes back, and the own words return to the composer.
+      setAnswers(before);
+      setSent((x) => {
+        const i = x.lastIndexOf(label);
+        return i < 0 ? x : [...x.slice(0, i), ...x.slice(i + 1)];
+      });
+      if (typed !== undefined) setText((cur) => cur || typed);
+    });
   }
 
   /**
@@ -556,8 +598,13 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
     if (keys.intercept(value)) return;
     if (question) {
       if (question.allowCustom === false) return;
+      if (value.length > ANSWER_MAX) {
+        setError(canvas.chat.answerTooLong(value.length, ANSWER_MAX));
+        return;
+      }
+      setError(null);
       setText("");
-      answer(question, { questionId: question.id, text: value }, value);
+      answer(question, { questionId: question.id, text: value }, value, t);
       return;
     }
     // A wish with the label of the picked block goes to the planner about that block (B2-29).
@@ -571,13 +618,20 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
           ...(typeof idx === "number" ? { sectionIndex: idx } : {}),
         }
       : undefined;
-    const r = await act("message", () => api.postMessage(systemId, value, block ? { block } : {}));
-    if (!r) return;
-    setText("");
-    setUndo(null);
-    setSent((x) => [...x, target ? canvas.pick.wish(target.title, value) : value]);
-    setRunId(r.run.id);
-    await reload().catch(() => {});
+    const said = target ? canvas.pick.wish(target.title, value) : value;
+    const post = async (first: boolean): Promise<void> => {
+      const r = await act("message", () => api.postMessage(systemId, value, block ? { block } : {}));
+      if (!r) return;
+      retryTurn.current = () => post(false);
+      if (first) {
+        setText("");
+        setUndo(null);
+      }
+      setSent((x) => [...x, said]);
+      setRunId(r.run.id);
+      await reload().catch(() => {});
+    };
+    await post(true);
   }
 
   async function approve() {
@@ -703,7 +757,7 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
         </p>
       </div>
     );
-  } else if (stage === "interview" && question) {
+  } else if (question) {
     // V3-03: a v3 question has «Почему советуем», «Решите за меня» and «Дальше решай сам» as its own buttons.
     const q3 = v3Question(question);
     dock = (
@@ -896,12 +950,25 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
   }
 
   // V3-17: after a v3 build the chat says «Система готова» and leads to the system (its live preview).
-  if (v3live.ready && ready && readyCard && !selected && !failure) dock = v3live.ready;
+  if (v3live.ready && ready && readyCard && !selected && !failure && !question) dock = v3live.ready;
+  // V3-18: the agent's reply to a wish about a built system stays in sight above the publication card.
+  const lastMessage = messages[messages.length - 1];
+  const lastReply =
+    lastMessage?.role === "assistant" && lastMessage.kind === "text" && lastMessage.text
+      ? lastMessage.text
+      : null;
   // V3-19: a built v3 system — what stops the publication, the owner's data, «Опубликовать», the site and the cabinet.
-  if (brief.available && (ready || (publishing && stage === "ready")) && !selected && !failure)
+  if (brief.available && (ready || (publishing && stage === "ready")) && !selected && !failure && !question)
     dock = (
       <>
         {ready && readyCard ? v3live.ready : null}
+        {lastReply && (
+          <ol className={s.recent} data-testid="canvas-last-reply">
+            <li>
+              <ChatMessage from="ai">{lastReply}</ChatMessage>
+            </li>
+          </ol>
+        )}
         <V3PublishCard
           systemId={systemId}
           view={view}
@@ -912,7 +979,29 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
             setRunId(run.id);
           }}
           onChanged={() => void reload().catch(() => {})}
+          {...(editable ? { onFix: () => void retry(), fixing: busy === "fix" } : {})}
         />
+      </>
+    );
+  // V3-18: a chat turn that failed — its reason and «Повторить» above whatever the dock shows.
+  if (turnFailure)
+    dock = (
+      <>
+        <div className={s.fail} role="alert" data-testid="canvas-turn-failed">
+          <p className={s.failText}>{turnFailure.text}</p>
+          {turnFailure.retry && (
+            <ActionButton
+              variant="primary"
+              size="sm"
+              testId="canvas-turn-retry"
+              disabled={busy !== null || runActive}
+              onClick={() => void turnFailure.retry?.()}
+            >
+              {ru.errors.retry}
+            </ActionButton>
+          )}
+        </div>
+        {dock}
       </>
     );
 
@@ -997,13 +1086,13 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
         data-testid="canvas"
       >
         <Glass as="header" className={s.top} testId="canvas-top">
-          <span className={s.brand}>
+          <AppLink to="/" className={s.brand} label={canvas.home} testId="canvas-home">
             <svg viewBox="0 0 20 20" aria-hidden="true">
               <rect className={s.m1} x="2" y="2" width="10" height="10" rx="3" />
               <rect className={s.m2} x="8" y="8" width="10" height="10" rx="3" />
             </svg>
             <span className={s.wm}>{canvas.brand}</span>
-          </span>
+          </AppLink>
           {model && (
             <span className={s.sys}>
               <Serif as="h1" size="md" className={s.sysName} testId="canvas-name">
@@ -1171,6 +1260,21 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
               selected={selected?.id ?? null}
               {...(canPick ? { onSelect: (b: CanvasBlockModel) => pick(b) } : {})}
             />
+          ) : v3 && view.system.previewRevision != null ? (
+            // V3-18: a built v3 system outside a build (opened again, published, a chat turn) shows its preview.
+            <div className={s.v3System} data-testid="canvas-v3-system">
+              <LivePreview systemId={systemId} revision={view.system.previewRevision ?? null} settled />
+            </div>
+          ) : v3 && !thinking ? (
+            // V3-18: the owner's turn before the build — what will appear here, not «Думаю».
+            <div className={s.empty} data-testid="canvas-empty">
+              <div className={s.emptyBox} data-testid="canvas-v3-empty">
+                <Serif as="p" size="xl">
+                  {canvas.v3.emptyTitle}
+                </Serif>
+                <p className={s.emptyText}>{stage === "card" ? canvas.v3.card : canvas.v3.interview}</p>
+              </div>
+            </div>
           ) : (
             <div className={s.empty} aria-busy={thinking || undefined} data-testid="canvas-empty">
               <Serif as="p" size="xl">
@@ -1223,6 +1327,14 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
           )}
           {upload.progress}
           {keys.row}
+          {question && question.allowCustom !== false && text.trim().length > 0 && (
+            <p
+              className={`${s.limit} ${text.trim().length > ANSWER_MAX ? s.limitOver : ""}`}
+              data-testid="canvas-answer-count"
+            >
+              {canvas.chat.answerCount(text.trim().length, ANSWER_MAX)}
+            </p>
+          )}
           <Composer
             testId="canvas-composer"
             attach={v3 && !building && (stage === "interview" || stage === "card") ? upload.attach : null}

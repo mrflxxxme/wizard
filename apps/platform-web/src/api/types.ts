@@ -192,6 +192,8 @@ export interface SystemView {
   messages: Message[];
   activeRunId?: string | null;
   publishBlockers?: string[];
+  /** V3-18: what the techreview of the v3 build found (the reasons of GATES_FAILED in words). */
+  techreviewBlockers?: string[];
   /** B2-02: the org replays recorded model answers (no spend). */
   demoReplay?: boolean;
   /** B2-25: modules — the canvas screen (beta v2 plan), legacy (or absent) — the v1 workspace. */

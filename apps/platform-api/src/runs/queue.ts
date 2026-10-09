@@ -880,7 +880,8 @@ export class RunEngine {
         role: "assistant",
         kind: "run_report",
         text: r.status === "failed" ? r.message_ru : r.summary_ru,
-        payload: { runId, status: r.status },
+        // V3-18: the kind tells the canvas a build report (it replays the build) from a publication's or a rollback's.
+        payload: { runId, status: r.status, kind: run.kind },
         runId,
       });
     }

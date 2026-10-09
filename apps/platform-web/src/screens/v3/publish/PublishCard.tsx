@@ -194,6 +194,10 @@ export interface V3PublishCardProps {
   onChanged(): void;
   /** The canvas live region. */
   announce?(text: string): void;
+  /** V3-18: checks did not pass — «Исправить» repeats the build by the brief (POST /systems/:id/fix); absent — no button. */
+  onFix?(): void;
+  /** The fix build is being started. */
+  fixing?: boolean;
 }
 
 /** The chat card of a built v3 system: what stops the publication, the owner's data, «Опубликовать» and its result. */
@@ -204,10 +208,13 @@ export function V3PublishCard({
   onStarted,
   onChanged,
   announce,
+  onFix,
+  fixing = false,
 }: V3PublishCardProps): ReactNode {
   const { api } = usePlatform();
   const sys = view.system;
   const codes = view.publishBlockers ?? [];
+  const techreview = view.techreviewBlockers ?? [];
   const [reports, setReports] = useState<GateReport[]>([]);
   const [latest, setLatest] = useState<RevisionSummary | undefined>();
   const [busy, setBusy] = useState<"publish" | "cabinet" | null>(null);
@@ -306,7 +313,26 @@ export function V3PublishCard({
               </li>
             ))}
           </ul>
-          {m.gates && <p className={s.note}>{T.gates}</p>}
+          {m.gates && techreview.length > 0 && (
+            <ul className={s.list} data-testid="canvas-v3-publish-techreview">
+              {techreview.map((b) => (
+                <li key={b}>{T.techreview(b)}</li>
+              ))}
+            </ul>
+          )}
+          {m.gates && <p className={s.note}>{onFix ? T.gatesFix : T.gates}</p>}
+          {m.gates && onFix && (
+            <ActionButton
+              variant="primary"
+              size="sm"
+              testId="canvas-v3-publish-fix"
+              busy={fixing}
+              disabled={fixing || busy !== null}
+              onClick={onFix}
+            >
+              {fixing ? T.fixing : T.fix}
+            </ActionButton>
+          )}
           {m.review && (
             <p className={s.note} data-testid="canvas-v3-publish-review">
               {T.review}

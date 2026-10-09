@@ -24,6 +24,8 @@ export interface KeyWindowsOptions {
   enabled: boolean;
   /** The member may enter keys (editor or owner). */
   editable: boolean;
+  /** The member is the owner: prod keys are the owner's only (403 NOT_OWNER otherwise); absent — unknown. */
+  owner?: boolean;
   /** A run is going on: windows the agent opens during a build are picked up by polling. */
   live: boolean;
   /** Changes when the chat reloads (messages, stage) — the list is read again. */
@@ -54,7 +56,13 @@ interface Typed {
   masked: string;
 }
 
-const errText = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+/** A refusal in words; NOT_OWNER on a prod key says that prod keys are the owner's (V3-18). */
+const errText = (e: unknown): string =>
+  e instanceof ApiError && e.code === "NOT_OWNER"
+    ? T.window.prodOwnerOnly
+    : e instanceof Error
+      ? e.message
+      : String(e);
 const reason = (e: unknown): string | undefined =>
   e instanceof ApiError ? (e.details?.reason as string | undefined) : undefined;
 
@@ -111,9 +119,12 @@ export function useKeyWindows(o: KeyWindowsOptions): KeyWindows {
       agent: boolean;
       /** A per-account passport: the key goes to the account typed into the window. */
       account: { label_ru: string; suffixes: string[] } | null;
+      /** V3-18: a prod key and the member is not the owner — shown, but not entered here. */
+      ownerOnly?: boolean;
     }[] = [];
     for (const w of keys.windows)
       out.push({
+        ...(w.env === "prod" && o.owner === false ? { ownerOnly: true } : {}),
         id: `w:${w.id}`,
         integrationId: w.integrationId,
         windowId: w.id,
@@ -135,7 +146,7 @@ export function useKeyWindows(o: KeyWindowsOptions): KeyWindows {
           account: n.account,
         });
     return out;
-  }, [keys]);
+  }, [keys, o.owner]);
 
   const openWindow = useCallback(
     async (a: { integrationId: string | null; windowId: string | null; keyName?: string }) => {
@@ -260,6 +271,8 @@ export function useKeyWindows(o: KeyWindowsOptions): KeyWindows {
     [setComposer, announce, load],
   );
 
+  /** V3-18: a prod key the member may not change (not the owner, the role is known). */
+  const prodLocked = (env: string | undefined) => env === "prod" && o.owner === false;
   let card: ReactNode = null;
   if (view?.kind === "window") {
     const name = view.win?.name;
@@ -269,7 +282,8 @@ export function useKeyWindows(o: KeyWindowsOptions): KeyWindows {
         window={view.win}
         current={currentOf(name)}
         {...(typed ? { initialValue: typed.value } : {})}
-        editable={o.editable}
+        editable={o.editable && !prodLocked(view.win?.env)}
+        {...(prodLocked(view.win?.env) ? { readOnlyReason: T.window.prodOwnerOnly } : {})}
         busy={busy === "save"}
         error={error}
         onSubmit={(v) => view.win && void submit(view.win, v)}
@@ -287,18 +301,24 @@ export function useKeyWindows(o: KeyWindowsOptions): KeyWindows {
         message={view.message}
         tone={view.tone}
         secret={secret}
-        editable={o.editable}
+        editable={o.editable && !prodLocked(secret?.env)}
         busy={busy === "check" || busy === "remove" ? busy : null}
         onDone={close}
-        onRotate={() =>
-          secret?.integrationId && void openWindow({ integrationId: secret.integrationId, windowId: null })
-        }
+        onRotate={() => {
+          // A module connector's key (ЮKassa of the shop) has no integration: its window opens by the key's name.
+          if (secret)
+            void openWindow(
+              secret.integrationId
+                ? { integrationId: secret.integrationId, windowId: null }
+                : { integrationId: null, windowId: null, keyName: secret.name },
+            );
+        }}
         onCheck={() => secret && void check(secret)}
         onRemove={() => secret && void remove(secret)}
       />
     );
   } else if (view?.kind === "intercept") {
-    const options = o.enabled && o.editable ? asks : [];
+    const options = o.enabled && o.editable ? asks.filter((a) => !a.ownerOnly) : [];
     const chosen = options.find((a) => a.id === pick) ?? (options.length === 1 ? options[0] : undefined);
     card = (
       <section
@@ -371,14 +391,20 @@ export function useKeyWindows(o: KeyWindowsOptions): KeyWindows {
             .map((n) => {
               const k = currentOf(n.name);
               return (
-                <li key={n.integrationId} className={s.item} data-testid="key-manage-item">
+                <li key={n.name} className={s.item} data-testid="key-manage-item">
                   <p className={s.itemText}>
                     {k ? T.row.item(n.integrationName, k.last4, k.status) : T.row.missing(n.integrationName)}
                   </p>
                   {o.editable && n.hosts && (
                     <ActionButton
                       size="sm"
-                      onClick={() => void openWindow({ integrationId: n.integrationId, windowId: null })}
+                      onClick={() =>
+                        void openWindow({
+                          integrationId: n.integrationId,
+                          windowId: null,
+                          ...(n.connector ? { keyName: n.name } : {}),
+                        })
+                      }
                       testId="key-manage-open"
                     >
                       {k ? T.result.rotate : T.needed.enter}
@@ -421,8 +447,9 @@ export function useKeyWindows(o: KeyWindowsOptions): KeyWindows {
                     ? T.needed.lineAccount(a.name, a.account.suffixes)
                     : T.needed.line(a.name, a.hosts.join(", "))}
                   {a.agent ? ` · ${T.needed.agent}` : ""}
+                  {a.ownerOnly ? ` · ${T.window.prodOwnerOnly}` : ""}
                 </p>
-                {o.editable && (
+                {o.editable && !a.ownerOnly && (
                   <ActionButton
                     size="sm"
                     variant="primary"

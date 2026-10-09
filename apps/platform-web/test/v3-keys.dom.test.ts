@@ -9,7 +9,7 @@ import { act, type ComponentProps, createElement as h, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, test } from "vitest";
 import { openSealedSecret } from "../../platform-api/src/secrets-v3/crypto.js";
-import type { ApiClient } from "../src/api/client.js";
+import { type ApiClient, ApiError } from "../src/api/client.js";
 import { PlatformProvider } from "../src/app/context.js";
 import type {
   KeysClient,
@@ -171,12 +171,13 @@ const needed = (over: Partial<KeysState["needed"][number]> = {}): KeysState["nee
 });
 
 const sent: string[] = [];
-function Harness(p: { editable: boolean; message: string }) {
+function Harness(p: { editable: boolean; message: string; owner?: boolean }) {
   const [text, setText] = useState("");
   const keys = useKeyWindows({
     systemId: SYS,
     enabled: true,
     editable: p.editable,
+    ...(p.owner !== undefined ? { owner: p.owner } : {}),
     live: false,
     refresh: "1",
     composer: text,
@@ -204,7 +205,7 @@ function Harness(p: { editable: boolean; message: string }) {
   );
 }
 
-async function mount(keys: KeysClient, o: { editable?: boolean; message?: string } = {}) {
+async function mount(keys: KeysClient, o: { editable?: boolean; message?: string; owner?: boolean } = {}) {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -220,7 +221,11 @@ async function mount(keys: KeysClient, o: { editable?: boolean; message?: string
       h(
         PlatformProvider,
         { api } as ComponentProps<typeof PlatformProvider>,
-        h(Harness, { editable: o.editable ?? true, message: o.message ?? "" }),
+        h(Harness, {
+          editable: o.editable ?? true,
+          message: o.message ?? "",
+          ...(o.owner !== undefined ? { owner: o.owner } : {}),
+        }),
       ),
     ),
   );
@@ -351,5 +356,104 @@ describe("the key window on the page", () => {
     expect(q("key-row")?.textContent).toContain("Оплата: ••••wxyz · проверен");
     await click(q("key-needed-later"));
     expect(q("key-needed")).toBeNull();
+  });
+
+  test("V3-18: the shop's ЮKassa keys (a module connector, no integration) open and rotate by the key's name", async () => {
+    const { win } = await windowPair(null);
+    const saved = (name: string, last4: string) => ({
+      name,
+      secretRef: `secret://${name}`,
+      env: "draft" as const,
+      integrationId: null,
+      integrationName: null,
+      hosts: ["api.yookassa.ru"],
+      last4,
+      version: 1,
+      status: "ok" as const,
+      check: { code: "OK", message_ru: null, checkedAt: null },
+      rotatedAt: null,
+      createdAt: "2026-10-09T08:00:00Z",
+    });
+    const connector = { id: "yookassa", label_ru: "Оплата ЮKassa" };
+    const fake = fakeKeys(
+      {
+        items: [saved("yookassa_shop_id", "1234"), saved("yookassa_secret_key", "wxyz")],
+        windows: [],
+        needed: ["yookassa_shop_id", "yookassa_secret_key"].map((name) =>
+          needed({
+            integrationId: "payments",
+            integrationName: "Оплата ЮKassa",
+            name,
+            secretRef: `secret://${name}`,
+            hosts: ["api.yookassa.ru"],
+            present: true,
+            connector,
+          }),
+        ),
+      },
+      win,
+    );
+    const opened: string[] = [];
+    const byIntegration: string[] = [];
+    fake.client.openKey = async (_s, name) => {
+      opened.push(name);
+      return { window: win };
+    };
+    fake.client.open = async (_s, id) => {
+      byIntegration.push(id);
+      throw new Error("404");
+    };
+    fake.client.check = async (_s, name) => ({
+      secret: saved(name, "wxyz"),
+      checks: [],
+      message_ru: "Ключ принят",
+    });
+    await mount(fake.client);
+    await click(q("key-row-manage"));
+    const items = [...document.querySelectorAll<HTMLElement>('[data-testid="key-manage-item"]')];
+    expect(items).toHaveLength(2);
+    await click(items[1]?.querySelector<HTMLElement>('[data-testid="key-manage-open"]') ?? null);
+    expect(opened).toEqual(["yookassa_secret_key"]);
+    expect(q("key-window")).not.toBeNull();
+    await click(q("key-cancel"));
+    await click(q("key-row-manage"));
+    await click([...document.querySelectorAll<HTMLElement>('[data-testid="key-manage-check"]')][1] ?? null);
+    await until(() => q("key-rotate") !== null);
+    await click(q("key-rotate"));
+    expect(opened).toEqual(["yookassa_secret_key", "yookassa_secret_key"]);
+    expect(byIntegration).toEqual([]);
+    expect(q("key-window")).not.toBeNull();
+  });
+
+  test("V3-18: prod keys are the owner's — an editor sees it in words, without the actions; the server's NOT_OWNER too", async () => {
+    const { win } = await windowPair(null, "agent");
+    const prodWin = { ...win, env: "prod" as const };
+    const notOwner = () =>
+      new ApiError(403, { code: "NOT_OWNER", message_ru: "Это действие доступно только владельцу" });
+    const fake = fakeKeys({ items: [], windows: [prodWin], needed: [needed()] }, prodWin);
+    let opened = 0;
+    fake.client.window = async () => {
+      opened++;
+      throw notOwner();
+    };
+    // The role is known: the prod request is shown with the reason and no «Ввести ключ».
+    await mount(fake.client, { owner: false });
+    expect(q("key-needed-item")?.textContent).toContain("Боевые ключи может менять только владелец системы.");
+    expect(q("key-needed-enter")).toBeNull();
+    act(() => root?.unmount());
+    container?.remove();
+    // The role is not known: the server's NOT_OWNER is said in the same words, not as a generic error.
+    await mount(fake.client);
+    await click(q("key-needed-enter"));
+    expect(opened).toBe(1);
+    expect(q("key-error")?.textContent).toBe("Боевые ключи может менять только владелец системы.");
+    act(() => root?.unmount());
+    container?.remove();
+    // An opened prod window for a non-owner: read-only with the reason.
+    const fake2 = fakeKeys({ items: [], windows: [prodWin], needed: [needed()] }, prodWin);
+    fake2.client.window = async () => ({ window: prodWin });
+    await mount(fake2.client, { owner: true });
+    await click(q("key-needed-enter"));
+    expect(q("key-input")).not.toBeNull();
   });
 });

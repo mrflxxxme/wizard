@@ -168,3 +168,72 @@ describe("POST /systems/:id/brief/approve", () => {
     await waitRun(api, fix.body.run.id, ["failed"]);
   });
 });
+
+describe("V3-18: a built v3 system the techreview blocked", () => {
+  test("GET /systems/:id gives the techreview's reasons; «Исправить» starts the v3 build; the run report names its kind", async () => {
+    const id = await addSystem();
+    await saveBriefVersion(api.deps.db, { systemId: id, brief: dentalBrief(), author: "agent" });
+    // The build that left revision 1 as the draft succeeded, but its techreview found a blocker (checkpoints of one run).
+    const prev = await api.deps.db
+      .insertInto("platform.runs")
+      .values({
+        org_id: DEFAULT_ORG_ID,
+        system_id: id,
+        kind: "build",
+        mode: "create",
+        status: "succeeded",
+        input: json({ pipeline: "v3", briefVersion: 1 }),
+        started_by: DEV_USER_ID,
+      })
+      .returning("id")
+      .executeTakeFirstOrThrow();
+    await api.deps.db
+      .insertInto("platform.revisions")
+      .values({
+        system_id: id,
+        version: 1,
+        kind: "files",
+        author: "agent",
+        run_id: prev.id,
+        spec: json({ entities: [], roles: [] }),
+        files_manifest_sha: "0".repeat(64),
+        bundle_key: "bundles/1",
+        g0_passed: true,
+      })
+      .execute();
+    await api.deps.db
+      .updateTable("platform.systems")
+      .set({ stage: "ready", draft_revision: 1, preview_revision: 1 })
+      .where("id", "=", id)
+      .execute();
+    const blocker = "Права: Посетитель без входа видит чужие записи на приём";
+    const cp = (data: unknown) => JSON.stringify({ runId: prev.id, data });
+    await api.deps
+      .pg`insert into platform.system_build_checkpoints (system_id, key, checkpoint, run_id) values
+      (${id}, 'techreview', cast(cast(${cp({ status: "done", blockers: [blocker] })} as text) as jsonb), ${prev.id}),
+      (${id}, 'draft', cast(cast(${cp({ revision: 1 })} as text) as jsonb), ${prev.id})`;
+
+    const g = await api.req("GET", `/systems/${id}`, { headers: EDITOR });
+    expect(g.status, g.text).toBe(200);
+    expect(g.body.publishBlockers).toContain("GATES_FAILED");
+    expect(g.body.techreviewBlockers).toEqual([blocker]);
+
+    // Before V3-18 the last build had succeeded and no gate report failed: /fix answered NO_GATE_FAILURE.
+    const fix = await api.req("POST", `/systems/${id}/fix`, { body: {}, headers: EDITOR });
+    expect(fix.status, fix.text).toBe(202);
+    expect(await runRow(fix.body.run.id)).toMatchObject({
+      mode: "fix",
+      input: { pipeline: "v3", briefVersion: 1 },
+    });
+    await waitRun(api, fix.body.run.id, ["failed"]);
+    const reports = await api.deps.db
+      .selectFrom("platform.messages")
+      .select(["run_id", "payload"])
+      .where("system_id", "=", id)
+      .where("kind", "=", "run_report")
+      .execute();
+    expect(reports).toEqual([
+      { run_id: fix.body.run.id, payload: { runId: fix.body.run.id, status: "failed", kind: "build" } },
+    ]);
+  });
+});

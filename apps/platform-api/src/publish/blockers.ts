@@ -108,6 +108,23 @@ export const BLOCKER_RU: Partial<Record<ErrorCode, string>> = {
   PLAN_LIMIT: "Лимит опубликованных систем тарифа",
 };
 
+/** The revision the owner would publish now: the latest draft revision when it is publishable, else the preview. */
+async function publishableRevision(db: Db, s: Selectable<SystemsTable>) {
+  let rev = s.draft_revision > 0 ? await loadRevision(db, s.id, s.draft_revision) : undefined;
+  if (rev && !isPublishable(rev, s.draft_revision))
+    rev = s.preview_revision !== null ? await loadRevision(db, s.id, s.preview_revision) : undefined;
+  return rev && isPublishable(rev, s.draft_revision) ? rev : undefined;
+}
+
+/**
+ * V3-18 api.yaml getSystem.techreviewBlockers: what the techreview of the v3 build that left the revision to publish
+ * found (its GATES_FAILED in words); empty — nothing of the techreview stops it.
+ */
+export async function techreviewBlockers(db: Db, s: Selectable<SystemsTable>): Promise<string[]> {
+  const rev = await publishableRevision(db, s);
+  return rev ? techreviewBlockersOf(db, s.id, rev.version) : [];
+}
+
 /**
  * api.yaml getSystem.publishBlockers for the revision the owner would publish now: the latest draft revision when it
  * is publishable, else the preview. Empty — publishing is possible.
@@ -126,10 +143,8 @@ export async function publishBlockers(
   if (await orgSuspended(db, s.org_id)) out.push("ORG_SUSPENDED");
   if (await cardBindingMissing(db, s.org_id, { required: cardRequired, ...(billing ? { billing } : {}) }))
     out.push("CARD_BINDING_REQUIRED");
-  let rev = s.draft_revision > 0 ? await loadRevision(db, s.id, s.draft_revision) : undefined;
-  if (rev && !isPublishable(rev, s.draft_revision))
-    rev = s.preview_revision !== null ? await loadRevision(db, s.id, s.preview_revision) : undefined;
-  if (!rev || !isPublishable(rev, s.draft_revision)) return [...out, "GATES_FAILED"];
+  const rev = await publishableRevision(db, s);
+  if (!rev) return [...out, "GATES_FAILED"];
   // V3-15: the techreview of the v3 build that left this revision found blockers.
   if ((await techreviewBlockersOf(db, s.id, rev.version)).length) return [...out, "GATES_FAILED"];
   const org = await db

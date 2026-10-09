@@ -267,6 +267,22 @@
   margin: 0;
 }
 
+.stop {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.stopRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.stopError {
+  color: var(--p-bad);
+}
+
 .more {
   font-size: 13px;
   color: var(--p-ink-2);

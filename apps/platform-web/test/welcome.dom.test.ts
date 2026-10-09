@@ -107,6 +107,41 @@ describe("S1 usage pill (D70)", () => {
   });
 });
 
+describe("S1 «Ваши системы» (V3-18)", () => {
+  test("the list did not load: said in words with «Повторить», which loads it; no table upload promised", async () => {
+    let fail = true;
+    const listSystems = async () => {
+      if (fail) throw new Error("network");
+      return {
+        items: [
+          {
+            id: "s1",
+            orgId: ORG,
+            slug: "dental",
+            name: "Стоматология",
+            stage: "ready",
+            draftRevision: 3,
+            previewRevision: 3,
+            prodRevision: null,
+            prodUrl: null,
+            createdAt: "",
+          },
+        ],
+      };
+    };
+    const el = mount(pilotApi("pilot", 100, { listSystems } as Partial<ApiClient>), "/");
+    await waitFor(() => q(el, "start-systems-error") !== null);
+    expect(q(el, "start-systems-error")?.textContent).toContain(ru.start.systemsFailed);
+    expect(q(el, "start-upload")).toBeNull();
+    expect(el.textContent).not.toContain("Загрузить таблицу");
+    fail = false;
+    act(() => q(el, "start-systems-retry")?.click());
+    await waitFor(() => q(el, "start-system-card") !== null);
+    expect(q(el, "start-systems-error")).toBeNull();
+    expect(q(el, "start-system-card")?.textContent).toContain("Стоматология");
+  });
+});
+
 describe("S-welcome (pilot onboarding)", () => {
   test("route /welcome", () => {
     expect(matchRoute("/welcome")).toEqual({ name: "welcome" });

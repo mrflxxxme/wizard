@@ -76,7 +76,7 @@ test("PublishCard shows the phone-login and plan-limit hints", () => {
   const shown = [...container.querySelectorAll('[data-testid="publish-blocker"]')].map((e) => e.textContent);
   expect(shown).toEqual([
     "Вход по телефону пока недоступен для этой системы",
-    "Опубликовано наибольшее число систем для пилота. Напишите команде, если нужно больше",
+    "Опубликовано наибольшее число систем по тарифу. Смените тариф или напишите команде, если нужно больше",
   ]);
   expect(ru.publish.blockers.PHONE_LOGIN_PLAN_REQUIRED).toBe(shown[0]);
   act(() => root.unmount());
