@@ -3,6 +3,7 @@
 // ui/seo.json for the build (title, description and og:image per route) and the site model ui/site.json.
 import { type DesignSystemV3, designSystemCss } from "@wizard/ui-kit/v3/design";
 import { type PatternMeta, patternById, patternFiles } from "@wizard/ui-kit/v3/patterns";
+import { fitPhotos, siteRules } from "./content.js";
 import {
   SECTIONS_DIR,
   SITE_PAGES_DIR,
@@ -46,8 +47,28 @@ function importOf(s: SiteSection): string {
 
 const json = (v: unknown) => JSON.stringify(v);
 
+/**
+ * Attributes of a section's pictures the owner may replace (V3-18, «Фото сайта»): the place's photo of the owner,
+ * else the stock picture of the props (useSitePhotos of the headless hooks).
+ */
+function photoAttrs(s: SiteSection, patternOf: (id: string) => PatternMeta | undefined): string {
+  const places = s.type === "signature" ? undefined : fitPhotos(patternOf(s.pattern), s.photos, s.props);
+  if (!places) return "";
+  const out: string[] = [];
+  if (places.image) {
+    const stock = s.props.image === undefined ? "undefined" : json(s.props.image);
+    out.push(`image={photo.one(${json(places.image)}, ${stock})}`);
+  }
+  if (places.images) out.push(`images={photo.list(${json(places.images)}, ${json(s.props.images)})}`);
+  if (places.items) out.push(`items={photo.items(${json(s.props.items)}, ${json(places.items)})}`);
+  return out.length ? ` ${out.join(" ")}` : "";
+}
+
 /** The page file: header, the sections inside <main> with their anchors, footer. */
-export function pageSource(page: SitePage): string {
+export function pageSource(
+  page: SitePage,
+  patternOf: (id: string) => PatternMeta | undefined = patternById,
+): string {
   const seen = new Set<string>();
   const imports: string[] = [];
   for (const s of page.sections) {
@@ -56,16 +77,29 @@ export function pageSource(page: SitePage): string {
     seen.add(name);
     imports.push(`import ${name} from ${json(importOf(s))};`);
   }
-  const el = (s: SiteSection, indent: string) => `${indent}<${sectionComponent(s)} {...${json(s.props)}} />`;
+  const attrs = new Map(page.sections.map((s) => [s, photoAttrs(s, patternOf)]));
+  const photos = [...attrs.values()].some((a) => a !== "");
+  const el = (s: SiteSection, indent: string) =>
+    `${indent}<${sectionComponent(s)} {...${json(s.props)}}${attrs.get(s) ?? ""} />`;
   const header = page.sections.filter((s) => s.type === "header");
   const footer = page.sections.filter((s) => s.type === "footer");
   const body = page.sections.filter((s) => s.type !== "header" && s.type !== "footer");
   return [
     `// Page «${page.title}» (${page.route}) of the public site, written by the page composer v3 (V3-12).`,
     `// Sections: ${page.sections.map((s) => (s.pattern === "signature" ? `${s.id} (signature)` : s.pattern)).join(", ")}.`,
+    'import { useEffect } from "react";',
+    ...(photos ? ['import { useSitePhotos } from "@wizard/ui-kit/v3/headless";'] : []),
     ...imports,
     "",
     `export default function ${page.component}Page() {`,
+    // The owner's photos of the site («Фото сайта» of the cabinet) replace the stock ones of their places.
+    ...(photos ? ["  const photo = useSitePhotos();"] : []),
+    // The page renders after the load (the app waits for its spec), so the browser does not scroll to the anchor of
+    // the address itself: a link «/#form» from another page opens at the form (GS-catalog-4, the first screen's action).
+    "  useEffect(() => {",
+    "    const id = location.hash.slice(1);",
+    "    if (id) document.getElementById(id)?.scrollIntoView();",
+    "  }, []);",
     "  return (",
     "    <>",
     ...header.map((s) => el(s, "      ")),
@@ -145,16 +179,18 @@ export function seoJson(site: SiteModel, siteName: string): string {
 
 /**
  * Every file of the composed site; files of an earlier composition no page uses any more are deleted (null). Library
- * patterns are copied with patternFiles; `library` adds patterns outside the ui-kit registry (tests).
+ * patterns are copied with patternFiles; `library` adds patterns outside the ui-kit registry (tests). The site's
+ * action rules (siteRules) apply first, whatever step changed the model — the skeleton, a model's page, the critic.
  */
 export function siteFiles(
-  site: SiteModel,
+  model: SiteModel,
   siteName: string,
   design: DesignSystemV3,
   current: ReadonlyMap<string, string>,
   signatures: ReadonlyMap<string, string> = new Map(),
   library: readonly PatternMeta[] = [],
 ): Map<string, string | null> {
+  const site = siteRules(model, (id) => patternById(id) ?? library.find((p) => p.id === id));
   const out = new Map<string, string | null>();
   out.set(DESIGN_CSS, designCss(design));
   const ids = [
@@ -167,7 +203,11 @@ export function siteFiles(
     const extra = patternById(id) ? undefined : library.find((p) => p.id === id);
     if (extra) out.set(extra.file, extra.source);
   }
-  for (const p of site.pages) out.set(p.file, pageSource(p));
+  for (const p of site.pages)
+    out.set(
+      p.file,
+      pageSource(p, (id) => patternById(id) ?? library.find((x) => x.id === id)),
+    );
   const sectionFiles = new Set(
     site.pages.flatMap((p) => p.sections.flatMap((s) => (s.file ? [s.file] : []))),
   );

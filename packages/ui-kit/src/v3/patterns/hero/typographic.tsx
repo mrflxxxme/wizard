@@ -11,6 +11,8 @@ export type HeroTypographicProps = {
   action: Link;
   secondary?: Link;
   note?: string;
+  /** Place of the section in the page source: the build injects it (ui-kit.yaml#wz_id), never the composer. */
+  wzId?: string;
 };
 
 /** Entrance of the first screen (catalog E3): once, only with the lively motion profile, never with reduced motion. */
@@ -32,11 +34,18 @@ function useEnter() {
       : {};
 }
 
-export default function HeroTypographic({ title, lead, action, secondary, note }: HeroTypographicProps) {
+export default function HeroTypographic({
+  title,
+  lead,
+  action,
+  secondary,
+  note,
+  wzId,
+}: HeroTypographicProps) {
   const enter = useEnter();
   return (
     <LazyMotion features={domAnimation}>
-      <section className="bg-background font-sans text-foreground">
+      <section data-wz-component="Hero" data-wz-id={wzId} className="bg-background font-sans text-foreground">
         <div className="mx-auto w-full max-w-page px-gutter py-section">
           <m.h1
             {...enter(0)}
@@ -53,6 +62,7 @@ export default function HeroTypographic({ title, lead, action, secondary, note }
               <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap md:justify-end">
                 <a
                   href={action.href}
+                  data-testid="wz-hero-primary"
                   className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-control bg-foreground px-6 text-center text-body font-bold text-background transition-opacity duration-200 hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                 >
                   {action.label}

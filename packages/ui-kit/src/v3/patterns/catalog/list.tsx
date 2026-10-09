@@ -59,9 +59,11 @@ function priceOf(v: unknown): string | null {
 
 function durationOf(v: unknown): string | null {
   if (typeof v !== "number" || v <= 0) return null;
+  // Minutes below two hours («60 мин», «90 мин») as the module's showcase says them, then hours.
+  if (v < 120) return `${v} мин`;
   const h = Math.floor(v / 60);
   const m = v % 60;
-  return h && m ? `${h} ч ${m} мин` : h ? `${h} ч` : `${m} мин`;
+  return m ? `${h} ч ${m} мин` : `${h} ч`;
 }
 
 /** Address of an image field: a file of the system's storage at the given width (runtime files.image). */
@@ -182,9 +184,15 @@ function More({
   );
 }
 
-/** The address of an item's action: the page and ?service=<id>, which the booking patterns read to preselect it. */
+/**
+ * The address of an item's action: the page and ?service=<id> (the booking patterns read it to preselect the item),
+ * before the anchor of a section the path may lead to («/#form» → «/?service=…#form»).
+ */
 function actionHref(path: string, id: string): string {
-  return `${path}${path.includes("?") ? "&" : "?"}service=${encodeURIComponent(id)}`;
+  const at = path.indexOf("#");
+  const page = at < 0 ? path : path.slice(0, at);
+  const anchor = at < 0 ? "" : path.slice(at);
+  return `${page}${page.includes("?") ? "&" : "?"}service=${encodeURIComponent(id)}${anchor}`;
 }
 
 /** The section filter: «Все» and the sections in the owner's order, one pressed. */
@@ -240,7 +248,7 @@ export default function CatalogList(props: CatalogListProps) {
           {items.map((item) => {
             const it = itemOf(item, f, 480);
             return (
-              <li key={item.id} className="flex gap-4 py-6 sm:gap-6">
+              <li key={item.id} data-testid="wz-itemcard" className="flex gap-4 py-6 sm:gap-6">
                 {it.photo ? (
                   <img
                     src={it.photo}
@@ -269,6 +277,7 @@ export default function CatalogList(props: CatalogListProps) {
                     {itemAction ? (
                       <a
                         href={actionHref(itemAction.path, item.id)}
+                        data-testid="wz-itemcard-cta"
                         aria-label={`${itemAction.label}: ${it.name}`}
                         className={buttonClass}
                       >

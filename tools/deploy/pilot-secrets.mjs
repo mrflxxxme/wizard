@@ -231,8 +231,11 @@ export const PLATFORM_PASSTHROUGH = [
   "WIZARD_RECEIPT_VAT_CODE",
 ];
 
-/** Build pipelines of the platform (config.ts WIZARD_BUILD_PIPELINE, B2-20); the pilot default is the first. */
-export const BUILD_PIPELINES = ["modules", "legacy"];
+/**
+ * Build pipelines of the platform (config.ts WIZARD_BUILD_PIPELINE); the pilot default is the first — v3, the only
+ * supported configuration (D78); modules (beta v2) and legacy are an emergency way back.
+ */
+export const BUILD_PIPELINES = ["v3", "modules", "legacy"];
 /** GitHub settings read by pilotPipelineEnv (pilot-reusable.yml passes each to the job). */
 export const PILOT_PIPELINE_INPUTS = [
   "WIZARD_BUILD_PIPELINE",
@@ -311,10 +314,10 @@ export function pilotMailDomain(inputs) {
 }
 
 /**
- * Beta v2 on the pilot (D76, B2-41): new systems start on the modules pipeline (a system keeps the pipeline it started
- * with, legacy stays for the old ones), G1 of a plan build runs the goal scenarios in the worker's Chromium
- * (images.json CHROMIUM=1), the systems' mail goes from the pilot's mail domain. Both pods read these (platform env
- * Secret: platform-api and worker). WIZARD_BUILD_PIPELINE=legacy is the way back without a code change.
+ * The pilot's pipeline (D78): new systems start on v3 (a system keeps the pipeline it started with, the older ones stay
+ * on modules or legacy), G1 runs the goal scenarios in the worker's Chromium (images.json CHROMIUM=1), the systems' mail
+ * goes from the pilot's mail domain. Both pods read these (platform env Secret: platform-api and worker).
+ * WIZARD_BUILD_PIPELINE=modules is the emergency way back without a code change.
  */
 export function pilotPipelineEnv(inputs) {
   const pipeline = String(inputs.WIZARD_BUILD_PIPELINE || BUILD_PIPELINES[0])
@@ -332,7 +335,7 @@ export function pilotPipelineEnv(inputs) {
   if (slots && !/^[1-8]$/.test(slots)) throw new Error("WIZARD_G1_BROWSER_SLOTS: целое от 1 до 8");
   return {
     WIZARD_BUILD_PIPELINE: pipeline,
-    // V3-18: v3 per org (measurement orgs, the founder's) while the clients stay on the pipeline above.
+    // V3-18: v3 per org (measurement orgs, the founder's) — matters only after an emergency switch back (D78).
     WIZARD_BUILD_PIPELINE_ORGS: pilotPipelineOrgs(inputs),
     WIZARD_G1_BROWSER: browser,
     WIZARD_G1_BROWSER_SLOTS: slots,

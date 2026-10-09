@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// V3-18: the synthetic screenshots of the shape probe (tools/eval/server/probe-shape.mjs) — six JPEGs of the critic's
-// shot plan (packages/agents critic/hook.ts shotPlan: 390×844, 768 → 384×512, 1440 → 720×450, the whole page at 1440
-// → 360×2400, two more pages at 390×844), made like the platform makes them (apps/platform-api builds-v3/critic.ts
+// V3-18: the synthetic screenshots of the shape probe (tools/eval/server/probe-shape.mjs) — the JPEGs of the critic's
+// shot plan (packages/agents critic/hook.ts shotPlan, ≤ CRITIC_MAX_IMAGES: 390×844 and the whole page at 1440
+// → 360×2400), made like the platform makes them (apps/platform-api builds-v3/critic.ts
 // shrink: a PNG screenshot downscaled on a canvas of the same browser, JPEG quality 0.6). The page is a made-up landing
 // page: no client data, nothing from any system. Run once (the JSON is committed; the probe test checks its sizes):
 //   node tools/eval/server/probe-shape-images.mjs
@@ -18,11 +18,7 @@ export const SHAPE_JPEG_QUALITY = 0.6;
 /** The shot plan of a three-page site (critic/hook.ts shotPlan) with the viewport heights of builds-v3/critic.ts. */
 export const SHAPE_SHOTS = [
   { route: "/", width: 390, height: 844, kind: "screen", maxWidth: 390, maxHeight: 844 },
-  { route: "/", width: 768, height: 1024, kind: "screen", maxWidth: 384, maxHeight: 512 },
-  { route: "/", width: 1440, height: 900, kind: "screen", maxWidth: 720, maxHeight: 450 },
   { route: "/", width: 1440, height: 900, kind: "page", maxWidth: 360, maxHeight: 2400 },
-  { route: "/services", width: 390, height: 844, kind: "screen", maxWidth: 390, maxHeight: 844 },
-  { route: "/contacts", width: 390, height: 844, kind: "screen", maxWidth: 390, maxHeight: 844 },
 ];
 
 const CSS = `

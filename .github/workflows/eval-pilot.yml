@@ -7,7 +7,8 @@
 # the report, an annotation and the issue comment. Its own form (not an action of bootstrap-pilot): a workflow_dispatch
 # form holds at most 10 inputs for actionlint of CI. Shares the concurrency group of prod with bootstrap and deploy.
 # V3-18: threshold v3 — checkpoint 1 of v3 (the v3-* briefs through the v3 path; docs/ops/eval-pilot.md); the server
-# must keep its eval orgs on v3 (variable WIZARD_BUILD_PIPELINE_ORGS=eval, then deploy-pilot) — checked before any spend.
+# must run its eval orgs on v3 (the default pipeline, D78; after an emergency switch back — WIZARD_BUILD_PIPELINE_ORGS=eval)
+# — checked before any spend.
 name: eval-pilot
 
 on:

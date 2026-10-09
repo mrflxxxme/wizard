@@ -3,7 +3,13 @@
 // takes the contacts once a time is chosen; it stays in view on wide screens. The logic is the module's: useBooking
 // (C4) gives the services, the working days, the free times from busySlots and the schedule, the consent (G2-PII-04),
 // a time taken meanwhile and «booked». Own composition.
-import { type BookingModel, type FormModel, useBooking, useContent } from "@wizard/ui-kit/v3/headless";
+import {
+  type BookingModel,
+  bookingAddress,
+  type FormModel,
+  useBooking,
+  useContent,
+} from "@wizard/ui-kit/v3/headless";
 import { type FormEvent, type ReactNode, type RefObject, useEffect, useId, useRef, useState } from "react";
 
 type Field = FormModel["fields"][number];
@@ -30,6 +36,8 @@ export type FormBookingCompactProps = {
   note?: string;
   /** A direct channel when online booking cannot start. */
   contact?: Link;
+  /** Place of the section in the page source: the build injects it (ui-kit.yaml#wz_id), never the composer. */
+  wzId?: string;
 };
 
 const controlClass =
@@ -189,7 +197,7 @@ function FieldRow({
   );
   if (field.type === "bool")
     return (
-      <div className={className}>
+      <div data-testid={`wz-field-${field.name}`} className={className}>
         <div className="flex items-start gap-2">
           <Check
             id={id}
@@ -313,7 +321,7 @@ function FieldRow({
       />
     );
   return (
-    <div className={`min-w-0 ${className ?? ""}`}>
+    <div data-testid={`wz-field-${field.name}`} className={`min-w-0 ${className ?? ""}`}>
       <label htmlFor={id} className="block text-small font-bold">
         {label}
       </label>
@@ -388,6 +396,7 @@ function Sent({
   return (
     <div
       role="status"
+      data-testid="booking-done"
       className={`flex items-start gap-4 ${framed ? "rounded-lg border border-border bg-card p-6 text-card-foreground sm:p-8" : ""}`}
     >
       <span
@@ -506,23 +515,25 @@ function metaOf(r: Rec, durationField: string | undefined, priceField: string): 
   if (typeof min === "number" && min > 0) {
     const h = Math.floor(min / 60);
     const m = min % 60;
-    out.push(h && m ? `${h} ч ${m} мин` : h ? `${h} ч` : `${m} мин`);
+    // Minutes below two hours («60 мин», «90 мин») as the catalog of the module shows them, then hours.
+    out.push(min < 120 ? `${min} мин` : m ? `${h} ч ${m} мин` : `${h} ч`);
   }
   const price = r[priceField];
   if (typeof price === "number" && Number.isFinite(price)) out.push(MONEY.format(price));
   return out.join(" · ");
 }
 
-/** useBooking over the props: the module's schedule and names; ?service= of a showcase link preselects the service. */
+/**
+ * useBooking over the props: the module's schedule and names; ?service= of a showcase link preselects the service,
+ * ?reschedule= of the e-mail's link moves a booking (the service and specialist the runtime kept stay fixed).
+ */
 function useBookingOf(p: {
   entity?: string;
   booking: Binding;
   fields?: string[];
   daysAhead?: number;
 }): BookingModel {
-  const [preset] = useState(() =>
-    typeof location === "undefined" ? null : new URLSearchParams(location.search).get("service"),
-  );
+  const [address] = useState(() => bookingAddress());
   const b = p.booking;
   return useBooking({
     schedule: b.schedule,
@@ -534,7 +545,9 @@ function useBookingOf(p: {
     ...(b.packageCheckFn ? { packageCheckFn: b.packageCheckFn } : {}),
     ...(p.fields ? { fields: p.fields } : {}),
     ...(p.daysAhead ? { daysAhead: p.daysAhead } : {}),
-    ...(preset ? { service: preset } : {}),
+    ...(address.service ? { service: address.service } : {}),
+    ...(address.specialist ? { specialist: address.specialist } : {}),
+    ...(address.reschedule ? { reschedule: address.reschedule } : {}),
   });
 }
 
@@ -607,7 +620,7 @@ function Times({ m, tz, className }: { m: BookingModel; tz: string; className: s
     );
   else if (m.slots.length === 0)
     body = (
-      <p className="text-body text-muted-foreground">
+      <p data-testid="wz-empty" className="text-body text-muted-foreground">
         На этот день свободного времени нет — выберите другой день.
       </p>
     );
@@ -615,7 +628,7 @@ function Times({ m, tz, className }: { m: BookingModel; tz: string; className: s
     body = (
       <fieldset>
         <legend className="sr-only">{`Свободное время: ${dayOf(m.day).full}`}</legend>
-        <div className={className}>
+        <div data-testid="booking-slots" className={className}>
           {m.slots.map((s) => {
             const on = m.slot?.start === s.start;
             return (
@@ -635,7 +648,7 @@ function Times({ m, tz, className }: { m: BookingModel; tz: string; className: s
       </fieldset>
     );
   return (
-    <div aria-busy={m.slotsLoading ? true : undefined}>
+    <div data-testid="booking-time" aria-busy={m.slotsLoading ? true : undefined}>
       {m.notice ? (
         <p role="alert" className="mb-4 text-body font-bold">
           {m.notice}
@@ -662,7 +675,13 @@ function Contacts({ m, uid, submit, note }: { m: BookingModel; uid: string; subm
     if (!(await form.submit())) setTries((n) => n + 1);
   };
   return (
-    <form ref={box} noValidate onSubmit={onSubmit} aria-label="Контакты для записи">
+    <form
+      ref={box}
+      data-testid="booking-form"
+      noValidate
+      onSubmit={onSubmit}
+      aria-label="Контакты для записи"
+    >
       <div className="grid gap-5 sm:grid-cols-2">
         {shown.map((f) => (
           <FieldRow key={f.name} field={f} form={form} uid={uid} className={span(f) ? "sm:col-span-2" : ""} />
@@ -712,10 +731,12 @@ function Pick(props: {
   options: { value: string; label: string }[];
   onChange(v: string): void;
   placeholder?: string;
+  /** Hook of the step for the goal scenarios (booking-service, booking-specialist, booking-day). */
+  testid?: string;
 }) {
-  const { id, label, value, options, onChange, placeholder } = props;
+  const { id, label, value, options, onChange, placeholder, testid } = props;
   return (
-    <div className="min-w-0">
+    <div data-testid={testid} className="min-w-0">
       <label htmlFor={id} className="block text-small font-bold">
         {label}
       </label>
@@ -748,9 +769,38 @@ function Pick(props: {
   );
 }
 
+/** A choice the reschedule keeps (the booked service or specialist): shown, not offered again (B2-14). */
+function Fixed({ testid, label, value }: { testid: string; label: string; value: string }) {
+  return (
+    <div data-testid={testid} className="min-w-0">
+      <p className="text-small font-bold">{label}</p>
+      <p className="mt-2 text-body">{value}</p>
+    </div>
+  );
+}
+
+/**
+ * The reschedule by the e-mail's link (?reschedule=): the chosen time and the link to the runtime's confirmation of it
+ * (the one-time link page moves the booking once; generated pages post no forms elsewhere, G0-SEC-01).
+ */
+function Move({ m, tz }: { m: BookingModel; tz: string }) {
+  const r = m.reschedule;
+  if (!r || !m.slot) return null;
+  return (
+    <div data-testid="booking-move">
+      <p className="text-body">{`${r.chosen}: ${dayOf(m.day).full}, ${timeOf(m.slot.start, tz)}`}</p>
+      <a href={r.href(m.slot)} className={`mt-5 w-full sm:w-auto ${primaryClass}`}>
+        {r.submit}
+      </a>
+    </div>
+  );
+}
+
 export default function FormBookingCompact(props: FormBookingCompactProps) {
   const { booking, priceField = "price", title, text, submit, sent, again, note, contact } = props;
   const m = useBookingOf(props);
+  // The reschedule of the e-mail's link has its own heading and intro (the v2 page's).
+  const heading = m.reschedule ? { title: m.reschedule.title, text: m.reschedule.intro } : { title, text };
   const uid = useId();
   const tz = booking.schedule.tz;
   const timesHead = useRef<HTMLHeadingElement>(null);
@@ -782,27 +832,38 @@ export default function FormBookingCompact(props: FormBookingCompactProps) {
             <Loading />
           ) : (
             <div className={`grid gap-5 ${m.specialists ? "sm:grid-cols-2" : ""}`}>
-              <Pick
-                id={`${uid}-service`}
-                label="Услуга"
-                value={m.service?.id ?? ""}
-                placeholder="Выберите услугу"
-                options={m.services.items.map((r) => ({ value: r.id, label: nameOf(r) }))}
-                onChange={(v) => m.selectService(v || null)}
-              />
-              {m.specialists ? (
+              {m.fixed ? (
+                <Fixed testid="booking-service" label="Услуга" value={nameOf(m.service)} />
+              ) : (
                 <Pick
-                  id={`${uid}-specialist`}
-                  label="Специалист"
-                  value={m.specialist?.id ?? ""}
-                  placeholder="Выберите специалиста"
-                  options={m.specialists.items.map((r) => ({ value: r.id, label: nameOf(r) }))}
-                  onChange={(v) => m.selectSpecialist(v || null)}
+                  id={`${uid}-service`}
+                  testid="booking-service"
+                  label="Услуга"
+                  value={m.service?.id ?? ""}
+                  placeholder="Выберите услугу"
+                  options={m.services.items.map((r) => ({ value: r.id, label: nameOf(r) }))}
+                  onChange={(v) => m.selectService(v || null)}
                 />
+              )}
+              {m.specialists ? (
+                m.fixed ? (
+                  <Fixed testid="booking-specialist" label="Специалист" value={nameOf(m.specialist)} />
+                ) : (
+                  <Pick
+                    id={`${uid}-specialist`}
+                    testid="booking-specialist"
+                    label="Специалист"
+                    value={m.specialist?.id ?? ""}
+                    placeholder="Выберите специалиста"
+                    options={m.specialists.items.map((r) => ({ value: r.id, label: nameOf(r) }))}
+                    onChange={(v) => m.selectSpecialist(v || null)}
+                  />
+                )
               ) : null}
               <div className={m.specialists ? "sm:col-span-2" : ""}>
                 <Pick
                   id={`${uid}-day`}
+                  testid="booking-day"
                   label="День"
                   value={m.day}
                   options={m.days.map((d) => ({ value: d, label: dayOf(d).full }))}
@@ -837,7 +898,11 @@ export default function FormBookingCompact(props: FormBookingCompactProps) {
           </dl>
           <div className="mt-6">
             {m.slot ? (
-              <Contacts m={m} uid={uid} submit={submit} note={note} />
+              m.reschedule ? (
+                <Move m={m} tz={tz} />
+              ) : (
+                <Contacts m={m} uid={uid} submit={submit} note={note} />
+              )
             ) : (
               <p className="text-body text-muted-foreground">
                 Выберите время — здесь появятся поля для контактов.
@@ -848,13 +913,19 @@ export default function FormBookingCompact(props: FormBookingCompactProps) {
       </div>
     );
   return (
-    <section aria-labelledby={`${uid}-title`} className="bg-background py-section font-sans text-foreground">
+    <section
+      data-wz-component="BookingForm"
+      data-wz-id={props.wzId}
+      data-testid="booking-page"
+      aria-labelledby={`${uid}-title`}
+      className="bg-background py-section font-sans text-foreground"
+    >
       <div className="mx-auto w-full max-w-page px-gutter">
         <div className="max-w-text">
           <h2 id={`${uid}-title`} className="font-display text-h2 font-bold text-balance wrap-break-word">
-            {title}
+            {heading.title}
           </h2>
-          {text ? <p className="mt-3 text-body text-muted-foreground">{text}</p> : null}
+          {heading.text ? <p className="mt-3 text-body text-muted-foreground">{heading.text}</p> : null}
         </div>
         <div className="mt-10">{body}</div>
       </div>

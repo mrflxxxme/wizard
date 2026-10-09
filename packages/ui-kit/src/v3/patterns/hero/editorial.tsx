@@ -15,6 +15,8 @@ export type HeroEditorialProps = {
   note?: string;
   image: Image;
   caption?: string;
+  /** Place of the section in the page source: the build injects it (ui-kit.yaml#wz_id), never the composer. */
+  wzId?: string;
 };
 
 /** Entrance of the first screen (catalog E3): once, only with the lively motion profile, never with reduced motion. */
@@ -44,11 +46,12 @@ export default function HeroEditorial({
   note,
   image,
   caption,
+  wzId,
 }: HeroEditorialProps) {
   const enter = useEnter();
   return (
     <LazyMotion features={domAnimation}>
-      <section className="bg-background font-sans text-foreground">
+      <section data-wz-component="Hero" data-wz-id={wzId} className="bg-background font-sans text-foreground">
         <div className="mx-auto grid w-full max-w-page gap-10 px-gutter py-section lg:grid-cols-12 lg:gap-x-12">
           <m.figure {...enter(1)} className="order-2 min-w-0 lg:order-1 lg:col-span-5">
             <img
@@ -75,6 +78,7 @@ export default function HeroEditorial({
               <div className="flex flex-col items-stretch gap-3 sm:items-start">
                 <a
                   href={action.href}
+                  data-testid="wz-hero-primary"
                   className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-control bg-primary px-6 text-center text-body font-bold text-primary-foreground transition-colors duration-200 hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                 >
                   {action.label}

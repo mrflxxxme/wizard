@@ -56,9 +56,11 @@ function priceOf(v: unknown): string | null {
 
 function durationOf(v: unknown): string | null {
   if (typeof v !== "number" || v <= 0) return null;
+  // Minutes below two hours («60 мин», «90 мин») as the module's showcase says them, then hours.
+  if (v < 120) return `${v} мин`;
   const h = Math.floor(v / 60);
   const m = v % 60;
-  return h && m ? `${h} ч ${m} мин` : h ? `${h} ч` : `${m} мин`;
+  return m ? `${h} ч ${m} мин` : `${h} ч`;
 }
 
 /** Address of an image field: a file of the system's storage at the given width (runtime files.image). */
@@ -179,9 +181,15 @@ function More({
   );
 }
 
-/** The address of an item's action: the page and ?service=<id>, which the booking patterns read to preselect it. */
+/**
+ * The address of an item's action: the page and ?service=<id> (the booking patterns read it to preselect the item),
+ * before the anchor of a section the path may lead to («/#form» → «/?service=…#form»).
+ */
 function actionHref(path: string, id: string): string {
-  return `${path}${path.includes("?") ? "&" : "?"}service=${encodeURIComponent(id)}`;
+  const at = path.indexOf("#");
+  const page = at < 0 ? path : path.slice(0, at);
+  const anchor = at < 0 ? "" : path.slice(at);
+  return `${page}${page.includes("?") ? "&" : "?"}service=${encodeURIComponent(id)}${anchor}`;
 }
 
 export default function CatalogFeatured(props: CatalogFeaturedProps) {
@@ -200,7 +208,10 @@ export default function CatalogFeatured(props: CatalogFeaturedProps) {
     const lead = itemOf(first, f, 1600);
     body = (
       <div className="grid gap-10 lg:grid-cols-12 lg:gap-12">
-        <article className="flex min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-card text-card-foreground lg:col-span-7">
+        <article
+          data-testid="wz-itemcard"
+          className="flex min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-card text-card-foreground lg:col-span-7"
+        >
           {lead.photo ? (
             <img
               src={lead.photo}
@@ -223,6 +234,7 @@ export default function CatalogFeatured(props: CatalogFeaturedProps) {
               {itemAction ? (
                 <a
                   href={href(first)}
+                  data-testid="wz-itemcard-cta"
                   aria-label={`${itemAction.label}: ${lead.name}`}
                   className="inline-flex min-h-12 min-w-11 items-center justify-center rounded-control bg-primary px-6 text-center text-body font-bold text-primary-foreground transition-colors duration-200 hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:ml-auto"
                 >
@@ -238,7 +250,11 @@ export default function CatalogFeatured(props: CatalogFeaturedProps) {
               {rest.map((item) => {
                 const it = itemOf(item, f, 480);
                 return (
-                  <li key={item.id} className="relative flex items-center gap-4 py-4">
+                  <li
+                    key={item.id}
+                    data-testid="wz-itemcard"
+                    className="relative flex items-center gap-4 py-4"
+                  >
                     {it.photo ? (
                       <img
                         src={it.photo}
@@ -253,6 +269,7 @@ export default function CatalogFeatured(props: CatalogFeaturedProps) {
                         {itemAction ? (
                           <a
                             href={href(item)}
+                            data-testid="wz-itemcard-cta"
                             className="block min-h-11 py-2.5 text-foreground underline-offset-4 outline-none hover:underline after:absolute after:inset-0 focus-visible:underline"
                           >
                             {it.name}

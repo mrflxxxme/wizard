@@ -12,14 +12,19 @@ import {
   selectPattern,
 } from "@wizard/ui-kit/v3/patterns";
 import type { V3BuildContext } from "../contract.js";
+import { clientCabinet } from "./account.js";
 import {
+  fitPhotos,
   KIND_LABELS,
   primaryAction,
   type SectionContext,
   type SiteAction,
   secondaryAction,
+  sectionPhotos,
   sectionProps,
   seoOf,
+  siteRules,
+  slotShape,
 } from "./content.js";
 import { type SiteFacts, siteFacts } from "./facts.js";
 import { lintErrors, lintPage } from "./lint.js";
@@ -43,8 +48,11 @@ export interface ComposeLibrary {
   patterns?: readonly PatternMeta[];
 }
 
-/** Content a variant should show when it is there: photos, the footer's list of pages (utility pages live only there). */
-const KEEP = [["image", "images"], ["columns"]] as const;
+/**
+ * Content a variant should show when it is there: photos, the footer's list of pages (utility pages live only there),
+ * the action of a catalog item (to the booking or the request form: GS-catalog-4 presses it).
+ */
+const KEEP = [["image", "images"], ["columns"], ["itemAction"]] as const;
 
 /**
  * Picks the pattern of a section: its type and needs, the slots accept `props`, variants that keep the photos and the
@@ -60,6 +68,8 @@ export function choosePattern(
     seed: string;
     used: readonly string[];
     prevLayout?: string;
+    /** The section has a place for the owner's photo but no stock one: a variant that can show a photo first. */
+    photo?: boolean;
   },
 ): PatternMeta | null {
   const fits = library.filter(
@@ -72,7 +82,12 @@ export function choosePattern(
     const out = p.slots.parse(q.props) as Record<string, unknown>;
     return keep.every((group) => group.some((k) => out[k] !== undefined));
   });
-  const shown = keeping.length ? keeping : fits;
+  let shown = keeping.length ? keeping : fits;
+  // V3-18: the owner's photo of the place («Фото сайта») shows up as soon as he uploads it.
+  if (q.photo) {
+    const can = shown.filter((p) => slotShape(p).keys.has("image"));
+    if (can.length) shown = can;
+  }
   const fresh = shown.filter((p) => p.layout !== q.prevLayout);
   const pool = fresh.length ? fresh : shown;
   // Other types stay in the list: patternFor's selection counts the layout families of every pattern already used.
@@ -118,6 +133,14 @@ export function composeSite(ctx: V3BuildContext, lib: ComposeLibrary = {}): Skel
     return { site, facts, notes, missing };
   }
   const used: string[] = [];
+  // V3-18: the client cabinet of «Кабинет посетителя» on its page (/me).
+  const cabinet = clientCabinet(ctx.spec, ctx.plan);
+  const cabinetOf = (page: PlannedPage) =>
+    cabinet && page.kind === "account" && page.module === "visitor_cabinet" ? { cabinet } : {};
+  // The request form of the site is the home page's form section (bound to useLeadForm): catalog items lead there.
+  const home = planned.find((p) => p.kind === "home");
+  const leadForm =
+    home && bindingOf(home, "form", ctx.publicFront, planned)?.needs === "lead" ? "/#form" : undefined;
 
   // A. Sections bound to the headless hooks (form, catalog, blog): they decide where the main action leads.
   const bound = new Map<string, { binding: Binding; section: SiteSection; layout: string }>();
@@ -125,7 +148,7 @@ export function composeSite(ctx: V3BuildContext, lib: ComposeLibrary = {}): Skel
     for (const type of PAGE_SECTIONS[page.kind]) {
       const binding = bindingOf(page, type, ctx.publicFront, planned);
       if (!binding) continue;
-      const c = context(facts, page, planned, null, null, binding, []);
+      const c = context(facts, page, planned, null, null, binding, [], leadForm);
       const props = sectionProps(type, c);
       if (!props) continue;
       const p = choosePattern(library, { type, needs: binding.needs, props, archetype, seed, used });
@@ -160,24 +183,30 @@ export function composeSite(ctx: V3BuildContext, lib: ComposeLibrary = {}): Skel
         continue;
       }
       if (bindingOf(page, type, ctx.publicFront, planned)) continue;
-      const c = context(facts, page, planned, primary, secondary, null, []);
+      const c = { ...context(facts, page, planned, primary, secondary, null, []), ...cabinetOf(page) };
       const props = sectionProps(type, c);
       if (!props) continue;
+      const places = sectionPhotos(type, c, props);
+      // The client cabinet reads the visitor's records (needs content, V3-18); other sections show the facts.
+      const needs = type === "account" ? "content" : null;
       const p = choosePattern(library, {
         type,
-        needs: null,
+        needs,
         props,
         archetype,
         seed,
         used,
         ...(layouts.length ? { prevLayout: layouts[layouts.length - 1] } : {}),
+        ...(places?.image && props.image === undefined ? { photo: true } : {}),
       });
       if (!p) {
-        missing.push({ route: page.route, type, needs: null });
+        missing.push({ route: page.route, type, needs });
         continue;
       }
       used.push(p.id);
-      sections.push({ id: type, type, pattern: p.id, props: slotProps(p, props) });
+      const kept = slotProps(p, props);
+      const photos = fitPhotos(p, places, kept);
+      sections.push({ id: type, type, pattern: p.id, props: kept, ...(photos ? { photos } : {}) });
       layouts.push(p.layout);
     }
     bodies.set(page.route, { sections, layouts });
@@ -251,8 +280,10 @@ export function composeSite(ctx: V3BuildContext, lib: ComposeLibrary = {}): Skel
   notes.unshift(
     `Собрал каркас сайта в стиле «${ctx.design.name}»: ${site.pages.length} стр. — ${kinds}. Тексты — из брифа, без выдуманных фактов.`,
   );
-  for (const page of site.pages) {
-    const errors = lintErrors(lintSitePage(site, page, facts, library));
+  // The action rules of the site (the main action to the form, catalog items to the booking or the request form).
+  const ruled = siteRules(site, (id) => library.find((p) => p.id === id));
+  for (const page of ruled.pages) {
+    const errors = lintErrors(lintSitePage(ruled, page, facts, library));
     if (errors.length)
       notes.push(
         `Проверка страницы ${page.route}: ${errors
@@ -261,7 +292,7 @@ export function composeSite(ctx: V3BuildContext, lib: ComposeLibrary = {}): Skel
           .join("; ")}`,
       );
   }
-  return { site, facts, notes, missing };
+  return { site: ruled, facts, notes, missing };
 }
 
 function context(
@@ -272,8 +303,9 @@ function context(
   secondary: SiteAction | null,
   binding: Binding | null,
   homeSections: SectionContext["homeSections"],
+  leadForm?: string,
 ): SectionContext {
-  return { facts, page, pages, primary, secondary, binding, homeSections };
+  return { facts, page, pages, primary, secondary, binding, homeSections, ...(leadForm ? { leadForm } : {}) };
 }
 
 /** Lint of a composed page: library sources by id, signature sections by their file. */

@@ -54,9 +54,11 @@ function priceOf(v: unknown): string | null {
 
 function durationOf(v: unknown): string | null {
   if (typeof v !== "number" || v <= 0) return null;
+  // Minutes below two hours («60 мин», «90 мин») as the module's showcase says them, then hours.
+  if (v < 120) return `${v} мин`;
   const h = Math.floor(v / 60);
   const m = v % 60;
-  return h && m ? `${h} ч ${m} мин` : h ? `${h} ч` : `${m} мин`;
+  return m ? `${h} ч ${m} мин` : `${h} ч`;
 }
 
 /** Address of an image field: a file of the system's storage at the given width (runtime files.image). */
@@ -199,7 +201,7 @@ export default function CatalogPriceList(props: CatalogPriceListProps) {
   const line = (item: Item) => {
     const it = itemOf(item, f);
     return (
-      <li key={item.id} className="py-3">
+      <li key={item.id} data-testid="wz-itemcard" className="py-3">
         <p className="flex items-baseline gap-3">
           <span className="min-w-0 text-lead font-bold wrap-break-word">{it.name}</span>
           <span

@@ -3,6 +3,7 @@
 // folders: a new type adds its import and its spread below.
 
 import { ABOUT_PATTERNS } from "./about/index.js";
+import { ACCOUNT_PATTERNS } from "./account/index.js";
 import { ARTICLE_PATTERNS } from "./article/index.js";
 import { BLOG_PATTERNS } from "./blog/index.js";
 import { CATALOG_PATTERNS } from "./catalog/index.js";
@@ -41,6 +42,7 @@ export const PATTERNS: readonly PatternMeta[] = [
   ...BLOG_PATTERNS,
   ...ARTICLE_PATTERNS,
   ...RUBRIC_PATTERNS,
+  ...ACCOUNT_PATTERNS,
 ];
 
 /** Deterministic choice of a variant for a section: by seed, archetype, without repeating used ones (C3). */

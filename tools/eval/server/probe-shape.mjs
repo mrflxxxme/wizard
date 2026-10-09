@@ -6,7 +6,7 @@
 //     the shot plan and submit_critique with toolChoice required; when that is not usable, also 1 JPEG / 6 JPEGs
 //     without a tool, required + 1 JPEG, required without images, toolChoice auto, and the answer as JSON text
 //     (callTool textArgs);
-//   techreview (deepseek-v4-pro, gpt-oss-120b, gigachat-3.5, kimi-k2.6): as in the build — the reviewer's prompt, a
+//   techreview (gpt-oss-120b, gigachat-3.5, deepseek-v4-pro, kimi-k2.6): as in the build — the reviewer's prompt, a
 //     synthetic digest of the size the fixture v3 build makes and submit_techreview with toolChoice required; for the
 //     first two also a digest twice that size and the second turn after a refused answer (callTool's repair); when the
 //     build shape is not usable, also toolChoice auto and the answer as JSON text.
@@ -32,7 +32,7 @@ export const SHAPE_GROUPS = Object.keys(SHAPE_CALL_TYPES);
 /** The T0 chains of the routes (models.yaml#routes; a test keeps them equal to the registry). */
 export const SHAPE_CHAINS = {
   critic: ["kimi-k2.6", "qwen3.6-35b"],
-  techreview: ["deepseek-v4-pro", "gpt-oss-120b", "gigachat-3.5", "kimi-k2.6"],
+  techreview: ["gpt-oss-120b", "gigachat-3.5", "deepseek-v4-pro", "kimi-k2.6"],
 };
 
 /** Prices, ₽ per 1M tokens with VAT, and the image rule of the probed models (models.yaml; a test keeps them equal). */

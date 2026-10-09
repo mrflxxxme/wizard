@@ -201,7 +201,8 @@ export {
 /**
  * V3-12 page composer (builder-v3.md C6): createPageComposer() → PageComposer {skeleton — the public site from library
  * patterns without a model; scenario — page_compose and ≤ 2 signature sections, checked by the anti-slop linter and
- * G0}; lintPage/copyIssues — the anti-slop linter; withSitePages — the spec with the composed pages.
+ * G0}; lintPage/copyIssues — the anti-slop linter; withSitePages — the spec with the composed pages; siteRules — the
+ * action rules every written site keeps (main action → its form, catalog items → booking or the request form).
  */
 export {
   COMPOSE_CALL_TYPES,
@@ -213,9 +214,11 @@ export {
   type PageLintCode,
   type PageLintIssue,
   readSite,
+  SENT_TITLES,
   SITE_PATH,
   type SiteModel,
   type SitePage,
+  siteRules,
   withSitePages,
 } from "./v3/compose/index.js";
 /** V3-11/V3-12 seam (builder-v3.md C6): the harness calls a PageComposer; the page writer implements it. */

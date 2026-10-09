@@ -92,3 +92,62 @@ describe("module-bound section types", () => {
     expect(sections?.slots.safeParse(flat).success).toBe(false);
   });
 });
+
+// V3-18: the hooks the modules' goal scenarios look for on a v3 page (builder-v3.md C3, the DOM contract of ui-kit v2).
+describe("the DOM contract of the goal scenarios", () => {
+  const slotNames = (p: (typeof PATTERNS)[number]) =>
+    Object.keys((p.slots as unknown as { shape?: Record<string, unknown> }).shape ?? {});
+
+  test("first screens: the root is Hero with the build's wzId, the main action is wz-hero-primary", () => {
+    for (const p of of("hero")) {
+      expect(p.source, p.id).toMatch(/<section\s+data-wz-component="Hero"\s+data-wz-id=\{wzId\}/);
+      expect(p.source, p.id).toMatch(/href=\{action\.href\}\s+data-testid="wz-hero-primary"/);
+      expect(p.source.match(/wz-hero-primary/g)?.length, p.id).toBe(1);
+    }
+  });
+
+  test("forms: LeadForm or BookingForm roots, fields by name, the steps and states of a booking", () => {
+    for (const p of of("form")) {
+      const root = p.needs === "booking" ? "BookingForm" : "LeadForm";
+      expect(p.source, p.id).toMatch(
+        new RegExp(`data-wz-component="${root}"\\s+data-wz-id=\\{(props\\.)?wzId\\}`),
+      );
+      // Text of the pattern source (a template literal of the TSX), not a template here.
+      expect(p.source, p.id).toContain(["data-testid={`wz-field-$", "{field.name}`}"].join(""));
+      if (p.needs !== "booking") continue;
+      for (const hook of [
+        'data-testid="booking-page"',
+        "booking-day",
+        'data-testid="booking-time"',
+        'data-testid="booking-slots"',
+        'data-testid="booking-form"',
+        'data-testid="booking-done"',
+        'data-testid="wz-empty"',
+      ])
+        expect(p.source, `${p.id}: ${hook}`).toContain(hook);
+      // The service step: a list (testid) or radio cards (booking-${name} of the choice named «service»).
+      expect(p.source, p.id).toMatch(
+        /testid="booking-service"|name="service"[\s\S]*booking-\$\{name\}|booking-\$\{name\}[\s\S]*name="service"/,
+      );
+      // A choice of specialists is marked wherever the pattern offers one.
+      if (p.source.includes('label="Специалист"') || p.source.includes('legend="Специалист"'))
+        expect(p.source, p.id).toMatch(/booking-specialist|booking-\$\{name\}/);
+    }
+    // A form in steps says which step is on the screen; a booking in steps marks its «Далее».
+    expect(of("form").find((p) => p.id === "form-stepper")?.source).toContain(
+      "data-wz-steps={groups.length}",
+    );
+    expect(of("form").find((p) => p.id === "form-booking-steps")?.source).toContain(
+      'data-testid="booking-next"',
+    );
+  });
+
+  test("catalog items are wz-itemcard, their action wz-itemcard-cta; durations in minutes below two hours", () => {
+    for (const p of of("catalog")) {
+      expect(p.source, p.id).toContain('data-testid="wz-itemcard"');
+      if (slotNames(p).includes("itemAction"))
+        expect(p.source, p.id).toContain('data-testid="wz-itemcard-cta"');
+      expect(p.source, p.id).toContain(["if (v < 120) return `$", "{v} мин`;"].join(""));
+    }
+  });
+});

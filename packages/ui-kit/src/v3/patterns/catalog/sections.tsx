@@ -54,9 +54,11 @@ function priceOf(v: unknown): string | null {
 
 function durationOf(v: unknown): string | null {
   if (typeof v !== "number" || v <= 0) return null;
+  // Minutes below two hours («60 мин», «90 мин») as the module's showcase says them, then hours.
+  if (v < 120) return `${v} мин`;
   const h = Math.floor(v / 60);
   const m = v % 60;
-  return h && m ? `${h} ч ${m} мин` : h ? `${h} ч` : `${m} мин`;
+  return m ? `${h} ч ${m} мин` : `${h} ч`;
 }
 
 /** Address of an image field: a file of the system's storage at the given width (runtime files.image). */
@@ -201,7 +203,11 @@ export default function CatalogSections(props: CatalogSectionsProps) {
   const row = (item: Item) => {
     const it = itemOf(item, f);
     return (
-      <li key={item.id} className="grid gap-x-8 gap-y-1 py-5 sm:grid-cols-[minmax(0,1fr)_auto]">
+      <li
+        key={item.id}
+        data-testid="wz-itemcard"
+        className="grid gap-x-8 gap-y-1 py-5 sm:grid-cols-[minmax(0,1fr)_auto]"
+      >
         <div className="min-w-0">
           <Name className="text-lead font-bold wrap-break-word">{it.name}</Name>
           {it.description ? (

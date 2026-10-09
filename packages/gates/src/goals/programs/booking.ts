@@ -1,9 +1,12 @@
 // Goal scenarios of the module «Запись по слотам» (packages/modules/src/booking, modules.yaml#catalog booking): the
-// page /booking (service → [resource] → day → free time → contacts with consent), entity `booking` {starts_at, ends_at,
-// seat, status, …}, the one-time links of the e-mails (/_wizard/hooks/message/cancel|reschedule/<token>).
+// page /booking (service → [resource] → day → free time → contacts with consent) — the module's v2 page or a v3
+// booking pattern with the same hooks (booking-page, booking-slots, booking-done; its steps marked booking-service,
+// booking-specialist, booking-day, booking-time) —, entity `booking` {starts_at, ends_at, seat, status, …}, the
+// one-time links of the e-mails (/_wizard/hooks/message/cancel|reschedule/<token>).
+import type { Locator } from "@playwright/test";
 import type { AppSpec } from "@wizard/appspec";
 import type { GoalOutboxMessage, GoalProgram, GoalRun } from "../types.js";
-import { ensurePackage } from "./packages.js";
+import { ensurePackage } from "./package-sale.js";
 import {
   enumLabel,
   formReady,
@@ -23,10 +26,137 @@ const SLOTS = '[data-testid="booking-slots"] button';
 /** The first day of the list may be today with its time already past: the scenarios book from the third day on. */
 const FIRST_DAY = 2;
 
+/**
+ * The steps of the open booking form: the choices before the day (service, resource), the day and the time. The
+ * module's v2 page has them as its sections in this order; a v3 booking pattern marks them (booking-service,
+ * booking-specialist, booking-day, booking-time) — a step of a pattern in steps appears after «Далее» (booking-next).
+ */
+interface BookingSteps {
+  choices: Locator[];
+  day: Locator;
+  time: Locator;
+}
+
+const V3_STEP = (id: string) => `${PAGE} [data-testid="booking-${id}"]`;
+
+/** Whether the open booking form is a v3 pattern (its steps are marked, its root is data-wz-component BookingForm). */
+async function isV3(t: GoalRun): Promise<boolean> {
+  return (await t.page.locator(`${PAGE}[data-wz-component="BookingForm"]`).count()) > 0;
+}
+
+/**
+ * The open /booking is a v3 booking pattern (V3-18: «Абонементы» books through its steps): waits for the first choices
+ * of either form, then tells them apart.
+ */
+export async function isV3Booking(t: GoalRun): Promise<boolean> {
+  await stepsReady(t);
+  return isV3(t);
+}
+
+async function bookingSteps(t: GoalRun): Promise<BookingSteps> {
+  if (await isV3(t)) {
+    const choices = [t.page.locator(V3_STEP("service")).first()];
+    const specialist = t.page.locator(V3_STEP("specialist")).first();
+    if ((await specialist.count()) > 0) choices.push(specialist);
+    return {
+      choices,
+      day: t.page.locator(V3_STEP("day")).first(),
+      time: t.page.locator(V3_STEP("time")).first(),
+    };
+  }
+  const sections = t.page.locator(`${PAGE} > section`);
+  const n = await sections.count();
+  return {
+    choices: Array.from({ length: Math.max(0, n - 2) }, (_, i) => sections.nth(i)),
+    day: sections.nth(n - 2),
+    time: sections.nth(n - 1),
+  };
+}
+
+/** Waits until the booking form shows its first choices (the v2 page: its sections; a v3 pattern: the service step). */
+async function stepsReady(t: GoalRun): Promise<BookingSteps> {
+  const v2 = t.page.locator(`${PAGE} > section`).nth(2);
+  const v3 = t.page.locator(V3_STEP("service")).first();
+  try {
+    await Promise.any([
+      v2.waitFor({ state: "attached", timeout: 5_000 }),
+      v3.waitFor({ state: "attached", timeout: 5_000 }),
+    ]);
+  } catch {
+    t.fail("страница записи не открылась", await textOf(t, "body"));
+  }
+  return bookingSteps(t);
+}
+
+/** «Далее» of a v3 booking pattern in steps, when `step` is not on the screen yet; false — nothing to press. */
+async function nextStep(t: GoalRun, step: Locator): Promise<boolean> {
+  if ((await step.count()) > 0) return false;
+  const next = t.page.locator(`${PAGE} [data-testid="booking-next"]`).first();
+  if ((await next.count()) === 0) return false;
+  await next.click();
+  await t.settle();
+  return true;
+}
+
+type OptionKind = "button" | "radio" | "select";
+
+/** The options of a step: its buttons (v2, v3 day strips), radio cards (v3) or a native list (v3); captions in order. */
+async function optionsOf(step: Locator): Promise<{ kind: OptionKind; labels: string[] }> {
+  const select = step.locator("select").first();
+  if ((await select.count()) > 0) {
+    const labels = await select
+      .locator("option")
+      .evaluateAll((os) =>
+        os.filter((o) => (o as HTMLOptionElement).value !== "").map((o) => o.textContent ?? ""),
+      );
+    return { kind: "select", labels };
+  }
+  const radios = step.locator('input[type="radio"]');
+  if ((await radios.count()) > 0) {
+    const labels = await radios.evaluateAll((rs) => rs.map((r) => r.closest("label")?.textContent ?? ""));
+    return { kind: "radio", labels };
+  }
+  return { kind: "button", labels: await step.getByRole("button").allInnerTexts() };
+}
+
+/** Picks the option `i` of a step (a click, a radio check or the option of the list). */
+async function pickOption(step: Locator, kind: OptionKind, i: number): Promise<void> {
+  if (kind === "select") {
+    const select = step.locator("select").first();
+    const values = await select
+      .locator("option")
+      .evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value).filter((v) => v !== ""));
+    await select.selectOption(values[i] as string);
+  } else if (kind === "radio") await step.locator('input[type="radio"]').nth(i).check({ force: true });
+  else await step.getByRole("button").nth(i).click();
+}
+
+/** A choice is made in a step: a pressed button, a checked radio or a chosen option of its list. */
+async function chosenIn(step: Locator): Promise<boolean> {
+  if ((await step.locator('[aria-pressed="true"]').count()) > 0) return true;
+  if ((await step.locator('input[type="radio"]:checked').count()) > 0) return true;
+  const select = step.locator("select").first();
+  return (await select.count()) > 0 && (await select.inputValue().catch(() => "")) !== "";
+}
+
+/**
+ * The open booking page has a choice made before any click (a showcase link `?service=` preselects the item): the
+ * service step of a v3 pattern, else a pressed button of the v2 page.
+ */
+export async function bookingChoiceMade(t: GoalRun): Promise<boolean> {
+  await t.page
+    .locator(`${PAGE} > section, ${V3_STEP("service")}`)
+    .first()
+    .waitFor({ state: "attached", timeout: 5_000 })
+    .catch(() => {});
+  const service = t.page.locator(V3_STEP("service")).first();
+  if ((await service.count()) > 0) return chosenIn(service);
+  return (await t.page.locator(`${PAGE} [aria-pressed="true"]`).count()) > 0;
+}
+
 /** Waits until the time section shows the free slots or says there are none (busySlots loads after the day click). */
 async function slotsLoaded(t: GoalRun): Promise<void> {
-  const sections = t.page.locator(`${PAGE} > section`);
-  const time = sections.nth((await sections.count()) - 1);
+  const { time } = await bookingSteps(t);
   await time
     .locator('[data-testid="booking-slots"], [data-testid="wz-empty"]')
     .first()
@@ -68,29 +198,25 @@ async function addService(t: GoalRun): Promise<void> {
 /**
  * The choices before the day (service, resource) where none is made: the run's own service (ensureService), else the
  * shortest («· 55 мин»), else the first option. A fixed choice (the service of a reschedule link) is text without
- * buttons.
+ * options.
  */
-async function pickChoices(t: GoalRun, n: number): Promise<void> {
-  const sections = t.page.locator(`${PAGE} > section`);
-  for (let i = 0; i < n - 2; i++) {
-    const s = sections.nth(i);
-    if ((await s.locator('[aria-pressed="true"]').count()) > 0) continue;
-    const buttons = s.getByRole("button");
-    if ((await buttons.count()) === 0) {
+async function pickChoices(t: GoalRun, steps: BookingSteps): Promise<void> {
+  for (const s of steps.choices) {
+    if (await chosenIn(s)) continue;
+    const { kind, labels } = await optionsOf(s);
+    if (labels.length === 0) {
       if ((await s.locator('[data-testid="wz-empty"]').count()) > 0)
         t.fail(`на странице записи нечего выбрать: ${plain(await s.innerText().catch(() => ""))}`);
       continue;
     }
-    const minutes = (await buttons.allInnerTexts()).map((x) =>
-      Number(/(\d+)\s*мин/.exec(x)?.[1] ?? Number.NaN),
-    );
+    const minutes = labels.map((x) => Number(/(\d+)\s*мин/.exec(x)?.[1] ?? Number.NaN));
     let pick = 0;
     minutes.forEach((m, k) => {
       if (Number.isFinite(m) && !(m >= (minutes[pick] as number))) pick = k;
     });
-    const own = (await buttons.allInnerTexts()).findIndex((x) => x.includes(t.marker));
+    const own = labels.findIndex((x) => x.includes(t.marker));
     if (own >= 0) pick = own;
-    await buttons.nth(pick).click();
+    await pickOption(s, kind, pick);
     await t.settle();
   }
 }
@@ -104,24 +230,23 @@ export interface ChosenSlot {
   dayIndex: number;
 }
 
+/** The choices made and the day step on the screen (a v3 pattern in steps shows it after «Далее»). */
+async function toDays(t: GoalRun): Promise<BookingSteps> {
+  const steps = await stepsReady(t);
+  await pickChoices(t, steps);
+  return (await nextStep(t, steps.day)) ? bookingSteps(t) : steps;
+}
+
 /**
  * On the open booking page: picks the first option of every choice before the day (service, resource) unless one is
- * chosen, then the day (from `day` on, skipping days without free time) and the slot (`time`, else the first).
+ * chosen, then the day (from `day` on, skipping days without free time) and the slot (`time`, else the first); the
+ * contacts form is on the screen after it.
  */
 export async function chooseSlot(t: GoalRun, o: { day?: number; time?: string } = {}): Promise<ChosenSlot> {
-  const sections = t.page.locator(`${PAGE} > section`);
-  try {
-    await sections.nth(2).waitFor({ state: "attached", timeout: 5_000 });
-  } catch {
-    t.fail("страница записи не открылась", await textOf(t, "body"));
-  }
-  const n = await sections.count();
-  await pickChoices(t, n);
-  const days = sections.nth(n - 2).getByRole("button");
-  const time = sections.nth(n - 1);
-  const total = await days.count();
-  for (let d = o.day ?? FIRST_DAY; d < total; d++) {
-    await days.nth(d).click();
+  const { day, time } = await toDays(t);
+  const days = await optionsOf(day);
+  for (let d = o.day ?? FIRST_DAY; d < days.labels.length; d++) {
+    await pickOption(day, days.kind, d);
     await t.settle();
     await slotsLoaded(t);
     const slots = time.locator(SLOTS);
@@ -135,7 +260,9 @@ export async function chooseSlot(t: GoalRun, o: { day?: number; time?: string } 
     const label = plain(await button.innerText());
     await button.click();
     await t.settle();
-    return { time: label, day: plain(await days.nth(d).innerText()), dayIndex: d };
+    // A v3 pattern in steps asks for the contacts after «Далее».
+    await nextStep(t, t.page.locator(`${PAGE} form`));
+    return { time: label, day: plain(days.labels[d] ?? ""), dayIndex: d };
   }
   return t.fail("на ближайшие дни нет свободного времени для записи");
 }
@@ -143,24 +270,15 @@ export async function chooseSlot(t: GoalRun, o: { day?: number; time?: string } 
 /** Slot captions offered on the open booking page for the chosen day. */
 export async function offeredTimes(t: GoalRun): Promise<string[]> {
   await slotsLoaded(t);
-  const sections = t.page.locator(`${PAGE} > section`);
-  const n = await sections.count();
-  const slots = sections.nth(n - 1).locator(SLOTS);
-  return (await slots.allInnerTexts()).map(plain);
+  const { time } = await bookingSteps(t);
+  return (await time.locator(SLOTS).allInnerTexts()).map(plain);
 }
 
 /** Opens /booking and selects the day `dayIndex` (and the first service and resource). */
 export async function openDay(t: GoalRun, dayIndex: number): Promise<void> {
   await t.open(BOOKING_PAGE);
-  const sections = t.page.locator(`${PAGE} > section`);
-  await sections.nth(2).waitFor({ state: "attached", timeout: 5_000 });
-  const n = await sections.count();
-  await pickChoices(t, n);
-  await sections
-    .nth(n - 2)
-    .getByRole("button")
-    .nth(dayIndex)
-    .click();
+  const { day } = await toDays(t);
+  await pickOption(day, (await optionsOf(day)).kind, dayIndex);
   await t.settle();
 }
 

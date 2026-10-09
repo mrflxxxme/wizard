@@ -266,7 +266,7 @@ describe("page_compose", () => {
         },
         {
           id: "catalog",
-          pattern: "catalog-price-list",
+          pattern: "catalog-list",
           props: { title: "Услуги и цены", empty: "В каталоге пока нет позиций" },
         },
         {
@@ -280,22 +280,70 @@ describe("page_compose", () => {
         description: "Каталог услуг стоматологической клиники «Белая линия» с ценами и заявкой на приём.",
       },
     };
-    // The catalog showcase is bound to the module: the model may not drop it.
+    // The catalog showcase is bound to the module: the model may not drop it, nor take a variant without the items'
+    // action (a price list): the items lead to the request form of the site (GS-catalog-4).
     const dropped = { ...answer, sections: answer.sections.filter((s) => s.id !== "catalog") };
-    const { route, calls } = scripted({ page_compose: [dropped, answer] });
+    const priceList = {
+      ...answer,
+      sections: answer.sections.map((s) =>
+        s.id === "catalog" ? { ...s, pattern: "catalog-price-list" } : s,
+      ),
+    };
+    const { route, calls } = scripted({ page_compose: [dropped, priceList, answer] });
     const out = await createPageComposer({ patterns: PATTERNS, registry: llm }).scenario(
       { ...ctx, route },
       PRICES,
     );
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
     expect(JSON.stringify(calls[1]?.messages.at(-1))).toContain("Секцию catalog убирать нельзя");
+    // The variants the tool offers for the showcase keep the items' action: no price list among them.
+    const refused = JSON.stringify(calls[2]?.messages.at(-1));
+    expect(refused).toContain("sections.1.pattern");
+    expect(refused).toContain("catalog-list");
+    expect(refused).not.toContain("catalog-price-list");
     expect(out.pages.map((p) => p.route)).toEqual(["/services"]);
     expect(out.pages[0]?.sections[1]?.props).toMatchObject({ title: "Цены на лечение" });
-    // The binding stays the module's: the entity and the sections entity are not the model's to change.
+    // The binding stays the module's: the entity, the sections entity and the items' action are not the model's.
     expect(out.pages[0]?.sections[2]).toMatchObject({
-      pattern: "catalog-price-list",
-      props: { entity: "service", title: "Услуги и цены" },
+      pattern: "catalog-list",
+      props: {
+        entity: "service",
+        title: "Услуги и цены",
+        itemAction: { label: "Оставить заявку", path: "/#form" },
+      },
     });
+  });
+
+  test("the site's action rules hold over the model's page: the hero leads to the form, the form says «sent»", async () => {
+    const { ctx } = await prepared();
+    // The model points the first screen elsewhere and rewrites the «sent» heading — both valid answers of the tool.
+    const answer: PageComposeAnswer = {
+      ...HOME,
+      sections: HOME.sections.map((s) =>
+        s.id === "hero"
+          ? { ...s, props: { ...s.props, action: { label: "Записаться на приём", href: "/services" } } }
+          : {
+              ...s,
+              props: { ...s.props, sent: { title: "Спасибо, мы перезвоним", text: "В течение часа." } },
+            },
+      ),
+    };
+    const { route } = scripted({ page_compose: [answer] });
+    const out = await createPageComposer({ patterns: PATTERNS, registry: llm }).scenario(
+      { ...ctx, route },
+      LEAD,
+    );
+    const files = apply(ctx.files, out);
+    const home = readSite(files)?.pages.find((p) => p.route === "/");
+    const hero = home?.sections.find((s) => s.type === "hero");
+    const form = home?.sections.find((s) => s.type === "form");
+    expect(hero?.props.action).toEqual({ label: "Записаться на приём", href: "#form" });
+    expect(form?.props.sent).toEqual({ title: "Заявка отправлена", text: "В течение часа." });
+    // The page file carries the same: the anchor of the form section and the hero's link to it.
+    const source = files.get(home?.file ?? "") ?? "";
+    expect(source).toContain('<div id="form">');
+    expect(source).toContain('"action":{"label":"Записаться на приём","href":"#form"}');
+    expect(source).toContain('"sent":{"title":"Заявка отправлена","text":"В течение часа."}');
   });
 });
 
