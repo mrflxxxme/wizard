@@ -10,6 +10,7 @@ import {
   PROBE_HEADS,
   PROBE_MAX_CAP_RUB,
   parseProbeOutput,
+  probeAnnotations,
   probeMain,
   probeScript,
   probeSpendSql,
@@ -105,6 +106,18 @@ describe("v3 probe: the pod script and its output", () => {
       reason: expect.stringMatching(/^потолок пробы 0\.05 ₽ достигнут/),
     });
     expect(total.stopped).toMatch(/потолок пробы/);
+  });
+
+  test("annotations: one line per route — a notice for an answer, a warning for an error or a skip", () => {
+    const lines = probeAnnotations([
+      { callType: "page_compose", status: "ok", model: "glm-5.3", tier: "T1", routeReason: "default_T1", scrubbed: true, latencyMs: 1200, rub: 0.4, tried: ["glm-5.3:ok"] },
+      { callType: "techreview", status: "error", code: "LLM_UNAVAILABLE", message: "Модели\nнедоступны", tried: ["deepseek-v4-pro:error"] },
+      { callType: "research", status: "skipped", reason: "WIZARD_RESEARCH_MODE не live" },
+    ]);
+    expect(lines[0]).toMatch(/^::notice title=V3 проба · page_compose::ответила glm-5\.3 \(T1, default_T1\) · маскирование ПДн: да · 1200 мс · /);
+    expect(lines[1]).toMatch(/^::warning title=V3 проба · techreview::ошибка LLM_UNAVAILABLE: Модели недоступны/);
+    expect(lines[2]).toBe("::warning title=V3 проба · research::пропущен: WIZARD_RESEARCH_MODE не live");
+    for (const l of lines) expect(l).not.toMatch(/\n/);
   });
 
   test("the report: answered, skipped, errors and a head that did not answer, in Russian", () => {

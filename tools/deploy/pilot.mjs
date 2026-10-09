@@ -40,6 +40,7 @@ import {
   expectedProbeRub,
   PROBE_MAX_CAP_RUB,
   parseProbeOutput,
+  probeAnnotations,
   probeScript,
   probeSpendSql,
   renderProbeReport,
@@ -1713,6 +1714,7 @@ export async function pilotV3Probe({
   writeFileSync(join(outDir, "spend-entry.json"), `${JSON.stringify(spend.entry, null, 2)}\n`);
   log(text);
   if (vars.GITHUB_STEP_SUMMARY) appendFileSync(vars.GITHUB_STEP_SUMMARY, `${text}\n`);
+  for (const line of probeAnnotations(probe.calls ?? [])) log(line);
   log(`::notice title=Траты v3::${spend.line}`);
   if (!summary.passed)
     log(
