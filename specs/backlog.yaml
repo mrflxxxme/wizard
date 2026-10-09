@@ -3932,7 +3932,7 @@ tasks:
     owner: platform
     parallel_group: v3-b
     estimate_days: 2
-    status: in_progress
+    status: done
     claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "Агент вызывает request_secret (имя, домен, назначение); платформа показывает своё окно с доменом получателя; браузер шифрует ключ публичным ключом платформы; модель видит только secret://name (тест: значение не попадает ни в один вызов модели и лог)"
@@ -4002,7 +4002,7 @@ tasks:
     owner: platform
     parallel_group: v3-c
     estimate_days: 4
-    status: in_progress
+    status: done
     claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "GitHub App с правами Contents, Pull requests, Metadata, Checks (токен установки на час); GitLab — OAuth, включая self-managed"
