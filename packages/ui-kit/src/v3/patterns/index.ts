@@ -3,10 +3,13 @@
 // folders: a new type adds its import and its spread below.
 
 import { ABOUT_PATTERNS } from "./about/index.js";
+import { BLOG_PATTERNS } from "./blog/index.js";
+import { CATALOG_PATTERNS } from "./catalog/index.js";
 import { CONTACTS_PATTERNS } from "./contacts/index.js";
 import { CTA_PATTERNS } from "./cta/index.js";
 import { FAQ_PATTERNS } from "./faq/index.js";
 import { FOOTER_PATTERNS } from "./footer/index.js";
+import { FORM_PATTERNS } from "./form/index.js";
 import { GALLERY_PATTERNS } from "./gallery/index.js";
 import { HEADER_PATTERNS } from "./header/index.js";
 import { HERO_PATTERNS } from "./hero/index.js";
@@ -31,6 +34,9 @@ export const PATTERNS: readonly PatternMeta[] = [
   ...ABOUT_PATTERNS,
   ...TEAM_PATTERNS,
   ...FAQ_PATTERNS,
+  ...FORM_PATTERNS,
+  ...CATALOG_PATTERNS,
+  ...BLOG_PATTERNS,
 ];
 
 /** Deterministic choice of a variant for a section: by seed, archetype, without repeating used ones (C3). */

@@ -16,11 +16,12 @@ import {
   patternFor,
   patternThemeVars,
   SECTION_TYPES,
+  selectPattern,
 } from "../src/v3/patterns/index.js";
 import { UI_KIT_ROOT } from "./helpers/demo.js";
 
 const REPO = join(UI_KIT_ROOT, "../..");
-/** Section types of this batch; the next batches add theirs to the list. */
+/** Section types with their variants in the library (all of SECTION_TYPES since V3-08 part 2). */
 const READY = [
   "header",
   "hero",
@@ -34,6 +35,9 @@ const READY = [
   "about",
   "team",
   "faq",
+  "form",
+  "catalog",
+  "blog",
 ] as const;
 
 describe("registry", () => {
@@ -252,7 +256,8 @@ describe("patternFor", () => {
   });
 
   test("a section type without patterns yet gives null", () => {
-    expect(patternFor({ sectionType: "blog", archetype: "reestr", seed: 1 })).toBeNull();
+    const without = PATTERNS.filter((p) => p.sectionType !== "blog");
+    expect(selectPattern(without, { sectionType: "blog", archetype: "reestr", seed: 1 })).toBeNull();
   });
 });
 
