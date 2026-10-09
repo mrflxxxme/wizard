@@ -122,5 +122,5 @@ Job `sandbox` (`.github/workflows/sandbox.yml`, M2-01) скачивает их �
 
 | Источник композиции | Лицензия | Паттерны |
 |---|---|---|
-| HyperUI, https://github.com/markmead/hyperui | MIT, Copyright (c) Mark Mead | раскладки header-classic, header-centered, hero-split, hero-centered, cta-band, cta-centered, cta-split-image, footer-columns, footer-centered: композиция по мотивам, код свой |
-| shadcn/ui, https://github.com/shadcn-ui/ui | MIT, Copyright (c) 2023 shadcn | имена токенов темы (background и foreground, primary, muted, card, border, ring), стиль кнопок и карточек в header-floating и cta-card |
+| HyperUI, https://github.com/markmead/hyperui | MIT, Copyright (c) Mark Mead | раскладки header-classic, header-centered, hero-split, hero-centered, cta-band, cta-centered, cta-split-image, footer-columns, footer-centered, form-split, catalog-grid, catalog-list, blog-cards: композиция по мотивам, код свой |
+| shadcn/ui, https://github.com/shadcn-ui/ui | MIT, Copyright (c) 2023 shadcn | имена токенов темы (background и foreground, primary, muted, card, border, ring), стиль кнопок и карточек в header-floating, cta-card, form-centered и catalog-table |
