@@ -4,6 +4,9 @@
 // final measurement are checked again (10.10.2026: the click went to the page's note instead of «Новая карта»). Only
 // systems of one measurement org (platform.orgs.kind = 'eval'): a session of its owner is created for the check, the
 // check logs out and the session is revoked in the database after it. The raw token never reaches the database.
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { cookieNames } from "./client.mjs";
 import { isReadyV3 } from "./v3.mjs";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -109,15 +112,37 @@ const STATUS_RU = {
   keys_only: "только ключи",
 };
 
-/** The report of the check (Markdown) and its summary {paid, total, passed}. */
+/**
+ * The system's code as its owner downloads it (GET /systems/:id/repo/archive, the zip of the last commit) into `file`
+ * — what a failed scenario ran on, for its root cause without a rebuild. → bytes written, or the reason it was not.
+ */
+export async function saveRepoArchive({ fetch: f = fetch, base, session, systemId, file }) {
+  const names = cookieNames(base);
+  try {
+    const res = await f(`${new URL(base).origin}/api/v1/systems/${systemId}/repo/archive`, {
+      headers: { cookie: `${names.session}=${session.token}; ${names.csrf}=${session.csrf}` },
+      redirect: "manual",
+    });
+    if (res.status !== 200) return { saved: 0, why: `HTTP ${res.status}` };
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, bytes);
+    return { saved: bytes.length };
+  } catch (e) {
+    return { saved: 0, why: String(e?.message ?? e).slice(0, 160) };
+  }
+}
+
+/** The report of the check (Markdown) and its summary {paid, total, passed}: systems without online payment aside. */
 export function renderPayProbeReport(results, { date, runid, platform, notes = [] } = {}) {
-  const paid = results.filter((r) => r.payment?.status === "paid").length;
+  const due = results.filter((r) => r.payment?.status !== "skipped");
+  const paid = due.filter((r) => r.payment?.status === "paid").length;
   const L = [
     `# Проба оплаты магазинов v3 — ${date ?? ""}${runid ? ` (${runid})` : ""}`,
     "",
     `Платформа: ${platform ?? "—"}. Покупка посетителя на превью черновика и оплата тестовой картой в тестовом магазине ЮKassa основателя, без новой сборки и без вызовов моделей.`,
     "",
-    `**Оплачено: ${paid} из ${results.length}.**`,
+    `**Оплачено: ${paid} из ${due.length}.**${due.length < results.length ? ` Систем без онлайн-оплаты: ${results.length - due.length} — только архив кода.` : ""}`,
     "",
   ];
   for (const r of results) {
@@ -130,7 +155,7 @@ export function renderPayProbeReport(results, { date, runid, platform, notes = [
   for (const n of notes) L.push(`- ${n}`);
   return {
     text: `${L.join("\n").trimEnd()}\n`,
-    summary: { paid, total: results.length, passed: results.length > 0 && paid === results.length },
+    summary: { paid, total: due.length, passed: due.length > 0 && paid === due.length },
   };
 }
 
@@ -138,6 +163,8 @@ export function renderPayProbeReport(results, { date, runid, platform, notes = [
 export function payProbeAnnotations(results) {
   return results.map((r) => {
     const name = r.name ?? r.systemId;
+    if (r.payment?.status === "skipped")
+      return `::notice title=Оплата · ${name}::${r.payment.note ?? "без онлайн-оплаты"} — сохранён архив кода`;
     if (r.payment?.status === "paid")
       return `::notice title=Оплата · ${name}::оплачено тестовой картой, статус заказа «${r.payment.orderStatus ?? "—"}»`;
     const bad = (r.payment?.steps ?? []).find((s) => !s.ok);
