@@ -2235,6 +2235,12 @@ function v3Cluster({ pipeline = "modules", orgs = "eval", collect = "", probe = 
         stdout: `${JSON.stringify({ userId: "22222222-2222-4222-8222-222222222222", orgId: db.orgId, sessionId: "33333333-3333-4333-8333-333333333333", email })}\n`,
       };
     }
+    // V3-40: the payment check's session of the measurement org's owner.
+    if (o.input.includes("WITH sys AS"))
+      return {
+        status: 0,
+        stdout: `${JSON.stringify({ userId: "22222222-2222-4222-8222-222222222222", orgId: db.orgId, sessionId: "44444444-4444-4444-8444-444444444444" })}\n`,
+      };
     if (o.input.includes("'costs='")) return { status: 0, stdout: collect };
     if (o.input.includes("'probe_rub='")) return { status: 0, stdout: "probe_rub=0.3412\n" };
     return { status: 0, stdout: "revoked=33333333-3333-4333-8333-333333333333\n" };
@@ -2373,6 +2379,15 @@ describe("pilot: V3-18 — checkpoint 1 of v3 and the probe of the v3 routes", (
     ).not.toHaveProperty("shape");
     expect(() => shape("critic;curl")).toThrow(/--shape/);
     expect(() => parseArgs(["eval", "--env", "prod", "--shape", "critic", ...reg("300")])).toThrow(/unknown/);
+    // V3-40 --pay: the payment check of shops already built; empty (the workflow's default) — not this probe.
+    const sys = "cd76a3c8-b8d0-4fa7-95de-c61108e9e11f";
+    const pay = (v, extra = []) =>
+      parseArgs(["v3-probe", "--env", "prod", "--pay", v, ...extra, ...reg("1", { "--expect-rub": "0" })]);
+    expect(pay(sys).pay).toEqual([sys]);
+    expect(pay("")).not.toHaveProperty("pay");
+    expect(() => pay("not-a-system")).toThrow(/--pay/);
+    expect(() => pay(sys, ["--shape", "critic"])).toThrow(/разные пробы/);
+    expect(() => parseArgs(["eval", "--env", "prod", "--pay", sys, ...reg("300")])).toThrow(/unknown/);
   });
 
   it("v3-probe --shape: the shape script in the worker folder (run here without network), annotations per model, the report", async () => {
@@ -2654,6 +2669,68 @@ describe("pilot: V3-18 — checkpoint 1 of v3 and the probe of the v3 routes", (
       result: "готовы 12 из 12",
     });
   });
+
+  it("v3-probe --pay: the owner's session of the measurement org, a purchase per shop, logout and revoke, the report", async () => {
+    const cloud = fakeCloud();
+    await bootstrap(cloud, fakeTools());
+    const cluster = v3Cluster();
+    const logs = [];
+    const api = [];
+    const shops = ["cd76a3c8-b8d0-4fa7-95de-c61108e9e11f", "0c07ecad-db25-4a53-8a25-1cad47f688c8"];
+    const code = await main(
+      [
+        "v3-probe",
+        "--env",
+        "prod",
+        "--pay",
+        shops.join(","),
+        ...reg("1", {
+          "--expect-rub": "0",
+          "--purpose": "Проба оплаты магазинов финального замера",
+          "--hypothesis": "Заказы оплачиваются тестовой картой",
+        }),
+      ],
+      FOUNDER,
+      deps(cloud, cluster, {
+        log: (l) => logs.push(l),
+        kassaEnv: { YOUKASSA_TEST_SHOP_ID: "123456", YOUKASSA_TEST_API_KEY: "test_kassa-secret" },
+        launch: async () => {
+          throw new Error("no browser in this test");
+        },
+        fetch: (url, init = {}) => {
+          const u = new URL(url);
+          if (u.host !== "codename.ru") return cloud.fetch(url, init);
+          api.push(`${init.method ?? "GET"} ${u.pathname}`);
+          // The platform answers nothing useful here: the keys step fails, the purchase never starts.
+          return Promise.resolve(new Response(JSON.stringify({ error: { code: "NOPE" } }), { status: 500 }));
+        },
+      }),
+    );
+    // Neither shop paid → exit 1; nothing built, no model called.
+    expect(code, logs.filter((l) => l.startsWith("::")).join("\n")).toBe(1);
+    expect(cluster.seen.scripts).toHaveLength(0);
+    const sessionSql = cluster.seen.sqls.find((q) => q.includes("WITH sys AS"));
+    expect(sessionSql).toContain(`\\set systems '{${shops.join(",")}}'`);
+    expect(sessionSql).toContain("o.kind = 'eval'");
+    expect(cluster.seen.sqls.at(-1)).toContain("UPDATE platform.sessions SET revoked_at = now()");
+    expect(api.at(-1)).toBe("POST /api/v1/auth/logout");
+    for (const l of logs) expect(l).not.toContain("test_kassa-secret");
+    const ann = logs.filter((l) => l.startsWith("::error title=Оплата · "));
+    expect(ann).toHaveLength(2);
+    const dir = join(tmp, "wizard-eval-prod");
+    const json = readdirSync(dir).find((f) => /^v3-pay-\d{4}-\d{2}-\d{2}-\d{8}-[0-9a-f]{6}\.json$/.test(f));
+    const doc = JSON.parse(readFileSync(join(dir, json), "utf8"));
+    expect(doc).toMatchObject({ kind: "wizard-v3-pay-probe", orgId: cluster.db.orgId });
+    expect(doc.results.map((r) => [r.systemId, r.payment.status])).toEqual(shops.map((id) => [id, "failed"]));
+    const entry = JSON.parse(readFileSync(join(dir, "spend-entry.json"), "utf8"));
+    expect(entry).toMatchObject({
+      wave: "A",
+      capRub: 1,
+      expectRub: 0,
+      actualRub: 0,
+      result: "оплачено 0 из 2",
+    });
+  }, 120_000);
 
   it("v3-probe: an eval org, the script of the pod over stdin (run here without network), the exact ₽, the report", async () => {
     const cloud = fakeCloud();

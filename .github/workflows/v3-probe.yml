@@ -8,6 +8,8 @@
 # probe_shape (critic | techreview | critic,techreview): the shape probe instead — the production request shapes of
 # critic_visual and techreview on synthetic content, model by model of the chain, variants of analysis and the
 # provider's own words on a refusal (tools/eval/server/probe-shape.mjs); one annotation per call type and model.
+# pay_systems (V3-40): the payment check of shops already built by one measurement — the visitor's purchase on each
+# draft paid with the test card on the founder's ЮKassa test shop (tools/eval/server/pay-probe.mjs), 0 ₽ of models.
 name: v3-probe
 
 on:
@@ -46,6 +48,10 @@ on:
         description: "Проба формы запросов: critic, techreview или critic,techreview — формы как в сборке на синтетике, каждая модель цепочки, варианты разбора и текст отказа провайдера (≈ 12 ₽, до ≈ 30 ₽). Пусто — проба голов маршрутов"
         type: string
         default: ""
+      pay_systems:
+        description: "Проба оплаты: id до трёх магазинов одного замера через запятую — покупка на превью и оплата тестовой картой ЮKassa, без сборки и вызовов моделей (0 ₽). Пусто — нет"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -73,4 +79,5 @@ jobs:
       cap_rub: ${{ inputs.cap_rub }}
       founder_ok: "no"
       probe_shape: ${{ inputs.probe_shape }}
+      pay_systems: ${{ inputs.pay_systems }}
     secrets: inherit

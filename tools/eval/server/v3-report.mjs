@@ -413,6 +413,10 @@ export function renderV3Report(doc, db = {}, meta = {}) {
         keys_only: "ключи введены, покупка не проверялась (нет браузера)",
       };
       L.push(`- Оплата ЮKassa (тестовый магазин): ${P[x.payment.status] ?? x.payment.status}${x.payment.note ? ` — ${x.payment.note}` : ""}.`);
+      if (x.payment.recheck)
+        L.push(
+          `  - проверено пробой оплаты${typeof x.payment.recheck === "string" ? ` ${x.payment.recheck}` : ""} на той же системе после исправления автоматизации страницы ЮKassa (в прогоне замера: ${P[x.payment.before] ?? x.payment.before ?? "—"})`,
+        );
       if (x.payment.keys?.keys?.length) L.push(`  - ключи через окно ключа: ${x.payment.keys.keys.join(", ")}`);
       if (x.payment.keys?.message) L.push(`  - ключи: ${x.payment.keys.message}`);
       for (const st of x.payment.steps ?? [])

@@ -44,6 +44,15 @@ import { selectBriefs } from "../eval/server/cli.mjs";
 import { platformClient } from "../eval/server/client.mjs";
 import { countedD76, isV3Threshold, runEval, THRESHOLDS } from "../eval/server/driver.mjs";
 import {
+  PAY_PROBE_SESSION_HOURS,
+  parsePayProbeSeed,
+  parsePaySystems,
+  payProbeAnnotations,
+  payProbeSessionSql,
+  renderPayProbeReport,
+  runPayProbe,
+} from "../eval/server/pay-probe.mjs";
+import {
   expectedProbeRub,
   PROBE_MAX_CAP_RUB,
   parseProbeOutput,
@@ -76,7 +85,7 @@ import {
 } from "../eval/server/seed.mjs";
 import { runV3Eval } from "../eval/server/v3.mjs";
 import { mergeRuns, renderV3Final } from "../eval/server/v3-final.mjs";
-import { kassaFromEnv } from "../eval/server/v3-pay.mjs";
+import { kassaFromEnv, shopPayment } from "../eval/server/v3-pay.mjs";
 import { checkpointName, finalName, finalRunName, renderV3Report } from "../eval/server/v3-report.mjs";
 import { gvisorProbe, main as infraMain, NET_PROBE } from "./infra.mjs";
 import {
@@ -192,7 +201,11 @@ export function parseArgs(argv) {
     else if (command === "eval" && a === "--threshold") o.threshold = rest[++i] || "d76";
     // V3-18: the shape probe (production request shapes per model of the chain); empty — the route probe.
     else if (command === "v3-probe" && a === "--shape") o.shape = parseShapeGroups(rest[++i] ?? "");
-    else if (PAID.includes(command) && SPEND_FLAGS[a]) spend[SPEND_FLAGS[a]] = rest[++i] ?? "";
+    // V3-40: the payment check of shops already built (tools/eval/server/pay-probe.mjs); empty — the route probe.
+    else if (command === "v3-probe" && a === "--pay") {
+      const v = rest[++i] ?? "";
+      if (v.trim()) o.pay = parsePaySystems(v);
+    } else if (PAID.includes(command) && SPEND_FLAGS[a]) spend[SPEND_FLAGS[a]] = rest[++i] ?? "";
     else throw new Error(`unknown argument ${a}`);
   }
   if (command === "v3-probe") {
@@ -202,6 +215,7 @@ export function parseArgs(argv) {
       throw new Error(`v3-probe: потолок пробы — не больше ${PROBE_MAX_CAP_RUB} ₽ (cap_rub)`);
     o.maxCostRub = o.spend.capRub;
     if (!o.shape) delete o.shape;
+    if (o.shape && o.pay) throw new Error("v3-probe: --shape и --pay — разные пробы, по одной за запуск");
   }
   if (command === "eval") {
     o.briefs ??= "all";
@@ -1684,6 +1698,108 @@ export function v3OrgsOfServer(kubectl) {
 }
 
 /**
+ * `v3-probe --pay <system ids>` (V3-40): the payment check of shops already built by a measurement — the visitor's
+ * purchase on each draft's preview paid with the test card on the founder's ЮKassa test shop (v3-pay.mjs), no build
+ * and no model calls (0 ₽ of the budget; pre-registered like every probe). The systems must belong to one eval org:
+ * a session of its owner is created in the database (the raw token only in memory, masked), the browser runs here,
+ * then the session logs out and is revoked. The report, the annotations and the entry for the spend journal as the
+ * probe writes them. Exit 0 — every system paid, 1 — not.
+ */
+export async function pilotV3Pay({
+  o,
+  vars,
+  journal = null,
+  log,
+  fetch: f,
+  now,
+  rand,
+  outDir,
+  inCluster,
+  kassaEnv = process.env,
+  launch = launchChromium,
+}) {
+  const sp = o.spend;
+  const runid = newRunId(now(), rand);
+  const session = newEvalSession(rand);
+  mask([session.token, session.csrf], vars, log);
+  const registered = `волна ${sp.wave}, ожидаем ${sp.expectRub} ₽, потолок ${sp.capRub} ₽${sp.founderOk ? " («да» основателя)" : ""} — цель: ${sp.purpose}; гипотеза: ${sp.hypothesis}`;
+  log(`::notice title=Журнал трат v3::${registered}`);
+  log(`проба оплаты v3 ${runid}: систем ${o.pay.length}, без сборки и без вызовов моделей`);
+  const kassa = kassaFromEnv(kassaEnv);
+  if (!kassa || kassa.refused) {
+    log(
+      `::error title=V3 оплата::${kassa?.refused ?? "нет тестового магазина ЮKassa в секретах (YOUKASSA_TEST_API_KEY, YOUKASSA_TEST_SHOP_ID)"} — проба не начата, ничего не потрачено.`,
+    );
+    return 1;
+  }
+  const base = `https://${vars.WIZARD_PLATFORM_DOMAIN}`;
+  let results = [];
+  let orgId = null;
+  const code = await inCluster(async ({ kubectl }) => {
+    const seed = parsePayProbeSeed(
+      psqlInPod(
+        kubectl,
+        payProbeSessionSql({ systemIds: o.pay, tokenHash: session.tokenHash, csrfHash: session.csrfHash }),
+      ),
+    );
+    orgId = seed.orgId;
+    log(`учётка замера ${orgId}: сессия владельца на ${PAY_PROBE_SESSION_HOURS} ч для проверки оплаты`);
+    const client = platformClient({ base, session, fetch: f });
+    try {
+      results = await runPayProbe({
+        client,
+        systemIds: o.pay,
+        pay: (c, id, say) => shopPayment({ kassa, launch, kassaShots: join(outDir, "shots") }, c, id, say),
+        log,
+      });
+    } finally {
+      await client
+        .post("/auth/logout")
+        .catch((e) => log(`::warning::выход сессии пробы по API: ${e.message}`));
+      try {
+        psqlInPod(kubectl, revokeSql({ tokenHash: session.tokenHash }));
+      } catch (e) {
+        log(`::warning::отзыв сессии пробы в базе: ${e.message}`);
+      }
+    }
+    return 0;
+  });
+  if (code !== 0) return code;
+  const date = moscowDate(now());
+  const report = renderPayProbeReport(results, {
+    date,
+    runid,
+    platform: base,
+    notes: [
+      `Учётка замера \`${orgId}\` (вид eval): сессия владельца создана для пробы, после неё — выход и отзыв в базе.`,
+      "Вызовов моделей нет: расход пробы — 0 ₽ бюджета v3.",
+    ],
+  });
+  const summary = { ...report.summary, costRub: 0, costExact: true };
+  const spend = evalSpend({
+    spend: sp,
+    journal,
+    runid,
+    summary,
+    now,
+    verdict: `оплачено ${summary.paid} из ${summary.total}`,
+  });
+  const text = `${report.text}\n${spend.text}`;
+  mkdirSync(outDir, { recursive: true });
+  writeFileSync(join(outDir, `v3-pay-${date}-${runid}.md`), text);
+  writeFileSync(
+    join(outDir, `v3-pay-${date}-${runid}.json`),
+    `${JSON.stringify({ kind: "wizard-v3-pay-probe", runid, orgId, results }, null, 2)}\n`,
+  );
+  writeFileSync(join(outDir, "spend-entry.json"), `${JSON.stringify(spend.entry, null, 2)}\n`);
+  log(text);
+  if (vars.GITHUB_STEP_SUMMARY) appendFileSync(vars.GITHUB_STEP_SUMMARY, `${text}\n`);
+  for (const line of payProbeAnnotations(results)) log(line);
+  log(`::notice title=Траты v3::${spend.line}`);
+  return summary.passed ? 0 : 1;
+}
+
+/**
  * `v3-probe` (V3-18, step 2 of the ladder): an eval org «Замер V3 · <runid>» is created like the measurement's (its
  * session is revoked at once — the probe needs no cabinet), the probe script runs in the worker pod over stdin
  * (tools/eval/server/probe.mjs: the server's gateway, keys and policy; usage into platform.llm_calls of that org; the
@@ -2444,6 +2560,20 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
       exists: deps.exists,
       sleep: deps.sleep,
       fetch: deps.fetch,
+    });
+  if (o.command === "v3-probe" && o.pay)
+    return pilotV3Pay({
+      o,
+      vars,
+      journal,
+      log,
+      fetch: f,
+      now,
+      rand,
+      outDir: join(vars.RUNNER_TEMP || deps.tmpRoot || tmpdir(), `wizard-eval-${o.env}`),
+      inCluster,
+      ...(deps.kassaEnv ? { kassaEnv: deps.kassaEnv } : {}),
+      ...(deps.launch ? { launch: deps.launch } : {}),
     });
   if (o.command === "v3-probe" && o.shape)
     return pilotV3Shape({
