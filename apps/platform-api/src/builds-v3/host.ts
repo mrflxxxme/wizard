@@ -22,11 +22,17 @@ import {
 } from "@wizard/agents/builder";
 import type { ModuleRegistry } from "@wizard/agents/planner";
 import type { AppSpec } from "@wizard/appspec";
-import type { GateReport, GoalScenarioInput, SeedHint } from "@wizard/gates";
+import {
+  type GateReport,
+  type GoalScenarioInput,
+  LIBRARY_PHOTO_HINT,
+  SEED_HINT_MAX_VALUES,
+  type SeedHint,
+} from "@wizard/gates";
 import { createRegistry } from "@wizard/llm";
 import { createLogger } from "@wizard/pii/log";
 import type { FileStorage } from "@wizard/runtime";
-import { Kysely } from "kysely";
+import { Kysely, sql } from "kysely";
 import { PostgresJSDialect } from "kysely-postgres-js";
 import type postgres from "postgres";
 import type { GoalBrowserProvider } from "../agents/goal-browser.js";
@@ -92,15 +98,70 @@ export async function isV3Build(
 /**
  * V3-18: seed hints of the draft of a system with a brief — the names of the offer its latest brief (else the owner's
  * first words) lists, for the preview's demo rows; [] without a brief or when reading it fails (the seed goes on).
+ * V3-40: and the photos of the goods — the image fields a visitor reads take the library photos the photos stage
+ * picked for the niche (photoSeedHints): a demo shop shows its goods with pictures, not empty cards.
  */
 export async function draftSeedHints(db: Db, systemId: string, spec: AppSpec): Promise<SeedHint[]> {
+  let out: SeedHint[] = [];
   try {
     const brief = await getLatestBrief(db, systemId);
-    if (!brief) return [];
-    return seedHintsFromBrief(spec, brief.brief, await loadBrief(db, systemId));
-  } catch {
-    return [];
+    if (brief) out = seedHintsFromBrief(spec, brief.brief, await loadBrief(db, systemId));
+  } catch {}
+  try {
+    const r = await sql<{ photos: unknown }>`
+      select c.checkpoint -> 'data' -> 'photos' as photos
+        from platform.system_build_checkpoints c
+       where c.system_id = ${systemId} and c.key = 'photos'`.execute(db);
+    const photos = r.rows[0]?.photos;
+    out = [...out, ...photoSeedHints(spec, Array.isArray(photos) ? photos : [])];
+  } catch {}
+  return out;
+}
+
+/** @wizard/modules SITE_PHOTO.entity: one row per place the owner replaced — never a demo row with a photo. */
+const SITE_PHOTO_ENTITY = "site_photo";
+
+/** Places whose photos show the work itself (the gallery and features first, the first screen last). */
+const PHOTO_SLOT_ORDER = ["gallery", "features", "about", "hero"];
+
+/**
+ * V3-40: image hints of the demo rows — every image field of an entity a public role reads gets the library photos of
+ * the plan's places (/_wizard/photos/<file>/960, the runtime serves them in the draft and the critic's browser loads
+ * them), the work photos first, cycled over the rows. No photos or no such field — none.
+ */
+export function photoSeedHints(spec: AppSpec, photos: readonly unknown[]): SeedHint[] {
+  const files = [...photos]
+    .filter((p): p is { slot: string; file: string } => {
+      const x = p as { slot?: unknown; file?: unknown };
+      return typeof x?.file === "string" && typeof x?.slot === "string";
+    })
+    .sort((a, b) => rank(a.slot) - rank(b.slot))
+    .map((p) => `/_wizard/photos/${p.file}/960`)
+    .filter((src, i, all) => LIBRARY_PHOTO_HINT.test(src) && all.indexOf(src) === i);
+  if (!files.length) return [];
+  const publicRoles = new Set(spec.roles.filter((r) => r.access === "public").map((r) => r.name));
+  const out: SeedHint[] = [];
+  for (const e of spec.entities) {
+    // The owner's replacements of the site's own photos (landing «Фото сайта») keep the plan's photos in their places.
+    if (e.name === SITE_PHOTO_ENTITY) continue;
+    const readable = spec.permissions.some(
+      (p) => p.entity === e.name && publicRoles.has(p.role) && p.ops.includes("read"),
+    );
+    if (!readable) continue;
+    for (const f of e.fields)
+      if (f.type === "image")
+        out.push({
+          entity: e.name,
+          field: f.name,
+          values: Array.from({ length: SEED_HINT_MAX_VALUES }, (_, i) => files[i % files.length] as string),
+        });
   }
+  return out;
+}
+
+function rank(slot: string): number {
+  const i = PHOTO_SLOT_ORDER.findIndex((s) => slot === s || slot.startsWith(`${s}`));
+  return i === -1 ? PHOTO_SLOT_ORDER.length - 1 : i;
 }
 
 /**

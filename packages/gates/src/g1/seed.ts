@@ -323,7 +323,9 @@ function showcaseShort(rows: readonly Record<string, unknown>[], filter: Record<
 
 /** Rows per entity never exceed this, so a hint has at most as many values. */
 export const SEED_HINT_MAX_VALUES = 10;
-const HINT_TYPES = new Set(["string", "text", "enum", "int", "decimal", "money", "bool"]);
+const HINT_TYPES = new Set(["string", "text", "enum", "int", "decimal", "money", "bool", "image"]);
+/** An image hint is a photo of the platform library only (the draft's demo goods, V3-40): /_wizard/photos/<id>/<w>. */
+export const LIBRARY_PHOTO_HINT = /^\/_wizard\/photos\/[A-Za-z0-9_-]{1,80}\/(480|960|1600)$/;
 
 /** Problems of one seed hint (Russian, for the QA repeat); [] = the generator takes it. */
 export function validateSeedHint(spec: AppSpec, h: SeedHint): string[] {
@@ -335,7 +337,7 @@ export function validateSeedHint(spec: AppSpec, h: SeedHint): string[] {
   if (fieldPiiCategory(f) !== "none")
     return [`${where}: поле с персональными данными — только генератор синтетики`];
   if (!HINT_TYPES.has(f.type))
-    return [`${where}: подсказки только для полей string, text, enum, int, decimal, money, bool`];
+    return [`${where}: подсказки только для полей string, text, enum, int, decimal, money, bool, image`];
   if (f.unique) return [`${where}: уникальное поле — значения даёт только генератор`];
   if (!Array.isArray(h.values) || h.values.length < 1 || h.values.length > SEED_HINT_MAX_VALUES)
     return [`${where}: нужно от 1 до ${SEED_HINT_MAX_VALUES} значений`];
@@ -368,6 +370,10 @@ export function validateSeedHint(spec: AppSpec, h: SeedHint): string[] {
       case "money":
         if (typeof v !== "number" || !Number.isInteger(v) || v % 100 !== 0 || !inRange(v))
           bad("ожидается сумма, кратная 100, в пределах min/max");
+        break;
+      case "image":
+        if (typeof v !== "string" || !LIBRARY_PHOTO_HINT.test(v))
+          bad("ожидается фото библиотеки платформы /_wizard/photos/<id>/<ширина>");
         break;
     }
   }

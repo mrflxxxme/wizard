@@ -121,15 +121,17 @@ export const CARD_FIELDS = {
     'input[aria-label*="номер карты" i]',
     'input[placeholder*="0000 0000" i]',
   ],
+  // One «MM/YY» field only — never the month or the year of a split date (the real page's expiry-month matched
+  // «expir» and took «12/30» while its year stayed empty: final measurement 10.10.2026).
   exp: [
     'input[autocomplete="cc-exp"]',
-    'input[name*="expir" i]',
+    'input[name*="expir" i]:not([name*="month" i]):not([name*="year" i])',
     'input[name*="expdate" i]',
     'input[placeholder*="ММ/ГГ" i]',
     'input[placeholder*="MM/YY" i]',
     'input[placeholder*="ММ / ГГ" i]',
     'input[placeholder*="MM / YY" i]',
-    'input[aria-label*="срок" i]',
+    'input[aria-label*="срок" i]:not([name*="month" i]):not([name*="year" i])',
   ],
   month: ['input[autocomplete="cc-exp-month"]', 'input[name*="month" i]', 'input[placeholder="ММ" i]', 'input[placeholder="MM" i]'],
   year: ['input[autocomplete="cc-exp-year"]', 'input[name*="year" i]', 'input[placeholder="ГГ" i]', 'input[placeholder="YY" i]'],
@@ -165,16 +167,23 @@ export const THREE_DS_CODE = [
 ];
 const CONFIRM_RE = /Подтвердить|Отправить|Продолжить|Confirm|Submit/i;
 
-/** Types a card value like a person (a masked field may drop a bare fill); → whether its digits stuck. */
+/**
+ * Types a card value like a person (a masked field may drop a bare fill); → whether it stuck: its digits, or as many
+ * mask characters as digits (the page keeps the CVC as «•••» in the field — 11.10.2026).
+ */
 export async function typeCardField(field, value) {
   const want = String(value).replace(/\D/g, "");
-  const digits = async () => String(await field.inputValue().catch(() => "")).replace(/\D/g, "");
+  const stuck = async () => {
+    const raw = String(await field.inputValue().catch(() => ""));
+    const digits = raw.replace(/\D/g, "");
+    return digits === want || (digits === "" && raw.replace(/\s/g, "").length === want.length);
+  };
   await field.click().catch(() => {});
   await field.fill("").catch(() => {});
   await field.pressSequentially(String(value), { delay: 40 }).catch(() => {});
-  if ((await digits()) === want) return true;
+  if (await stuck()) return true;
   await field.fill(String(value)).catch(() => {});
-  return (await digits()) === want;
+  return stuck();
 }
 
 /** The first visible and enabled button of `re` in the page or any frame, waiting up to `ms`; null — none. */
@@ -244,6 +253,85 @@ export async function kassaDiagnostics(page) {
     parts.push(`фрейм ${i} ${host}: ${marks}`);
   }
   return parts.join(" ‖ ").slice(0, 1400);
+}
+
+/**
+ * The ЮKassa test page from the moment it opened to the return to the shop's order page: the bank card (a choice of
+ * methods may come first), its fields typed like a person in any frame, «Заплатить» only when active, a test 3-D
+ * Secure step, then `origin`/order/…. A shot after each step (next to `shotPath`: -form, -paid, -3ds); on a failure —
+ * {ok: false, step, note} with what the page had. The same code runs on the real page (the measurement, the payment
+ * check) and on its double (tools/eval/test/v3-pay-kassa.test.ts).
+ */
+export async function payOnKassa(page, { origin, step, shotPath = null, timeoutMs = 90_000 }) {
+  const shot = (suffix) =>
+    shotPath
+      ? page.screenshot({ path: shotPath.replace(/\.png$/, `${suffix}.png`), fullPage: true }).catch(() => {})
+      : Promise.resolve();
+  const kassaFail = async (s2) => {
+    const note = await kassaDiagnostics(page);
+    await shot("");
+    return { ok: false, step: s2, note };
+  };
+  // The test page: the bank card (a choice of methods may come first), the card's fields (often in a frame of the
+  // card vault), «Заплатить». Any wording of the method and any frame; on failure — what the page had.
+  const num = await findCardField(page, CARD_FIELDS.number, 3_000);
+  if (!num) {
+    const method = page.getByText(CARD_METHOD_RE).first();
+    if (await method.waitFor({ state: "visible", timeout: 10_000 }).then(() => true, () => false)) {
+      const label = ((await method.innerText().catch(() => "")) || "").trim();
+      await method.click().catch(() => {});
+      step(`выбран способ оплаты «${label || "карта"}»`, true);
+    }
+  }
+  const cardNumber = num ?? (await findCardField(page, CARD_FIELDS.number, 30_000));
+  if (!cardNumber) return await kassaFail("поле номера карты на странице оплаты");
+  // Typed like a person, each value checked: a masked field may drop a bare fill (then «Заплатить» stays off).
+  const typed = [await typeCardField(cardNumber, TEST_CARD.number)];
+  const exp = await findCardField(page, CARD_FIELDS.exp, 3_000);
+  if (exp) typed.push(await typeCardField(exp, `${TEST_CARD.exp.slice(0, 2)}/${TEST_CARD.exp.slice(2)}`));
+  else {
+    const month = await findCardField(page, CARD_FIELDS.month, 3_000);
+    const year = await findCardField(page, CARD_FIELDS.year, 3_000);
+    if (!month || !year) return await kassaFail("поле срока действия карты");
+    typed.push(await typeCardField(month, TEST_CARD.exp.slice(0, 2)));
+    typed.push(await typeCardField(year, TEST_CARD.exp.slice(2)));
+  }
+  const cvc = await findCardField(page, CARD_FIELDS.cvc, 3_000);
+  if (!cvc) return await kassaFail("поле CVC карты");
+  typed.push(await typeCardField(cvc, TEST_CARD.cvc));
+  // A value the field does not show back is noted, not fatal: the form's own check decides (an inactive
+  // «Заплатить» or its error text below).
+  if (typed.some((ok) => !ok)) step("не все значения карты видны в полях формы", true, "проверит сама форма");
+  // The form as it was before «Заплатить» (next to the failure's shot): what the visitor saw filled.
+  await shot("-form");
+  const pay = await findButton(page, PAY_BUTTON_RE, 10_000);
+  if (!pay) return await kassaFail("кнопка «Заплатить» активна на странице оплаты");
+  await pay.click();
+  step("данные тестовой карты введены, нажата «Заплатить»", true);
+  // What «Заплатить» led to (the order page, a 3-D Secure page or the form with its errors).
+  await page.waitForTimeout(3_000);
+  await shot("-paid");
+  const backTo = (ms) =>
+    page
+      .waitForURL((u) => u.origin === origin && u.pathname.startsWith("/order/"), { timeout: ms })
+      .then(() => true)
+      .catch(() => false);
+  let back = await backTo(20_000);
+  if (!back) {
+    // The test 3-D Secure page (a code field and a confirm button, any frame): any digits pass.
+    const code = await findCardField(page, THREE_DS_CODE, 10_000);
+    if (code) {
+      await typeCardField(code, TEST_3DS_CODE);
+      const confirm = await findButton(page, CONFIRM_RE, 5_000);
+      await confirm?.click().catch(() => {});
+      step("подтверждение 3-D Secure тестовым кодом", true);
+      await page.waitForTimeout(2_000);
+      await shot("-3ds");
+    }
+    back = await backTo(timeoutMs);
+  }
+  if (!back) return await kassaFail("оплата тестовой картой и возврат на страницу заказа");
+  return { ok: true };
 }
 
 /**
@@ -372,64 +460,8 @@ export async function payShopOrder({
       );
     }
     step("заказ оформлен, открылась страница оплаты ЮKassa", true);
-    // The test page: the bank card (a choice of methods may come first), the card's fields (often in a frame of the
-    // card vault), «Заплатить». Any wording of the method and any frame; on failure — what the page had.
-    const kassaFail = async (s2) => {
-      const diag = await kassaDiagnostics(page);
-      if (shotPath) await page.screenshot({ path: shotPath, fullPage: true }).catch(() => {});
-      return await fail(s2, diag);
-    };
-    const num = await findCardField(page, CARD_FIELDS.number, 15_000);
-    if (!num) {
-      const method = page.getByText(CARD_METHOD_RE).first();
-      if (await method.waitFor({ state: "visible", timeout: 10_000 }).then(() => true, () => false)) {
-        const label = ((await method.innerText().catch(() => "")) || "").trim();
-        await method.click().catch(() => {});
-        step(`выбран способ оплаты «${label || "карта"}»`, true);
-      }
-    }
-    const cardNumber = num ?? (await findCardField(page, CARD_FIELDS.number, 30_000));
-    if (!cardNumber) return await kassaFail("поле номера карты на странице оплаты");
-    // Typed like a person, each value checked: a masked field may drop a bare fill (then «Заплатить» stays off).
-    const typed = [await typeCardField(cardNumber, TEST_CARD.number)];
-    const exp = await findCardField(page, CARD_FIELDS.exp, 3_000);
-    if (exp) typed.push(await typeCardField(exp, `${TEST_CARD.exp.slice(0, 2)}/${TEST_CARD.exp.slice(2)}`));
-    else {
-      const month = await findCardField(page, CARD_FIELDS.month, 3_000);
-      const year = await findCardField(page, CARD_FIELDS.year, 3_000);
-      if (!month || !year) return await kassaFail("поле срока действия карты");
-      typed.push(await typeCardField(month, TEST_CARD.exp.slice(0, 2)));
-      typed.push(await typeCardField(year, TEST_CARD.exp.slice(2)));
-    }
-    const cvc = await findCardField(page, CARD_FIELDS.cvc, 3_000);
-    if (!cvc) return await kassaFail("поле CVC карты");
-    typed.push(await typeCardField(cvc, TEST_CARD.cvc));
-    if (typed.some((ok) => !ok)) return await kassaFail("данные тестовой карты не встали в поля формы");
-    // The form as it was before «Заплатить» (next to the failure's shot): what the visitor saw filled.
-    if (shotPath)
-      await page.screenshot({ path: shotPath.replace(/\.png$/, "-form.png"), fullPage: true }).catch(() => {});
-    const pay = await findButton(page, PAY_BUTTON_RE, 10_000);
-    if (!pay) return await kassaFail("кнопка «Заплатить» активна на странице оплаты");
-    await pay.click();
-    step("данные тестовой карты введены, нажата «Заплатить»", true);
-    const backTo = (ms) =>
-      page
-        .waitForURL((u) => u.origin === origin && u.pathname.startsWith("/order/"), { timeout: ms })
-        .then(() => true)
-        .catch(() => false);
-    let back = await backTo(20_000);
-    if (!back) {
-      // The test 3-D Secure page (a code field and a confirm button, any frame): any digits pass.
-      const code = await findCardField(page, THREE_DS_CODE, 10_000);
-      if (code) {
-        await typeCardField(code, TEST_3DS_CODE);
-        const confirm = await findButton(page, CONFIRM_RE, 5_000);
-        await confirm?.click().catch(() => {});
-        step("подтверждение 3-D Secure тестовым кодом", true);
-      }
-      back = await backTo(timeoutMs);
-    }
-    if (!back) return await kassaFail("оплата тестовой картой и возврат на страницу заказа");
+    const kassa = await payOnKassa(page, { origin, step, shotPath, timeoutMs });
+    if (!kassa.ok) return await fail(kassa.step, kassa.note);
     step("оплачено тестовой картой, посетитель вернулся на страницу заказа", true);
     const status = page.locator(sel("wz-order-status")).first();
     let text = "";

@@ -51,6 +51,7 @@ import {
   payProbeSessionSql,
   renderPayProbeReport,
   runPayProbe,
+  saveRepoArchive,
 } from "../eval/server/pay-probe.mjs";
 import {
   expectedProbeRub,
@@ -1752,6 +1753,21 @@ export async function pilotV3Pay({
         pay: (c, id, say) => shopPayment({ kassa, launch, kassaShots: join(outDir, "shots") }, c, id, say),
         log,
       });
+      // The code of each system next to the report (the root cause of a failed scenario without a rebuild).
+      for (const r of results) {
+        const a = await saveRepoArchive({
+          fetch: f,
+          base,
+          session,
+          systemId: r.systemId,
+          file: join(outDir, "repo", `${r.systemId}.zip`),
+        });
+        log(
+          a.saved
+            ? `архив кода ${r.systemId}: ${a.saved} байт`
+            : `::warning::архив кода ${r.systemId}: ${a.why}`,
+        );
+      }
     } finally {
       await client
         .post("/auth/logout")

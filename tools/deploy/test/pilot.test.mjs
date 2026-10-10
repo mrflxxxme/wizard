@@ -2714,6 +2714,9 @@ describe("pilot: V3-18 — checkpoint 1 of v3 and the probe of the v3 routes", (
     expect(sessionSql).toContain("o.kind = 'eval'");
     expect(cluster.seen.sqls.at(-1)).toContain("UPDATE platform.sessions SET revoked_at = now()");
     expect(api.at(-1)).toBe("POST /api/v1/auth/logout");
+    // The code archive of each system is asked as its owner (here the platform refuses: a warning, not a failure).
+    for (const id of shops) expect(api).toContain(`GET /api/v1/systems/${id}/repo/archive`);
+    expect(logs).toContainEqual(expect.stringMatching(/^::warning::архив кода cd76a3c8-.*: HTTP 500/));
     for (const l of logs) expect(l).not.toContain("test_kassa-secret");
     const ann = logs.filter((l) => l.startsWith("::error title=Оплата · "));
     expect(ann).toHaveLength(2);

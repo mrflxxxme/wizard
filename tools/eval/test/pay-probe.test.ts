@@ -1,6 +1,9 @@
 // V3-40: the payment check of shops already built (tools/eval/server/pay-probe.mjs) — the system ids it takes, the
 // session it asks the database for (one eval org only), the purchase per system, the report and the final report's
 // payment replaced by the check's with the readiness judged again.
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import {
   applyPayProbe,
@@ -10,6 +13,7 @@ import {
   payProbeSessionSql,
   renderPayProbeReport,
   runPayProbe,
+  saveRepoArchive,
 } from "../server/pay-probe.mjs";
 
 const A = "cd76a3c8-b8d0-4fa7-95de-c61108e9e11f";
@@ -110,5 +114,45 @@ describe("pay probe", () => {
     expect(out[1]).toMatchObject({ status: "not_ready", ready: false, payment: { status: "failed" } });
     // A system that never got built stays as the measurement left it.
     expect(out[2]).toMatchObject({ status: "build_failed", ready: false, payment: { status: "paid" } });
+  });
+
+  test("a system without online payment is not counted; its code archive is saved byte for byte", async () => {
+    const results = [
+      { systemId: A, name: "Керамика", payment: { status: "paid", orderStatus: "Оплачен", steps: [] } },
+      { systemId: B, name: "Обжарка", payment: { status: "skipped", note: "в системе нет онлайн-оплаты" } },
+    ];
+    expect(renderPayProbeReport(results, {}).summary).toEqual({ paid: 1, total: 1, passed: true });
+    expect(payProbeAnnotations(results)[1]).toBe(
+      "::notice title=Оплата · Обжарка::в системе нет онлайн-оплаты — сохранён архив кода",
+    );
+    const zip = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0xff, 0x00]);
+    const seen: { url: string; cookie: string }[] = [];
+    const file = join(mkdtempSync(join(tmpdir(), "wz-repo-")), "repo", `${B}.zip`);
+    const a = await saveRepoArchive({
+      fetch: (async (url: string, init: { headers: Record<string, string> }) => {
+        seen.push({ url, cookie: init.headers.cookie });
+        return new Response(zip, { status: 200, headers: { "content-type": "application/zip" } });
+      }) as unknown as typeof fetch,
+      base: "https://borntobuild.ru",
+      session: { token: "t0", csrf: "c0" },
+      systemId: B,
+      file,
+    });
+    expect(a).toEqual({ saved: zip.length });
+    expect([...readFileSync(file)]).toEqual([...zip]);
+    expect(seen).toEqual([
+      {
+        url: `https://borntobuild.ru/api/v1/systems/${B}/repo/archive`,
+        cookie: "__Host-wizard_session=t0; __Host-wizard_csrf=c0",
+      },
+    ]);
+    const denied = await saveRepoArchive({
+      fetch: (async () => new Response("no", { status: 404 })) as unknown as typeof fetch,
+      base: "https://borntobuild.ru",
+      session: { token: "t0", csrf: "c0" },
+      systemId: B,
+      file,
+    });
+    expect(denied).toEqual({ saved: 0, why: "HTTP 404" });
   });
 });

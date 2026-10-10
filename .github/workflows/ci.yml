@@ -86,6 +86,10 @@ jobs:
       # V3-18: every request and booking form variant of the library under the modules' goal programs (the platform's
       # checkScenario in Chromium on a site composed without a model).
       - run: pnpm exec vitest run --project browser apps/platform-api/test/v3-goals-variants.browser.test.ts
+      # V3-40/V3-23: the measurement's ЮKassa automation in Chromium on a double of the real test page (masked card
+      # fields that take typing only, the CVC as «•••», a split date, 3-D Secure) — skipped in the build job without
+      # a browser, so it runs here.
+      - run: pnpm exec vitest run --project node tools/eval/test/v3-pay-kassa.test.ts
       # Playwright projects of packages/e2e: the M0 dev stand and the m1/m2/pilot stands (v1 card flow, pinned to
       # legacy), and v3 (D78) — the owner's v3 path on stand/v3.ts: grill interview → brief → three directions →
       # «Собрать» → live build → preview → «Система готова» → an edit by words and the rebuild (recorded answers, ~30 s).

@@ -198,6 +198,9 @@ describe("payShopOrder", () => {
     };
     // A masked field formats the digits («5555 5555 …»): the digits count, not the spaces.
     expect(await typeCardField(masked(() => ""), "5555555555554444")).toBe(true);
+    // A field that shows a mask of the same length (the CVC «•••») took the value.
+    const bullets = { ...masked(() => ""), pressSequentially: async () => {}, inputValue: async () => "•••" };
+    expect(await typeCardField(bullets, "123")).toBe(true);
     // A field that keeps nothing typed is reported, not trusted.
     const dead = { ...masked(() => ""), pressSequentially: async () => {} };
     expect(await typeCardField(dead, "123")).toBe(false);
