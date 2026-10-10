@@ -114,6 +114,7 @@ function fakeBrowser() {
     async evaluate() {
       return "Товары скоро появятся";
     },
+    on() {},
   };
   return {
     async newContext() {
