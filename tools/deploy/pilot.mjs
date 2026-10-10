@@ -1518,7 +1518,8 @@ export async function pilotEval({
       signal: AbortSignal.any([stop.signal, capStop.signal]),
       ...(v3 ? {} : { counted: runCounted(threshold) }),
       ...(shoot ? { screenshot: shoot } : {}),
-      ...(v3 ? { kassa: kassaFromEnv(kassaEnv), launch } : {}),
+      // V3-23: a failed step on the ЮKassa page leaves its screenshot next to the systems' ones (artifact shots/).
+      ...(v3 ? { kassa: kassaFromEnv(kassaEnv), launch, kassaShots: join(outDir, "shots") } : {}),
       onUpdate: (results) => {
         snapshot = results;
         const why = capStop.signal.aborted

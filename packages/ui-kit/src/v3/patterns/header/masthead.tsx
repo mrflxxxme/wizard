@@ -1,8 +1,9 @@
 // Header «masthead»: an editorial nameplate — a line of practical facts with the action above, the brand set large
 // in the display face across the page, the menu in a ruled row below. Below lg: a smaller nameplate and «Меню».
 // Own composition.
+import { fitWords } from "@wizard/ui-kit/v3/headless";
 import { AnimatePresence, domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
-import { useEffect, useId, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useRef, useState } from "react";
 
 type Link = { label: string; href: string };
 
@@ -33,6 +34,29 @@ function useMenu() {
   return { open, id, toggle, flip: () => setOpen((v) => !v), close: () => setOpen(false) };
 }
 
+/**
+ * The brand by words (pilot 10.10.2026): below lg each word is one unit, wrapped only between words, and the design
+ * CSS (data-fit-words) sizes the line so its longest word fits the container; a word too long even then is hyphenated,
+ * never cut silently. From lg on it is set as before.
+ */
+function BrandName({ name }: { name: string }) {
+  const fit = fitWords(name);
+  return (
+    <span
+      data-fit-words={fit.chars}
+      lang="ru"
+      className="block wrap-normal hyphens-auto lg:wrap-break-word lg:hyphens-manual"
+    >
+      {fit.words.map((w) => (
+        <Fragment key={w.at}>
+          {w.at > 0 ? " " : null}
+          <span className="max-lg:inline-block">{w.text}</span>
+        </Fragment>
+      ))}
+    </span>
+  );
+}
+
 export default function HeaderMasthead({ brand, nav, action, note }: HeaderMastheadProps) {
   const menu = useMenu();
   const reduce = useReducedMotion();
@@ -55,9 +79,11 @@ export default function HeaderMasthead({ brand, nav, action, note }: HeaderMasth
           <div className="flex items-end justify-between gap-4 py-4 lg:py-6">
             <a
               href={brand.href ?? "/"}
-              className="inline-flex min-h-11 min-w-0 items-center font-display text-h2 font-bold wrap-break-word text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring lg:text-hero"
+              className="inline-flex min-h-11 min-w-0 items-center font-display text-h2 font-bold text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-lg:flex-1 lg:text-hero"
             >
-              {brand.name}
+              <span className="min-w-0 max-lg:flex-1 max-lg:@container">
+                <BrandName name={brand.name} />
+              </span>
             </a>
             <button
               ref={menu.toggle}

@@ -19,23 +19,30 @@ export {
 } from "./archetypes.js";
 /** cabinetTokensV3(ds, scheme) → the --w-cab-* tokens of staff cabinets in the client's style (V3-12). */
 export { type CabinetTokenName, cabinetTokensV3, cabinetValuesV3 } from "./cabinet.js";
-/** designSystemCss(ds) → --ds-* variables of both schemes, reduced motion, keyframes and the Tailwind `@theme inline`. */
+/**
+ * designSystemCss(ds) → --ds-* variables of both schemes, reduced motion, keyframes, the fit rules of display words
+ * (FIT_WORDS_CSS: data-fit-words keeps a brand's longest word on one line of a phone) and the Tailwind `@theme inline`.
+ */
 export {
   colorVar,
   DESIGN_THEME_CSS,
   type DesignCssOptions,
   designSystemCss,
   designSystemVars,
+  FIT_WORDS_CSS,
+  FIT_WORDS_MAX,
   PATTERN_COLOR_ROLES,
   PATTERN_TEXT_STEPS,
 } from "./css.js";
 /** designDistance / designDiversity: how different design systems are (V3-07 acceptance, template gate input). */
 export { type DesignDiversity, designDistance, designDiversity, designKey } from "./diversity.js";
-/** Font roles of v3 (catalog A3): display-only, never-display, needs-a-reason and forbidden faces. */
+/** Font roles of v3 (catalog A3): display-only, never-display, needs-a-reason and forbidden faces; FONT_ADVANCE per face. */
 export {
   cyrillicFace,
   DISPLAY_ONLY_FONTS,
+  FONT_ADVANCE,
   FORBIDDEN_FONTS,
+  fontAdvance,
   NEEDS_REASON_FONTS,
   NOT_DISPLAY_FONTS,
 } from "./fonts.js";

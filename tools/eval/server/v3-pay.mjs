@@ -140,6 +140,9 @@ export const CARD_FIELDS = {
     'input[aria-label*="CVC" i]',
   ],
 };
+/** The user agent of a desktop Chrome of `version` (Playwright's browser.version(), e.g. «141.0.7390.37»). */
+export const desktopUserAgent = (version) =>
+  `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${String(version).split(".")[0]}.0.0.0 Safari/537.36`;
 /** The bank card among the payment methods (its wording changes between the page versions). */
 export const CARD_METHOD_RE = /Банковск\S* карт|Картой|Новая карта|Bank card/i;
 export const PAY_BUTTON_RE = /Заплатить|Оплатить|Pay/i;
@@ -250,8 +253,16 @@ export async function payShopOrder({
   try {
     const link = (await client.get(`/systems/${systemId}/preview-url`)).body;
     if (!link?.url) return { status: "failed", steps: [step("ссылка на превью", false, "не получена")] };
-    browser = await launch();
-    const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: "ru-RU" });
+    // The ЮKassa page renders its form for an ordinary desktop Chrome: no automation flag, no «HeadlessChrome» in the
+    // user agent (in the headless defaults the page showed only «Детали платежа», final measurement 10.10.2026). It is
+    // our own payment on the founder's test shop — the check of our integration, not of the provider's protection.
+    browser = await launch({ args: ["--disable-blink-features=AutomationControlled"] });
+    const version = typeof browser.version === "function" ? browser.version() : "";
+    const context = await browser.newContext({
+      viewport: { width: 1280, height: 900 },
+      locale: "ru-RU",
+      ...(version ? { userAgent: desktopUserAgent(version) } : {}),
+    });
     page = await context.newPage();
     await page.goto(link.url, { waitUntil: "load", timeout: 30_000 });
     const origin = new URL(page.url()).origin;

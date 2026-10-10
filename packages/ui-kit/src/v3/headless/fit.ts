@@ -2,7 +2,8 @@
 // «Екатеринбурге») that at the first screen's size do not fit a phone line; overflow-wrap then cuts them mid-word, and
 // hyphenation needs a dictionary the browser may not have. The hook measures the widest word of the heading with its
 // own font and, when it is wider than the heading's box, lowers the font size just enough — before the paint (no layout
-// shift), again when the box width changes and once the fonts are ready (never larger at the same width).
+// shift), again when the box width changes and once the fonts are ready (never larger at the same width). fitWords is
+// the CSS-only counterpart for a brand in a header (design/css.ts FIT_WORDS_CSS): no measuring, sized by the face.
 import { type RefObject, useEffect, useLayoutEffect, useRef } from "react";
 
 const useBeforePaint = typeof window === "undefined" ? useEffect : useLayoutEffect;
@@ -65,4 +66,28 @@ export function useFitWords<T extends HTMLElement>(text: string): RefObject<T | 
     };
   }, [text]);
   return ref;
+}
+
+/** Longest word the fit rules of the design CSS know: data-fit-words takes 1…30 (design/css.ts FIT_WORDS_MAX). */
+export const FIT_WORDS_MAX = 30;
+
+/** A word of a display line and its offset in the line (a stable key: words may repeat). */
+export interface FitWord {
+  at: number;
+  text: string;
+}
+
+/**
+ * fitWords(line) — the words of a display line (a brand from the brief) and the letter count of its longest word for
+ * data-fit-words (capped at FIT_WORDS_MAX): the design CSS sizes the line on a phone so that word stays whole (no JS
+ * measuring, no layout shift); the pattern sets each word as one unit, wrapped only between words.
+ */
+export function fitWords(line: string): { words: FitWord[]; chars: number } {
+  const words: FitWord[] = [];
+  let longest = 1;
+  for (const m of line.trim().matchAll(/\S+/g)) {
+    words.push({ at: m.index ?? 0, text: m[0] });
+    longest = Math.max(longest, [...m[0]].length);
+  }
+  return { words, chars: Math.min(longest, FIT_WORDS_MAX) };
 }

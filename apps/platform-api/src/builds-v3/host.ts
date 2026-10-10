@@ -24,6 +24,7 @@ import type { ModuleRegistry } from "@wizard/agents/planner";
 import type { AppSpec } from "@wizard/appspec";
 import type { GateReport, GoalScenarioInput, SeedHint } from "@wizard/gates";
 import { createRegistry } from "@wizard/llm";
+import { createLogger } from "@wizard/pii/log";
 import type { FileStorage } from "@wizard/runtime";
 import { Kysely } from "kysely";
 import { PostgresJSDialect } from "kysely-postgres-js";
@@ -40,13 +41,16 @@ import { type BuildHost, type BuildParams, RunFailure } from "../runs/types.js";
 import { withKeyWindow } from "../secrets-v3/agent.js";
 import { loadBrief } from "../services/plans.js";
 import { type DurableRead, pgCheckpointStore, recentArchetypes } from "./checkpoints.js";
-import { criticLibraryPhotos, platformCritic } from "./critic.js";
+import { type CriticDemoRows, criticLibraryPhotos, draftDemoRows, platformCritic } from "./critic.js";
 import { liveStats, withLiveProgress } from "./progress.js";
 import { platformTechreview } from "./techreview.js";
 import { templateGateHooks } from "./template-gate.js";
 
 /** ₽ per credit of the platform (models.yaml#credits.rub_per_credit). */
 const RUB_PER_CREDIT = createRegistry().rubPerCredit;
+
+/** The worker's allowlist logger (the critic's inspection lines). */
+const workerLog = createLogger({ svc: "worker" });
 
 /** Credits cap of a v3 build run: the build cap of D77 (11) — 500 ₽. */
 export const V3_BUILD_CAP_CREDITS = Math.ceil(V3_BUILD_LIMITS.capRub / RUB_PER_CREDIT);
@@ -97,6 +101,39 @@ export async function draftSeedHints(db: Db, systemId: string, spec: AppSpec): P
   } catch {
     return [];
   }
+}
+
+/**
+ * V3-40: the demo rows of a system's draft for the critic's browser — draftDemoRows of the spec with the system's schema
+ * key and the seed hints of its brief, as onG0Passed seeds the draft (agents/executors.ts → seedDraft): the critic sees
+ * the filled catalog, shop and blog the visitor sees, not empty lists. {} — no such system.
+ */
+export async function draftCriticRows(db: Db, systemId: string, spec: AppSpec): Promise<CriticDemoRows> {
+  const sys = await db
+    .selectFrom("platform.systems")
+    .select("schema_key")
+    .where("id", "=", systemId)
+    .executeTakeFirst();
+  if (!sys) return {};
+  return draftDemoRows(spec, sys.schema_key, await draftSeedHints(db, systemId, spec));
+}
+
+/**
+ * The critic's lines (critic_inspection) through the allowlist logger: the time, the library photos and the data rows
+ * in allowlisted fields, every counter (stand-ins, pages, screens) as «name=value» in `reason`.
+ */
+function criticLog(runId: string, systemId: string) {
+  return (msg: string, f: Record<string, string | number> = {}) =>
+    workerLog.info(msg, {
+      runId,
+      systemId,
+      ...(typeof f.ms === "number" ? { durationMs: f.ms } : {}),
+      ...(typeof f.photosLibrary === "number" ? { count: f.photosLibrary } : {}),
+      ...(typeof f.dataRows === "number" ? { rows: f.dataRows } : {}),
+      reason: Object.entries(f)
+        .map(([k, v]) => `${k}=${v}`)
+        .join(" "),
+    });
 }
 
 /** G1 with the goal scenarios in a slot of the process browser (B2-28); without one — G1 without the browser checks. */
@@ -238,6 +275,16 @@ export async function buildByBrief(
   const cap = await once("v3_run_cap", () => runCapRub(o.pg, host.run.id));
   // V3-18: the owner's first words about the business — the skeleton's heading, lead and SEO read them.
   const request = await once("v3_request", () => loadBrief(o.db, systemId));
+  // V3-40: the draft's demo rows for the critic, made once per build on its first inspection (the critic changes pages,
+  // not entities); a failed read is tried again by the next inspection.
+  let demo: Promise<CriticDemoRows> | undefined;
+  const demoRows = (spec: AppSpec): Promise<CriticDemoRows> => {
+    demo ??= draftCriticRows(o.db, systemId, spec).catch((e: unknown) => {
+      demo = undefined;
+      throw e;
+    });
+    return demo;
+  };
   const v3: V3Host = {
     route: host.route,
     runStep: host.runStep,
@@ -271,9 +318,16 @@ export async function buildByBrief(
     // V3-14: the template gate with the process browser (without one the stage stays skipped); o.hooks override.
     hooks: {
       // V3-40: the critic sees the site's real library photos (not the platform's stand-ins) when the shared storage is
-      // given — stand-ins read as «фейковые скриншоты» and pulled every score down.
+      // given — stand-ins read as «фейковые скриншоты» and pulled every score down — and the draft's demo rows (not
+      // empty catalogs: «каталог не заполнен», «блог пуст»).
       ...(!o.composer && provider && withBrowser
-        ? { critic: platformCritic(provider, o.files ? { photo: criticLibraryPhotos(o.files) } : {}) }
+        ? {
+            critic: platformCritic(provider, {
+              ...(o.files ? { photo: criticLibraryPhotos(o.files) } : {}),
+              data: demoRows,
+              log: criticLog(host.run.id, systemId),
+            }),
+          }
         : {}),
       ...templateGateHooks({
         pg: o.pg,

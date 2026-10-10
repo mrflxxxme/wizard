@@ -21,10 +21,10 @@ export const V3_FINAL_VIEWPORTS = [
 ];
 
 /** Chromium of the workspace's Playwright (packages/e2e), loaded lazily: the driver runs without it too. */
-export function launchChromium() {
+export function launchChromium(options = {}) {
   const require = createRequire(new URL("../../../packages/e2e/package.json", import.meta.url));
   const { chromium } = require("@playwright/test");
-  return chromium.launch();
+  return chromium.launch(options);
 }
 
 const safe = (s) => String(s).replace(/[^a-z0-9_-]+/gi, "-").slice(0, 80);

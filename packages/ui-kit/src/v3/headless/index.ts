@@ -65,8 +65,11 @@ export {
   useEntryTitle,
   useRubric,
 } from "./content.js";
-/** useFitWords(text) — ref of a display heading whose words never break inside (the size goes down to fit, V3-18). */
-export { useFitWords } from "./fit.js";
+/**
+ * useFitWords(text) — ref of a display heading whose words never break inside (the size goes down to fit, V3-18);
+ * fitWords(line) — the words of a brand and its longest word for data-fit-words (sized by the design CSS on a phone).
+ */
+export { FIT_WORDS_MAX, type FitWord, fitWords, useFitWords } from "./fit.js";
 /** useFormModel(o) — fields, validation, server errors, consent (G2-PII-04) and create/update; RecordForm renders it. */
 export {
   type ConsentModel,
