@@ -45,10 +45,11 @@ export { type RenderAnswer, RenderBridge, renderRemote, renderWorkerModules } fr
 export { type G1Options, g1Checks, g1SeedKey, runG1 } from "./g1/run.js";
 /** Scenario DSL static validation (qa.yaml#checks.from_acceptance.scenario.validate). */
 export { validateScenario } from "./g1/scenario.js";
-/** generateSeed(spec, key, {now?, hints?}), the seed DLP and QA seed hints: validateSeedHint, mergeSeedHints (qa.yaml#seed). */
+/** generateSeed(spec, key, {now?, hints?, showcase?}), the seed DLP and QA seed hints: validateSeedHint, mergeSeedHints (qa.yaml#seed); LIBRARY_PHOTO_HINT — the photo an image hint may name. */
 export {
   generateSeed,
   isSyntheticValue,
+  LIBRARY_PHOTO_HINT,
   mergeSeedHints,
   SEED_HINT_MAX_VALUES,
   type SeedOptions,

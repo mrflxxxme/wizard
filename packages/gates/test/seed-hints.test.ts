@@ -50,6 +50,39 @@ describe("validateSeedHint", () => {
   });
 });
 
+describe("image hints (V3-40: the draft's demo goods with library photos)", () => {
+  const shop = {
+    app: { name: "Магазин", description: "" },
+    roles: [{ name: "visitor", access: "public" }],
+    entities: [
+      {
+        name: "product",
+        label: "Товар",
+        fields: [
+          { name: "name", label: "Название", type: "string", required: true },
+          { name: "photo", label: "Фото", type: "image" },
+        ],
+      },
+    ],
+    permissions: [{ role: "visitor", entity: "product", ops: ["read"] }],
+  } as unknown as Parameters<typeof validateSeedHint>[0];
+  test("only photos of the platform library; anything else is refused", () => {
+    const hint = (values: string[]) => validateSeedHint(shop, { entity: "product", field: "photo", values });
+    expect(hint(["/_wizard/photos/lib-mugs-1/960", "/_wizard/photos/a_B-9/480"])).toEqual([]);
+    for (const bad of [
+      "https://example.com/x.jpg",
+      "/_wizard/photos/../x/960",
+      "/_wizard/photos/a/700",
+      "/api/files/1",
+    ])
+      expect(hint([bad]).join(" "), bad).toMatch(/фото библиотеки платформы/);
+    const seed = generateSeed(shop, "k", {
+      hints: [{ entity: "product", field: "photo", values: ["/_wizard/photos/a/960"] }],
+    });
+    expect(seed.rows.product?.[0]?.photo).toBe("/_wizard/photos/a/960");
+  });
+});
+
 describe("generateSeed with hints", () => {
   const plain = generateSeed(spec, "k", { now: NOW });
   const hinted = generateSeed(spec, "k", { now: NOW, hints: ok });
