@@ -1,0 +1,51 @@
+# V3-40: the competitor's screenshots of the blind comparison (tools/eval/blind/shoot.mjs; docs/ops/eval-pilot.md
+# «Финальный замер v3», step 3). The founder sends the public addresses of the competitor's sites built on the same
+# briefs; the runner opens them in Chromium and saves the first screen at 390×844 and 1440×900 with meta.json — the
+# artifact `competitor` goes to `node tools/eval/blind/cli.mjs build --competitor <artifact>`. No secrets, nothing on
+# the servers, no money.
+name: blind-shots
+
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: "Сервис конкурента, например Tilda AI, VibeCraft или Lovable"
+        type: string
+        required: true
+      urls:
+        description: "Адреса сайтов конкурента по брифам: v3-01=https://…;v3-02=https://… (только публичные https)"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blind-shots
+  cancel-in-progress: false
+
+jobs:
+  shoot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @wizard/e2e exec playwright install --with-deps --only-shell chromium
+      - name: Shoot the competitor's sites
+        env:
+          SERVICE: ${{ inputs.service }}
+          URLS: ${{ inputs.urls }}
+        run: node tools/eval/blind/shoot.mjs --service "$SERVICE" --urls "$URLS" --out competitor
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: competitor
+          path: competitor/
+          if-no-files-found: warn
+          retention-days: 30

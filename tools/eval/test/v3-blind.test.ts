@@ -10,6 +10,7 @@ import { aggregateVotes, BLIND_TARGETS, blindLines } from "../blind/aggregate.mj
 import { main as blindMain } from "../blind/cli.mjs";
 import { blindLayout, collectSites, seededRandom, shuffle } from "../blind/layout.mjs";
 import { renderBlindPage, VOTES_KIND, VOTES_VERSION } from "../blind/page.mjs";
+import { main as shootMain, parseUrls, publicUrl, SHOOT_VIEWPORTS, shootSites } from "../blind/shoot.mjs";
 import { loadBriefs } from "../lib/briefs.mjs";
 
 const briefs = loadBriefs("v3-final");
@@ -277,5 +278,61 @@ describe("tools/eval/blind/cli.mjs", () => {
     });
     expect(r.status).toBe(2);
     expect(r.stderr).toContain("команда: build | aggregate");
+  });
+});
+
+describe("V3-40 competitor's screenshots by a runner (blind/shoot.mjs)", () => {
+  test("addresses: public https only; brief ids short or full; each brief once", () => {
+    expect(publicUrl("https://studio-ceramics.tilda.ws/")).toBe("https://studio-ceramics.tilda.ws/");
+    for (const bad of [
+      "http://site.ru/",
+      "https://localhost/",
+      "https://10.0.0.1/",
+      "https://[::1]/",
+      "https://intranet/",
+      "https://user:pw@site.ru/",
+      "https://wizard-platform.svc.cluster.local/",
+      "не адрес",
+    ])
+      expect(publicUrl(bad), bad).toBeNull();
+    const sites = parseUrls("v3-01=https://a.tilda.ws/; v3-05-ceramics-shop=https://b.tilda.ws/\nv3-12=https://c.tilda.ws/");
+    expect(sites.map((x) => x.brief)).toEqual(["v3-01-interior-studio", "v3-05-ceramics-shop", "v3-12-farm-produce"]);
+    expect(() => parseUrls("v3-99=https://a.ru/")).toThrow(/неизвестный бриф/);
+    expect(() => parseUrls("v3-01=http://a.ru/")).toThrow(/не публичный https/);
+    expect(() => parseUrls("v3-01=https://a.ru/;v3-01=https://b.ru/")).toThrow(/дважды/);
+    expect(() => parseUrls("")).toThrow(/нет ни одного/);
+  });
+
+  test("each site at 390 and 1440 with meta.json in the layout collectSites reads; a page that fails is a warning", async () => {
+    const out = mkdtempSync(join(tmpdir(), "wz-shoot-"));
+    const opened: string[] = [];
+    const launch = async () => ({
+      newPage: async (o: { viewport: { width: number } }) => ({
+        goto: async (url: string) => {
+          if (url.includes("broken")) throw new Error("net::ERR_NAME_NOT_RESOLVED at https://broken.ru/");
+          opened.push(`${url}@${o.viewport.width}`);
+        },
+        waitForTimeout: async () => {},
+        screenshot: async ({ path }: { path: string }) => writeFileSync(path, "png"),
+        close: async () => {},
+      }),
+      close: async () => {},
+    });
+    const sites = parseUrls("v3-01=https://a.tilda.ws/;v3-02=https://broken.ru/");
+    const r = await shootSites({ sites, service: "Tilda AI", out, launch });
+    expect(r.shot).toEqual(["v3-01-interior-studio"]);
+    expect(r.failed).toEqual([{ brief: "v3-02-dental-booking", error: "net::ERR_NAME_NOT_RESOLVED at https://broken.ru/" }]);
+    expect(opened).toEqual(SHOOT_VIEWPORTS.map((v) => `https://a.tilda.ws/@${v.width}`));
+    expect(readdirSync(join(out, "v3-01-interior-studio")).sort()).toEqual(["1440.png", "390.png", "meta.json"]);
+    expect(JSON.parse(readFileSync(join(out, "v3-01-interior-studio", "meta.json"), "utf8"))).toEqual({
+      service: "Tilda AI",
+      url: "https://a.tilda.ws/",
+    });
+    const briefs = loadBriefs("v3-final").filter((b: { id: string }) => b.id === "v3-01-interior-studio");
+    const wiz = mkdtempSync(join(tmpdir(), "wz-shots-"));
+    for (const v of SHOOT_VIEWPORTS) writeFileSync(join(wiz, `v3-01-interior-studio-${v.suffix}.png`), "png");
+    const { sites: laid } = collectSites({ briefs, wizardDir: wiz, competitorDir: out });
+    expect(laid.find((x: { source: string }) => x.source === "competitor")?.service).toBe("Tilda AI");
+    await expect(shootMain(["--urls", "v3-01=https://a.tilda.ws/"], { launch, log: () => {} })).rejects.toThrow(/--service/);
   });
 });
