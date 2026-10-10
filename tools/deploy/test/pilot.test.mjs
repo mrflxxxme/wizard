@@ -2638,7 +2638,9 @@ describe("pilot: V3-18 — checkpoint 1 of v3 and the probe of the v3 routes", (
     const md = readdirSync(dir).find((f) => /^v3-final-\d{4}-\d{2}-\d{2}\.md$/.test(f));
     const text = readFileSync(join(dir, md), "utf8");
     // The run's systems carry no critic stage here: the design floor (10.10.2026) waits for its data too.
-    expect(text).toContain("**Итог: ⏳ ждёт данных — дизайн (оценка критика), слепое сравнение, разнообразие.**");
+    expect(text).toContain(
+      "**Итог: ⏳ ждёт данных — дизайн (оценка критика), слепое сравнение, разнообразие.**",
+    );
     expect(text).toContain(
       "готовы 12 из 12 (сайт бизнеса 3/3, услуги и запись 3/3, CRM и админка 3/3, магазин 3/3)",
     );
