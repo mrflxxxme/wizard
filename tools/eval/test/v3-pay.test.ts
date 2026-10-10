@@ -111,6 +111,9 @@ function fakeBrowser() {
     },
     url: () => url,
     locator: loc,
+    async evaluate() {
+      return "Товары скоро появятся";
+    },
   };
   return {
     async newContext() {

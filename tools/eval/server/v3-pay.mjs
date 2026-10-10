@@ -122,12 +122,20 @@ export async function payShopOrder({ client, systemId, launch, say = () => {}, t
     let where = "";
     try {
       const u = new URL(page.url());
+      // Every visible error text on the page: alerts, field errors (…-err) and the fields marked invalid.
       const alert = await page
-        .locator('[role="alert"], [data-testid$="-error"], .error')
-        .first()
-        .innerText({ timeout: 1000 })
+        .evaluate(() => {
+          const out = [];
+          for (const el of document.querySelectorAll('[role="alert"], [id$="-err"], [data-testid$="-error"]')) {
+            const t = (el.textContent || "").trim();
+            if (t && !out.includes(t)) out.push(t);
+          }
+          for (const el of document.querySelectorAll('[aria-invalid="true"]'))
+            out.push(`поле с ошибкой: ${el.getAttribute("name") || el.id || el.tagName.toLowerCase()}`);
+          return out.join(" | ");
+        })
         .catch(() => "");
-      where = `${u.host}${u.pathname}${alert ? ` · «${alert.trim().slice(0, 160)}»` : ""}`;
+      where = `${u.host}${u.pathname}${alert ? ` · «${alert.trim().slice(0, 300)}»` : ""}`;
     } catch {}
     step(s, false, [note, where].filter(Boolean).join(" · "));
     return { status: "failed", steps };

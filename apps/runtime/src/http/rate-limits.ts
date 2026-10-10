@@ -2,7 +2,10 @@
 // /api/pay* — per signed-in user, for anonymous visitors per client network (services.ipHmac: the address the trusted
 // ingress reported, IPv6 by /64, keyed HMAC). Over the limit → 429 RATE_LIMITED with Retry-After before the route
 // runs. Windows are per system, so one busy system does not touch the others. Unknown client address (in-process
-// fetch) — anonymous calls are not counted, like the other per-IP limits of the runtime.
+// fetch) — anonymous calls are not counted, like the other per-IP limits of the runtime. Only published systems (env
+// prod) are limited: a draft is behind the preview login (its owner, G1's browser and the measurement), and G1's
+// browser drives every visitor scenario of parallel builds from one pod address — a shared anonymous window of 30
+// calls a minute failed the checkout of the shop's scenarios on the pilot (V3-18).
 import { WizardError } from "@wizard/sdk";
 import type { MiddlewareHandler } from "hono";
 import { MinuteWindows } from "../sandbox/egress-fetch.js";
@@ -27,11 +30,14 @@ export function publicApiBucket(path: string): PublicApiBucket | null {
 const RATE_LIMITED_RU = "Слишком много запросов — подождите минуту и попробуйте снова";
 
 /** Middleware for /api/*: counts /api/data, /api/fn and /api/pay* calls and answers 429 over the limit. */
-export function publicApiRateLimits(clock: () => Date): MiddlewareHandler<RuntimeHonoEnv> {
+export function publicApiRateLimits(
+  clock: () => Date,
+  o: { drafts?: boolean } = {},
+): MiddlewareHandler<RuntimeHonoEnv> {
   const windows = new MinuteWindows(() => clock().getTime());
   return async (c, next) => {
     const bucket = publicApiBucket(c.req.path);
-    if (!bucket) return next();
+    if (!bucket || (c.get("system").entry.env !== "prod" && !o.drafts)) return next();
     const services = c.get("services");
     let who: string | null = null;
     try {

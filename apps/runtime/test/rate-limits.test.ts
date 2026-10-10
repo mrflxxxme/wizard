@@ -6,11 +6,15 @@ import { rememberClientIp } from "../src/auth/client-ip.js";
 import { PUBLIC_API_LIMITS, publicApiBucket } from "../src/http/rate-limits.js";
 import { forumSpec, type Harness, harness, login, request } from "./helpers.js";
 
+// Drafts are counted here (rateLimitDrafts): the per-user windows need the dev logins of drafts; the default runtime
+// limits published systems only (the draft below goes through one without it).
 const A = "rla--draft.localhost:4100";
 const B = "rlb--draft.localhost:4100";
+const DRAFT = "rld--draft.localhost:4100";
 let h: Harness;
 let now = new Date("2026-10-09T10:00:05Z");
 let organizer = "";
+let plain: Harness;
 
 const anon = (host: string, method: string, path: string, ip: string | null, body?: unknown) => {
   const req = request(method, host, path, body === undefined ? {} : { body });
@@ -25,14 +29,17 @@ async function burst(n: number, call: () => Promise<Response>): Promise<number[]
 }
 
 beforeAll(async () => {
-  h = await harness({}, { clock: () => now });
+  h = await harness({}, { clock: () => now, rateLimitDrafts: true });
   await h.system("rla", forumSpec());
   await h.system("rlb", forumSpec());
+  plain = await harness({}, { clock: () => now });
+  await plain.system("rld", forumSpec());
   organizer = await login(h.rt, A, "organizer");
 });
 
 afterAll(async () => {
   await h?.close();
+  await plain?.close();
 });
 
 describe("public API rate limits", () => {
@@ -44,6 +51,15 @@ describe("public API rate limits", () => {
     expect(publicApiBucket("/api/payments")).toBeNull();
     expect(publicApiBucket("/api/ai/x")).toBeNull();
     expect(publicApiBucket("/api/v1/data/x")).toBeNull();
+  });
+
+  it("a draft is not limited here: it is behind the preview login, and G1's browser drives it from one address", async () => {
+    const statuses = await burst(PUBLIC_API_LIMITS.data.anonymous + 10, () => {
+      const req = request("GET", DRAFT, "/api/data/session", {});
+      rememberClientIp(req, "198.51.100.9");
+      return plain.rt.fetch(req);
+    });
+    expect(statuses).not.toContain(429);
   });
 
   it("anonymous /api/data: 60 per minute per network → 429 with Retry-After and a Russian message", async () => {
