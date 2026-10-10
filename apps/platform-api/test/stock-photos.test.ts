@@ -32,6 +32,7 @@ import {
   stockKeyOf,
   stockModeOf,
 } from "../src/agents/stock.js";
+import { criticLibraryPhotos } from "../src/builds-v3/critic.js";
 import { SecretStore } from "../src/secrets/store.js";
 
 const dir = mkdtempSync(join(tmpdir(), "wz-stock-"));
@@ -209,6 +210,24 @@ describe("library mode (B2-43: the photo library filled from CI, no stock from t
     }
     await writeLibraryIndex(storage, serializeLibraryIndex(mergeLibraryIndex(emptyLibraryIndex(), out)));
   };
+
+  test("V3-40: the critic's browser gets the library's WebP by the photo path; the owner's uploads stay stand-ins", async () => {
+    const storage = new MemoryFileStorage();
+    const webp = new Uint8Array([1, 2, 3]);
+    const copy = await storeLibraryPhoto(storage, fixtureImage("pexels:21", 16, 10), {
+      source: "pexels:21",
+      process: async () => ({
+        width: 1600,
+        height: 1000,
+        variants: [{ slot: 1600, width: 1600, height: 1000, data: webp }],
+      }),
+    });
+    const photo = criticLibraryPhotos(storage);
+    expect(await photo(`/_wizard/photos/${copy.id}/1600`)).toEqual({ type: "image/webp", body: webp });
+    expect(await photo(`/_wizard/photos/${copy.id}/7`)).toBeNull();
+    expect(await photo("/_wizard/photos/00000000-0000-5000-8000-000000000000/1600")).toBeNull();
+    expect(await photo("/api/files/abc/img/480")).toBeNull();
+  });
 
   test("WIZARD_STOCK_MODE=library: the builds take the library copies without the network or re-encoding", async () => {
     expect(stockModeOf({ WIZARD_STOCK_MODE: " Library ", WIZARD_LLM_MODE: "live" })).toBe("library");

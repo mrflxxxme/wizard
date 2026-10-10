@@ -133,22 +133,32 @@ export async function writeLibraryIndex(storage: FileStorage, json: string, now 
   });
 }
 
+/** The WebP bytes /_wizard/photos/:id/:width serves (the variant of the width, else the copy); null — none. */
+export async function libraryPhotoFile(
+  storage: FileStorage,
+  id: string,
+  width: number,
+): Promise<{ type: "image/webp"; body: Uint8Array } | null> {
+  if (!ID_RE.test(id) || !IMAGE_WIDTHS.includes(width as never)) return null;
+  const meta = await storage.head(keyOf(id));
+  if (!meta?.image) return null;
+  const obj = await storage.get(meta.image.variants.includes(width) ? variantKey(id, width) : keyOf(id));
+  return obj?.meta.mime === "image/webp" ? { type: "image/webp", body: obj.data } : null;
+}
+
 /** GET /_wizard/photos/:id/:width — a library photo, public and immutable (the bytes of an id never change). */
 export function photoLibraryRoutes(storage: FileStorage | null): Hono<RuntimeHonoEnv> {
   const app = new Hono<RuntimeHonoEnv>();
   app.get("/:id/:width", async (c) => {
-    const id = c.req.param("id");
-    const width = Number(c.req.param("width"));
-    if (!storage || !ID_RE.test(id) || !IMAGE_WIDTHS.includes(width as never)) return notFoundPage();
-    const meta = await storage.head(keyOf(id));
-    if (!meta?.image) return notFoundPage();
-    const obj = await storage.get(meta.image.variants.includes(width) ? variantKey(id, width) : keyOf(id));
-    if (obj?.meta.mime !== "image/webp") return notFoundPage();
-    return new Response(obj.data as Uint8Array<ArrayBuffer>, {
+    const file = storage
+      ? await libraryPhotoFile(storage, c.req.param("id"), Number(c.req.param("width")))
+      : null;
+    if (!file) return notFoundPage();
+    return new Response(file.body as Uint8Array<ArrayBuffer>, {
       status: 200,
       headers: {
         "Content-Type": "image/webp",
-        "Content-Length": String(obj.data.byteLength),
+        "Content-Length": String(file.body.byteLength),
         "Content-Disposition": "inline",
         "Content-Security-Policy": "default-src 'none'; sandbox",
         "X-Content-Type-Options": "nosniff",

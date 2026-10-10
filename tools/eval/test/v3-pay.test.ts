@@ -2,7 +2,17 @@
 // encryption the platform opens, the owner's keys through the windows of the needed connector keys.
 import { describe, expect, test } from "vitest";
 import { newWindowKeyPair, openSealedSecret } from "../../../apps/platform-api/src/secrets-v3/crypto.js";
-import { fillShopKeys, kassaFromEnv, payShopOrder, seal, shopPayment } from "../server/v3-pay.mjs";
+import {
+  CARD_FIELDS,
+  CARD_METHOD_RE,
+  findCardField,
+  fillShopKeys,
+  kassaDiagnostics,
+  kassaFromEnv,
+  payShopOrder,
+  seal,
+  shopPayment,
+} from "../server/v3-pay.mjs";
 
 describe("kassaFromEnv", () => {
   test("the founder's two secrets, the single «shopId:key», the separate pair; a live key or half a pair refused", () => {
@@ -136,5 +146,29 @@ describe("payShopOrder", () => {
         note: "shop-x.preview.example/shop · «Товары скоро появятся»",
       },
     ]);
+  });
+
+  test("the ЮKassa page: card fields in any frame; the method by any wording; diagnostics name frames and marks only", async () => {
+    const frame = (url: string, visible: string[], marks: string) => ({
+      url: () => url,
+      locator: (css: string) => ({
+        first: () => ({ isVisible: async () => visible.some((v) => css.includes(v)) }),
+      }),
+      evaluate: async () => marks,
+    });
+    const page = {
+      frames: () => [
+        frame("https://yoomoney.ru/checkout/payments/v2/contract?orderId=1", [], "input[hidden] кнопки: Картой / SberPay"),
+        frame("https://yoomoney.ru/checkout/card-frame", ['autocomplete="cc-number"'], "input[tel|cardNumber|cc-number]"),
+      ],
+      waitForTimeout: async () => {},
+    };
+    expect(await findCardField(page, CARD_FIELDS.number, 0)).not.toBeNull();
+    expect(await findCardField(page, CARD_FIELDS.cvc, 0)).toBeNull();
+    expect(CARD_METHOD_RE.test("Банковской картой")).toBe(true);
+    expect(CARD_METHOD_RE.test("Картой")).toBe(true);
+    expect(await kassaDiagnostics(page)).toBe(
+      "фрейм 0 yoomoney.ru/checkout/payments/v2/contract: input[hidden] кнопки: Картой / SberPay ‖ фрейм 1 yoomoney.ru/checkout/card-frame: input[tel|cardNumber|cc-number]",
+    );
   });
 });

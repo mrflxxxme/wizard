@@ -26,7 +26,7 @@ import {
 } from "@wizard/agents/builder";
 import type { AppSpec } from "@wizard/appspec";
 import { buildSystem } from "@wizard/build";
-import { buildRoleSpec } from "@wizard/runtime";
+import { buildRoleSpec, type FileStorage, libraryPhotoFile } from "@wizard/runtime";
 import type { GoalBrowserProvider } from "../agents/goal-browser.js";
 
 /** Origin the pages open at: *.localhost is a secure context (crypto.randomUUID of the SDK), no request leaves. */
@@ -84,7 +84,12 @@ function roleSpec(spec: AppSpec): string {
 export interface CriticInspectorOptions {
   browser: GoalBrowserProvider;
   /** Photos of /_wizard/photos/<id>/<w> and /api/files/<id>/img/<w>; default — the platform's stand-ins. */
-  photo?: (path: string) => { type: string; body: string | Uint8Array } | null;
+  photo?: (
+    path: string,
+  ) =>
+    | { type: string; body: string | Uint8Array }
+    | null
+    | Promise<{ type: string; body: string | Uint8Array } | null>;
   log?: (msg: string, fields?: Record<string, string | number>) => void;
 }
 
@@ -97,8 +102,8 @@ function handler(
 ) {
   const json = (route: Route, body: unknown, status = 200) =>
     route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
-  const photo = (route: Route, path: string, name: string) => {
-    const own = o.photo?.(path);
+  const photo = async (route: Route, path: string, name: string) => {
+    const own = await Promise.resolve(o.photo?.(path)).catch(() => null);
     return own
       ? route.fulfill({ status: 200, contentType: own.type, body: Buffer.from(own.body) })
       : route.fulfill({ status: 200, contentType: "image/svg+xml", body: previewPhotoSvg(name) });
@@ -316,6 +321,17 @@ async function shoot(
     .filter((x) => x.top < cssHeight)
     .map((x) => (full ? `${x.id} ${x.top}–${x.top + x.height}` : x.id));
   return { ...s, mime: "image/jpeg", data: img.data, px: { width: img.width, height: img.height }, sections };
+}
+
+/**
+ * V3-40: the critic's photos from the shared file storage — /_wizard/photos/<id>/<w> gets the library's WebP the
+ * runtime would serve; the owner's uploads (/api/files/…) stay the platform's stand-ins.
+ */
+export function criticLibraryPhotos(files: FileStorage): NonNullable<CriticInspectorOptions["photo"]> {
+  return async (path) => {
+    const m = /^\/_wizard\/photos\/([\w-]+)\/(\d+)$/.exec(path);
+    return m ? libraryPhotoFile(files, m[1] as string, Number(m[2])) : null;
+  };
 }
 
 /**

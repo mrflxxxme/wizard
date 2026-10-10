@@ -566,6 +566,8 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
             log: (msg, err) => g1Logger.error(msg.replace(/\s+/g, "_"), err),
             // V3-18: the stock photos of the site, as plan builds get them (WIZARD_STOCK_MODE; library on the pilot).
             photos: photoHost(),
+            // V3-40: the critic's browser shows the library's real photos from the shared storage.
+            files: sharedFiles(),
           });
       }
       const qa = createHostQa(host, { milestone: o.config.milestone });
