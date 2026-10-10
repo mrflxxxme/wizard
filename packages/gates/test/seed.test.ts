@@ -338,12 +338,14 @@ describe("generateSeed showcase (the draft's demo data)", () => {
     ],
   } as unknown as AppSpec;
 
-  test("three published articles a visitor sees, drafts stay; publication dates before $now; G1's seed unchanged", () => {
+  test("three published articles a visitor sees, a draft stays; publication dates before $now; G1's seed unchanged", () => {
     const gate = generateSeed(spec, "key-1", { now: NOW });
     const demo = generateSeed(spec, "key-1", { now: NOW, showcase: true });
     const articles = demo.rows.articles ?? [];
     expect(articles.filter((r) => r.status === "published")).toHaveLength(3);
-    expect(articles.filter((r) => r.status !== "published").length).toBeGreaterThanOrEqual(3);
+    // One more row than the gate's seed: a draft stays a draft.
+    expect(articles.filter((r) => r.status !== "published")).toHaveLength(1);
+    expect(articles).toHaveLength((gate.rows.articles ?? []).length + 1);
     for (const r of articles) expect(Date.parse(String(r.published_at))).toBeLessThan(NOW.getTime());
     // Without a fixed filter nothing changes; without showcase the gate's seed is the one it was.
     expect(demo.rows.notes).toEqual(gate.rows.notes);

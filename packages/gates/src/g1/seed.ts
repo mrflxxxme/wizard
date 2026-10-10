@@ -289,8 +289,9 @@ export interface SeedOptions {
   hints?: readonly SeedHint[];
   /**
    * The draft's demo data (seed_draft and the visual critic, V3-40), not a gate's seed: an entity a role reads through
-   * a fixed row filter (a visitor reads published articles) has at least SHOWCASE_ROWS rows matching it and as many
-   * that do not; publication dates lie in the past. Off — the seed of G1/G2 as it was.
+   * a fixed row filter (a visitor reads published articles) has at least SHOWCASE_ROWS rows matching it — the first
+   * rows that miss it are turned, one that misses it stays (a draft), a row is added only when that is not enough;
+   * publication dates lie in the past. Off — the seed of G1/G2 as it was.
    */
   showcase?: boolean;
 }
@@ -311,21 +312,13 @@ function fixedRowFilter(spec: AppSpec, entity: string): Record<string, unknown> 
   return null;
 }
 
-/** Makes a demo row miss the filter: its first enum or bool field of the filter gets another value. */
-function missFilter(e: Entity, row: Record<string, unknown>, filter: Record<string, unknown>): void {
-  for (const [field, want] of Object.entries(filter)) {
-    if (row[field] !== want) return;
-    const f = e.fields.find((x) => x.name === field);
-    if (f?.type === "bool" && typeof want === "boolean") {
-      row[field] = !want;
-      return;
-    }
-    const other = f?.type === "enum" ? f.enum?.find((o) => o.value !== want) : undefined;
-    if (other) {
-      row[field] = other.value;
-      return;
-    }
-  }
+const matchesFilter = (row: Record<string, unknown>, filter: Record<string, unknown>) =>
+  Object.entries(filter).every(([k, v]) => row[k] === v);
+
+/** The showcase is short: even turning every row that misses the filter but one, fewer than SHOWCASE_ROWS match. */
+function showcaseShort(rows: readonly Record<string, unknown>[], filter: Record<string, unknown>): boolean {
+  const hit = rows.filter((r) => matchesFilter(r, filter)).length;
+  return hit + Math.max(0, rows.length - hit - 1) < SHOWCASE_ROWS;
 }
 
 /** Rows per entity never exceed this, so a hint has at most as many values. */
@@ -485,8 +478,7 @@ export function generateSeed(spec: AppSpec, key: string, opts: SeedOptions = {})
   for (const e of spec.entities) {
     const rf = spec.permissions.filter((p) => p.entity === e.name && p.rowFilter).length;
     const enums = Math.max(0, ...e.fields.map((f) => (f.type === "enum" ? (f.enum?.length ?? 0) : 0)));
-    const showcase = opts.showcase && fixedRowFilter(spec, e.name) ? SHOWCASE_ROWS * 2 : 0;
-    counts.set(e.name, Math.min(SEED_HINT_MAX_VALUES, Math.max(3, enums, rf * 2, showcase)));
+    counts.set(e.name, Math.min(SEED_HINT_MAX_VALUES, Math.max(3, enums, rf * 2)));
   }
   const byName = new Map(spec.entities.map((e) => [e.name, e]));
   for (const name of order) {
@@ -500,7 +492,8 @@ export function generateSeed(spec: AppSpec, key: string, opts: SeedOptions = {})
     }
     const list: Record<string, unknown>[] = [];
     const slugs = new Map<string, Set<string>>();
-    for (let i = 0; i < count; i++) {
+    const fixed = opts.showcase ? fixedRowFilter(spec, name) : null;
+    for (let i = 0; i < SEED_HINT_MAX_VALUES && (i < count || (fixed && showcaseShort(list, fixed))); i++) {
       const row: Record<string, unknown> = { id: uuidFor(key, name, i) };
       for (const f of e.fields) {
         if (f.type === "ref") {
@@ -530,18 +523,25 @@ export function generateSeed(spec: AppSpec, key: string, opts: SeedOptions = {})
           row[field] = m ? userAttr(owner.user, m[1] as string) : want;
         }
       }
-      if (opts.showcase) {
-        // Every other row is what the filtered role sees (published), the rest is not (drafts stay drafts).
-        const fixed = owner ? null : fixedRowFilter(spec, name);
-        if (fixed && i % 2 === 0) Object.assign(row, fixed);
-        else if (fixed) missFilter(e, row, fixed);
+      if (opts.showcase)
         for (const f of e.fields)
           if ((f.type === "date" || f.type === "datetime") && !f.unique && PAST_DATE_FIELD.test(f.name)) {
             const iso = new Date(now.getTime() - (i + 1) * DAY_MS).toISOString();
             row[f.name] = f.type === "date" ? iso.slice(0, 10) : iso;
           }
-      }
       list.push(row);
+    }
+    // The showcase: the first rows that miss the filter are turned until SHOWCASE_ROWS match; one stays a draft.
+    if (fixed) {
+      let hit = list.filter((r) => matchesFilter(r, fixed)).length;
+      let miss = list.length - hit;
+      for (const r of list) {
+        if (hit >= SHOWCASE_ROWS || miss <= 1) break;
+        if (matchesFilter(r, fixed)) continue;
+        Object.assign(r, fixed);
+        hit++;
+        miss--;
+      }
     }
     rows[name] = list;
   }

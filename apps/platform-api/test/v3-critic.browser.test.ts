@@ -469,7 +469,8 @@ describe.skipIf(!hasChromium)("V3-40 the critic sees the visitor's site", () => 
     expect(api[`/api/data/service/${second.id}`]?.body).toMatchObject({
       item: { id: second.id, name: "Пешие маршруты", created_by: null },
     });
-    expect(names(api["/api/data/article?limit=50"]?.body, "title")).toEqual(published);
+    // The runtime's order (created_at desc, then id): the seed writes them in one transaction, so by id here.
+    expect(names(api["/api/data/article?limit=50"]?.body, "title").sort()).toEqual([...published].sort());
     expect(api["/api/data/article?filter[status]=draft"]?.body).toMatchObject({ items: [], total: 0 });
     expect(api["POST /api/data/service"]?.status).toBe(403);
     expect(lines.find((l) => l.msg === "critic_inspection")?.dataRows).toBeGreaterThan(0);
