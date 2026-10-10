@@ -153,7 +153,42 @@ export const desktopUserAgent = (version) =>
  * the methods and took the click instead of «Новая карта» (final measurement 10.10.2026).
  */
 export const CARD_METHOD_RE = /^\s*(Новая карта|Банковская карта|Банковской картой|Картой|Bank card|New card)\s*$/i;
-export const PAY_BUTTON_RE = /Заплатить|Оплатить|Pay/i;
+export const PAY_BUTTON_RE = /Заплатить|Оплатить|^\s*Pay\b/i;
+/**
+ * The code field of a test 3-D Secure page in any frame — never a field of the card form (its CVC is a password field:
+ * the final measurement of 10.10.2026 typed the code into the CVC and stayed on the form).
+ */
+export const THREE_DS_CODE = [
+  'input[autocomplete="one-time-code"]',
+  'input[name*="code" i]:not([name*="cvc" i]):not([name*="card" i])',
+  'input[type="password"]:not([autocomplete^="cc-"]):not([name*="cvc" i]):not([name*="cvv" i]):not([name*="csc" i])',
+];
+const CONFIRM_RE = /Подтвердить|Отправить|Продолжить|Confirm|Submit/i;
+
+/** Types a card value like a person (a masked field may drop a bare fill); → whether its digits stuck. */
+export async function typeCardField(field, value) {
+  const want = String(value).replace(/\D/g, "");
+  const digits = async () => String(await field.inputValue().catch(() => "")).replace(/\D/g, "");
+  await field.click().catch(() => {});
+  await field.fill("").catch(() => {});
+  await field.pressSequentially(String(value), { delay: 40 }).catch(() => {});
+  if ((await digits()) === want) return true;
+  await field.fill(String(value)).catch(() => {});
+  return (await digits()) === want;
+}
+
+/** The first visible and enabled button of `re` in the page or any frame, waiting up to `ms`; null — none. */
+export async function findButton(page, re, ms) {
+  const until = Date.now() + ms;
+  for (;;) {
+    for (const frame of page.frames()) {
+      const b = frame.getByRole("button", { name: re }).first();
+      if ((await b.isVisible().catch(() => false)) && (await b.isEnabled().catch(() => false))) return b;
+    }
+    if (Date.now() >= until) return null;
+    await page.waitForTimeout(500);
+  }
+}
 
 /** The first visible field of `selectors` in the page or any of its frames, waiting up to `ms`; null — none. */
 export async function findCardField(page, selectors, ms) {
@@ -185,15 +220,30 @@ export async function kassaDiagnostics(page) {
           return `${el.tagName.toLowerCase()}[${[a("type"), a("name"), a("autocomplete"), a("placeholder"), a("aria-label")].filter(Boolean).join("|")}]`;
         });
         const buttons = [...document.querySelectorAll("button, [role=button], label")]
-          .map((b) => (b.textContent || "").trim().replace(/\s+/g, " ").slice(0, 30))
+          .map((b) => {
+            const t = (b.textContent || "").trim().replace(/\s+/g, " ").slice(0, 30);
+            const off = b.disabled || b.getAttribute("aria-disabled") === "true";
+            return t && off ? `${t} (неактивна)` : t;
+          })
           .filter(Boolean)
           .slice(0, 8);
-        return `${inputs.join(" ")}${buttons.length ? ` кнопки: ${buttons.join(" / ")}` : ""}`;
+        // What the form says is wrong: alerts, error texts and the fields marked invalid (their names only).
+        const errors = [];
+        for (const el of document.querySelectorAll('[role="alert"], [class*="error" i], [aria-invalid="true"]')) {
+          if (el.getClientRects().length === 0) continue;
+          const t =
+            el.getAttribute("aria-invalid") === "true"
+              ? `поле ${el.getAttribute("name") || el.tagName.toLowerCase()}`
+              : (el.textContent || "").trim().replace(/\s+/g, " ").slice(0, 60);
+          if (t && !errors.includes(t)) errors.push(t);
+          if (errors.length >= 4) break;
+        }
+        return `${inputs.join(" ")}${buttons.length ? ` кнопки: ${buttons.join(" / ")}` : ""}${errors.length ? ` ошибки: ${errors.join(" / ")}` : ""}`;
       })
       .catch(() => "—");
     parts.push(`фрейм ${i} ${host}: ${marks}`);
   }
-  return parts.join(" ‖ ").slice(0, 1200);
+  return parts.join(" ‖ ").slice(0, 1400);
 }
 
 /**
@@ -340,22 +390,28 @@ export async function payShopOrder({
     }
     const cardNumber = num ?? (await findCardField(page, CARD_FIELDS.number, 30_000));
     if (!cardNumber) return await kassaFail("поле номера карты на странице оплаты");
-    await cardNumber.fill(TEST_CARD.number);
+    // Typed like a person, each value checked: a masked field may drop a bare fill (then «Заплатить» stays off).
+    const typed = [await typeCardField(cardNumber, TEST_CARD.number)];
     const exp = await findCardField(page, CARD_FIELDS.exp, 3_000);
-    if (exp) await exp.fill(`${TEST_CARD.exp.slice(0, 2)}/${TEST_CARD.exp.slice(2)}`);
+    if (exp) typed.push(await typeCardField(exp, `${TEST_CARD.exp.slice(0, 2)}/${TEST_CARD.exp.slice(2)}`));
     else {
       const month = await findCardField(page, CARD_FIELDS.month, 3_000);
       const year = await findCardField(page, CARD_FIELDS.year, 3_000);
       if (!month || !year) return await kassaFail("поле срока действия карты");
-      await month.fill(TEST_CARD.exp.slice(0, 2));
-      await year.fill(TEST_CARD.exp.slice(2));
+      typed.push(await typeCardField(month, TEST_CARD.exp.slice(0, 2)));
+      typed.push(await typeCardField(year, TEST_CARD.exp.slice(2)));
     }
     const cvc = await findCardField(page, CARD_FIELDS.cvc, 3_000);
     if (!cvc) return await kassaFail("поле CVC карты");
-    await cvc.fill(TEST_CARD.cvc);
-    const pay = page.getByRole("button", { name: PAY_BUTTON_RE }).first();
-    if (!(await pay.isVisible().catch(() => false))) return await kassaFail("кнопка «Заплатить» на странице оплаты");
+    typed.push(await typeCardField(cvc, TEST_CARD.cvc));
+    if (typed.some((ok) => !ok)) return await kassaFail("данные тестовой карты не встали в поля формы");
+    // The form as it was before «Заплатить» (next to the failure's shot): what the visitor saw filled.
+    if (shotPath)
+      await page.screenshot({ path: shotPath.replace(/\.png$/, "-form.png"), fullPage: true }).catch(() => {});
+    const pay = await findButton(page, PAY_BUTTON_RE, 10_000);
+    if (!pay) return await kassaFail("кнопка «Заплатить» активна на странице оплаты");
     await pay.click();
+    step("данные тестовой карты введены, нажата «Заплатить»", true);
     const backTo = (ms) =>
       page
         .waitForURL((u) => u.origin === origin && u.pathname.startsWith("/order/"), { timeout: ms })
@@ -363,11 +419,12 @@ export async function payShopOrder({
         .catch(() => false);
     let back = await backTo(20_000);
     if (!back) {
-      // The test 3-D Secure page (a code field and a confirm button): any digits pass.
-      const code = page.locator('input[autocomplete="one-time-code"], input[name*="code" i], input[type="password"]').first();
-      if (await code.isVisible().catch(() => false)) {
-        await code.fill(TEST_3DS_CODE);
-        await page.getByRole("button", { name: /Подтвердить|Отправить|Продолжить|Confirm|Submit/i }).first().click().catch(() => {});
+      // The test 3-D Secure page (a code field and a confirm button, any frame): any digits pass.
+      const code = await findCardField(page, THREE_DS_CODE, 10_000);
+      if (code) {
+        await typeCardField(code, TEST_3DS_CODE);
+        const confirm = await findButton(page, CONFIRM_RE, 5_000);
+        await confirm?.click().catch(() => {});
         step("подтверждение 3-D Secure тестовым кодом", true);
       }
       back = await backTo(timeoutMs);
