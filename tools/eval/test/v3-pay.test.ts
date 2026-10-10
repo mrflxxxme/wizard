@@ -5,6 +5,7 @@ import { newWindowKeyPair, openSealedSecret } from "../../../apps/platform-api/s
 import {
   CARD_FIELDS,
   CARD_METHOD_RE,
+  findButton,
   findCardField,
   fillShopKeys,
   kassaDiagnostics,
@@ -12,6 +13,8 @@ import {
   payShopOrder,
   seal,
   shopPayment,
+  THREE_DS_CODE,
+  typeCardField,
 } from "../server/v3-pay.mjs";
 
 describe("kassaFromEnv", () => {
@@ -175,5 +178,41 @@ describe("payShopOrder", () => {
     expect(await kassaDiagnostics(page)).toBe(
       "фрейм 0 yoomoney.ru/checkout/payments/v2/contract: input[hidden] кнопки: Картой / SberPay ‖ фрейм 1 yoomoney.ru/checkout/card-frame: input[tel|cardNumber|cc-number]",
     );
+  });
+
+  // Final measurement 10.10.2026: the card was in the form, «Заплатить» did not take it and the 3-D Secure step typed
+  // the code into the CVC (a password field) — values are typed and checked, the code field is never a card field.
+  test("card values typed and checked; the pay button only when enabled; the 3-D Secure code never in the CVC", async () => {
+    const masked = (keep: (v: string) => string) => {
+      let value = "";
+      return {
+        click: async () => {},
+        fill: async (v: string) => {
+          value = keep(v);
+        },
+        pressSequentially: async (v: string) => {
+          value = v.replace(/\D/g, "").replace(/(\d{4})(?=\d)/g, "$1 ");
+        },
+        inputValue: async () => value,
+      };
+    };
+    // A masked field formats the digits («5555 5555 …»): the digits count, not the spaces.
+    expect(await typeCardField(masked(() => ""), "5555555555554444")).toBe(true);
+    // A field that keeps nothing typed is reported, not trusted.
+    const dead = { ...masked(() => ""), pressSequentially: async () => {} };
+    expect(await typeCardField(dead, "123")).toBe(false);
+    const button = (visible: boolean, enabled: boolean) => ({
+      first: () => ({ isVisible: async () => visible, isEnabled: async () => enabled }),
+    });
+    const frames = (enabled: boolean) => ({
+      frames: () => [{ getByRole: () => button(true, enabled) }],
+      waitForTimeout: async () => {},
+    });
+    expect(await findButton(frames(false), /Заплатить/, 0)).toBeNull();
+    expect(await findButton(frames(true), /Заплатить/, 0)).not.toBeNull();
+    const code = THREE_DS_CODE.join(", ");
+    expect(code).toContain(':not([name*="cvc" i])');
+    expect(code).toContain(':not([autocomplete^="cc-"])');
+    expect(CARD_FIELDS.cvc.some((c) => code.includes(c))).toBe(false);
   });
 });
