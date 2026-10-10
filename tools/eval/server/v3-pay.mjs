@@ -10,8 +10,13 @@
 
 const WINDOW_VERSION = "wz-key-window/v1";
 const WINDOW_ALG = "ECDH-ES+HKDF-SHA256+A256GCM";
-/** The ЮKassa docs' test card that pays without 3-D Secure. */
-export const TEST_CARD = { number: "5555555555554477", exp: "1230", cvc: "123" };
+/**
+ * The ЮKassa docs' test card that pays without 3-D Secure (Mastercard …4444; …4477 asks for a 3-D Secure code — the
+ * table «Проверка успешных сценариев» of yookassa.ru/developers/payment-acceptance/testing-and-going-live/testing).
+ */
+export const TEST_CARD = { number: "5555555555554444", exp: "1230", cvc: "123" };
+/** Any digits pass the test shop's 3-D Secure page (the same docs), if the card asks for it after all. */
+const TEST_3DS_CODE = "123";
 
 /**
  * The test shop's pair from the env: YOOKASSA_TEST_SHOP_ID / YOUKASSA_TEST_SHOP_ID and YOOKASSA_TEST_SECRET_KEY, or the
@@ -220,10 +225,22 @@ export async function payShopOrder({ client, systemId, launch, say = () => {}, t
     }
     await page.locator('input[autocomplete="cc-csc"], input[name*="cvc" i], input[name*="csc" i]').first().fill(TEST_CARD.cvc);
     await page.getByRole("button", { name: /Заплатить|Оплатить/i }).first().click();
-    const back = await page
-      .waitForURL((u) => u.origin === origin && u.pathname.startsWith("/order/"), { timeout: timeoutMs })
-      .then(() => true)
-      .catch(() => false);
+    const backTo = (ms) =>
+      page
+        .waitForURL((u) => u.origin === origin && u.pathname.startsWith("/order/"), { timeout: ms })
+        .then(() => true)
+        .catch(() => false);
+    let back = await backTo(20_000);
+    if (!back) {
+      // The test 3-D Secure page (a code field and a confirm button): any digits pass.
+      const code = page.locator('input[autocomplete="one-time-code"], input[name*="code" i], input[type="password"]').first();
+      if (await code.isVisible().catch(() => false)) {
+        await code.fill(TEST_3DS_CODE);
+        await page.getByRole("button", { name: /Подтвердить|Отправить|Продолжить|Confirm|Submit/i }).first().click().catch(() => {});
+        step("подтверждение 3-D Secure тестовым кодом", true);
+      }
+      back = await backTo(timeoutMs);
+    }
     if (!back) return await fail("оплата тестовой картой и возврат на страницу заказа");
     step("оплачено тестовой картой, посетитель вернулся на страницу заказа", true);
     const status = page.locator(sel("wz-order-status")).first();
