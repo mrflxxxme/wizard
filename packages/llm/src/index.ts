@@ -135,9 +135,12 @@ export {
   type RouteDef,
   RU_BUILD_LABEL,
 } from "./registry.js";
+/** The router; V3-18: Retry-After capped at MAX_RETRY_AFTER_MS, pauses end with the call's signal (abortableSleep). */
 export {
+  abortableSleep,
   createRouter,
   type FixtureOptions,
+  MAX_RETRY_AFTER_MS,
   type ProviderDegraded,
   type Router,
   type RouterOptions,

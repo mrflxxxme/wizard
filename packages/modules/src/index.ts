@@ -248,6 +248,7 @@ export {
   cabinetRoute,
   can,
   columns,
+  filterFields,
   permOf,
   startPage,
   statusField,
@@ -272,13 +273,17 @@ export {
   DELIVERY_METHODS,
   type DeliveryMethod as ShopDeliveryMethod,
   ORDER_STATUSES,
+  orderTransitions,
   SHOP_FUNCTIONS,
   SHOP_NAMES,
   SHOP_PAYMENT,
   SHOP_ROUTES,
+  SHOP_TERMS_LABELS,
+  SHOP_TERMS_ROUTES,
   type ShopOptions,
   SOLD_STATUSES,
   shopOptions,
+  shopStatusFlows,
 } from "./shop/compile.js";
 export { CDEK_TARIFF, QUOTE_MINUTES } from "./shop/functions.js";
 export { CDEK_CLIENT_FILES, CDEK_CLIENT_REF, shopManifest, shopModule } from "./shop/index.js";
@@ -305,6 +310,7 @@ export {
   planCatalog,
   type ScreenContext,
   type ScreenGenerator,
+  type StatusFlow,
 } from "./types.js";
 /** Module «Кабинет посетителя» (B2-16): the visitor role and /me with his own rows (rowFilter of the data modules). */
 export {

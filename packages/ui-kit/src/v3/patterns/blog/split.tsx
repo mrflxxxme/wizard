@@ -2,7 +2,7 @@
 // posts as rows — a small cover, the date, the title and the announcement. «Показать ещё» under the rows. The data is
 // the module's: useContent (C4) gives what the role may read, newest first, by pages; dates in Russian. Own
 // composition.
-import { type PagedList, useContent } from "@wizard/ui-kit/v3/headless";
+import { type PagedList, srcSetOf, useContent } from "@wizard/ui-kit/v3/headless";
 import { type ReactNode, useId, useRef } from "react";
 
 type Link = { label: string; href: string };
@@ -23,6 +23,10 @@ export type BlogSplitProps = {
   /** Posts per «Показать ещё». */
   pageSize?: number;
   action?: Link;
+  /** A preview on another page (home): nothing while the list is empty, no «Показать ещё». */
+  preview?: boolean;
+  /** false — the entries go without dates (the pages of the site, not posts). */
+  dates?: boolean;
 };
 
 const FIELDS: Required<Fields> = {
@@ -189,11 +193,14 @@ function More({
 }
 
 export default function BlogSplit(props: BlogSplitProps) {
-  const { entity = "post", path, title, text, empty, pageSize = 4, action } = props;
+  const { entity = "post", path, title, text, empty, pageSize = 4, action, preview, dates = true } = props;
   const f = { ...FIELDS, ...props.fields };
+  // Without dates the date field of a post reads nothing (the list stays sorted by it).
+  const shown = dates ? f : { ...f, date: "" };
   const m = useContent(entity, { sort: { field: f.date, dir: "desc" }, pageSize });
   const { items, growing } = useShown(m);
   const uid = useId();
+  if (preview && !m.isLoading && items.length === 0) return null;
   let body: ReactNode;
   if (m.error && items.length === 0) body = <Failed m={m} />;
   else if (m.isLoading && items.length === 0) body = <Loading />;
@@ -203,7 +210,7 @@ export default function BlogSplit(props: BlogSplitProps) {
       <>
         <ul className="space-y-4">
           {items.map((post) => {
-            const p = postOf(post, f, path, 480);
+            const p = postOf(post, shown, path, 480);
             return (
               <li
                 key={post.id}
@@ -212,6 +219,8 @@ export default function BlogSplit(props: BlogSplitProps) {
                 {p.cover ? (
                   <img
                     src={p.cover}
+                    srcSet={srcSetOf(p.cover)}
+                    sizes="(min-width: 640px) 33vw, 100vw"
                     alt=""
                     aria-hidden="true"
                     loading="lazy"
@@ -233,7 +242,7 @@ export default function BlogSplit(props: BlogSplitProps) {
             );
           })}
         </ul>
-        <More m={m} shown={items.length} growing={growing} className="mt-6" />
+        {preview ? null : <More m={m} shown={items.length} growing={growing} className="mt-6" />}
       </>
     );
   return (

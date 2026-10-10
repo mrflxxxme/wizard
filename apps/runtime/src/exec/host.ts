@@ -211,15 +211,36 @@ export function systemFunctions(
 ): Promise<SystemFunctions> {
   let p = cache.get(sys);
   if (!p) {
-    p = build(sys, services, log).then((f) => {
-      live.add(f.executor);
+    const mine: Promise<SystemFunctions> = build(sys, services, log).then((f) => {
+      // Forgotten while it was being built: not tracked (forgetSystemFunctions found nothing to forget).
+      if (cache.get(sys) === mine) live.add(f.executor);
       return f;
     });
+    p = mine;
     cache.set(sys, p);
     // A failed load is retried on the next call.
-    p.catch(() => cache.delete(sys));
+    p.catch(() => {
+      if (cache.get(sys) === mine) cache.delete(sys);
+    });
   }
   return p;
+}
+
+/**
+ * V3-18: the system left the cache — its executor is no longer tracked here (`live` would keep every one ever built);
+ * close: also stopped (no loaded copy of the deployment is left; a replaced revision's requests in flight keep theirs).
+ */
+export function forgetSystemFunctions(sys: LoadedSystem, close: boolean): void {
+  const p = cache.get(sys);
+  if (!p) return;
+  cache.delete(sys);
+  void p.then(
+    (f) => {
+      live.delete(f.executor);
+      if (close) f.executor.close();
+    },
+    () => {},
+  );
 }
 
 /** Stops every executor process of this runtime process (tests, shutdown). */

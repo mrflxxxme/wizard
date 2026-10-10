@@ -337,7 +337,7 @@ declare module "@wizard/sdk" {
   export type FilterOps<T> = { eq?: T; ne?: T; lt?: T; lte?: T; gt?: T; gte?: T; in?: T[]; contains?: string };
   export type EntityFilter<E extends EntityName> = { [K in keyof ClientDoc<E>]?: ClientDoc<E>[K] | FilterOps<ClientDoc<E>[K]> };
   export type SortKey<E extends EntityName> = (keyof ClientDoc<E> & string) | `-${keyof ClientDoc<E> & string}`;
-  export interface EntityListOptions<E extends EntityName> { filter?: EntityFilter<E>; sort?: SortKey<E> | SortKey<E>[]; page?: number; limit?: number }
+  export interface EntityListOptions<E extends EntityName> { filter?: EntityFilter<E>; sort?: SortKey<E> | SortKey<E>[]; page?: number; limit?: number; search?: string }   // search → q (runtime.yaml#data_api.query_params.q, V3-18)
   export interface EntityListState<E extends EntityName> {
     items: ClientDoc<E>[]; total: number; page: number; limit: number; hasMore: boolean;
     isLoading: boolean; error: WizardError | undefined; refetch(): void;

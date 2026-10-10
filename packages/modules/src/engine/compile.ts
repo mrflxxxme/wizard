@@ -45,6 +45,7 @@ import {
   type ModuleRegistry,
   planCatalog,
   type ScreenContext,
+  type StatusFlow,
 } from "../types.js";
 import {
   type FrontMode,
@@ -684,6 +685,17 @@ class Compilation {
           const u = unionOrdered(prev[k], p[k]);
           if (u.length) prev[k] = u;
         }
+        // allowedValues (V3-18) — the narrowest: values both modules allow; none left — the field is readonly.
+        for (const [f, values] of Object.entries(p.allowedValues ?? {})) {
+          const av = { ...(prev.allowedValues ?? {}) };
+          const both = av[f] ? av[f].filter((v) => values.includes(v)) : [...values];
+          if (both.length) av[f] = both;
+          else {
+            delete av[f];
+            prev.readonlyFields = unionOrdered(prev.readonlyFields, [f]);
+          }
+          prev.allowedValues = av;
+        }
       }
     }
     return [...merged.values()].map(({ filtered, ...p }) => {
@@ -696,6 +708,8 @@ class Compilation {
       }
       if (p.hiddenFields?.length) out.hiddenFields = p.hiddenFields;
       if (p.readonlyFields?.length) out.readonlyFields = p.readonlyFields;
+      const av = Object.entries(p.allowedValues ?? {}).filter(([f]) => !p.readonlyFields?.includes(f));
+      if (av.length) out.allowedValues = Object.fromEntries(av);
       return out;
     });
   }
@@ -834,9 +848,17 @@ class Compilation {
         this.bug(id, `генератор экрана «${page.route}» упал: ${(e as Error).message}`);
       }
     }
+    // V3-18: status flows of the modules' entities (the buttons of allowed transitions instead of every status).
+    const flows = Object.assign(
+      {},
+      ...this.order.map((id) => this.defs.get(id)?.statusFlows?.(this.ctx(id)) ?? {}),
+    ) as Record<string, StatusFlow>;
     for (const { role, entities, page } of roleCabinets) {
       this.pages.push(page);
-      this.files.set(page.file, cabinetPage(this.spec, role.name, role.label, entities));
+      this.files.set(
+        page.file,
+        cabinetPage({ ...this.spec, functions: this.functions }, role.name, role.label, entities, flows),
+      );
     }
     if (this.front === "v2" && !this.pages.some((p) => p.route === "/")) {
       this.pages.push({

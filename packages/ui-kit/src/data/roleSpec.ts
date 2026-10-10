@@ -88,13 +88,25 @@ export function permissionOf(spec: RoleSpec, entity: string): Permission | undef
   return spec.permissions.find((p) => p.entity === entity && p.role === spec.role);
 }
 
-/** can(op, entity, field?) from RoleSpec; the server stays the source of truth (403 → error state). */
-export function can(spec: RoleSpec, op: PermissionOp, entity: string, field?: string): boolean {
+/**
+ * can(op, entity, field?, value?) from RoleSpec; `value` — the value written (allowedValues, V3-18). The server stays
+ * the source of truth (403 → error state).
+ */
+export function can(
+  spec: RoleSpec,
+  op: PermissionOp,
+  entity: string,
+  field?: string,
+  value?: string,
+): boolean {
   const p = permissionOf(spec, entity);
   if (!p?.ops.includes(op)) return false;
   if (field === undefined) return true;
   if (!fieldOf(spec, entity, field)) return false;
   if ((op === "update" || op === "create") && p.readonlyFields?.includes(field)) return false;
+  const allowed = p.allowedValues?.[field];
+  if ((op === "update" || op === "create") && value !== undefined && allowed && !allowed.includes(value))
+    return false;
   return !(op === "update" && Object.hasOwn(p.rowFilter ?? {}, field));
 }
 

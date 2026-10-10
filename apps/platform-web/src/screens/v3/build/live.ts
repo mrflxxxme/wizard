@@ -117,11 +117,18 @@ export function scenarioCount(p: V3BuildProgress): { done: number; total: number
   return { done: p.scenarios.filter((s) => s.status === "passed").length, total: p.scenarios.length };
 }
 
-/** The run of the latest build report in the chat (a v3 system opened after its build replays it). */
+/**
+ * The run of the latest build report in the chat (a v3 system opened after its build replays it). A publication and a
+ * rollback write a run report too: their payload names the run kind (V3-18), so only builds are taken; a report of
+ * an older platform without the kind is kept.
+ */
 export function lastReportRun(messages: readonly Message[]): string | null {
   let best: Message | null = null;
-  for (const m of messages)
+  for (const m of messages) {
+    const kind = m.payload?.kind;
+    if (typeof kind === "string" && kind !== "build") continue;
     if (m.kind === "run_report" && typeof m.runId === "string" && m.runId && (!best || m.seq > best.seq))
       best = m;
+  }
   return best?.runId ?? null;
 }

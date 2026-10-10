@@ -64,7 +64,7 @@ run_lifecycle:
     test: "M0-13: fixture с искусственно низким cap → после budget_exceeded нет ни одной новой строки llm_calls до ответа"
   llm_unavailable: "Все T0-модели недоступны (agents/models.yaml#fallback_rules): M0 — сразу run_failed LLM_UNAVAILABLE retryable=true. M1 — шаг повторяется через 5 мин до 6 раз, статус остаётся running, событие step_started с attempt+1; затем run_failed LLM_UNAVAILABLE retryable=true. Отдельного статуса «пауза» нет (L1-14)"
   demo_replay: "B2-02: прогоны служебной организации с orgs.demo_replay идут в fixture на записанном сценарии системы (systems.demo_scenario; agents/models.yaml#credits.demo_replay); вызов без записанного ответа или прогон без записи (сценария нет, режим сборки не записан) → run_failed DEMO_REPLAY_MISS retryable=false «В режиме показа есть только записанные сценарии: …»"
-  failure_codes: [BUDGET_STOPPED, CONSECUTIVE_ERRORS, GATES_FAILED, LLM_UNAVAILABLE, INPUT_TIMEOUT, WORKER_RESTARTED, LOCK_TIMEOUT, MIGRATION_FAILED, INSUFFICIENT_CREDITS, DESTRUCTIVE_IN_PROD, ROLLBACK_TARGET_INVALID, ORCH_INVALID_OUTPUT, SMOKE_FAILED, EXPORT_FAILED, DEMO_REPLAY_MISS, PLAN_INVALID, MODULE_BUG, STAGE_BUDGET_EXCEEDED, INTERNAL]
+  failure_codes: [BUDGET_STOPPED, CONSECUTIVE_ERRORS, GATES_FAILED, LLM_UNAVAILABLE, INPUT_TIMEOUT, WORKER_RESTARTED, LOCK_TIMEOUT, MIGRATION_FAILED, INSUFFICIENT_CREDITS, DESTRUCTIVE_IN_PROD, ROLLBACK_TARGET_INVALID, ORCH_INVALID_OUTPUT, SMOKE_FAILED, EXPORT_FAILED, DEMO_REPLAY_MISS, PLAN_INVALID, MODULE_BUG, STAGE_BUDGET_EXCEEDED, CHECKS_UNAVAILABLE, RUN_TIMEOUT, INTERNAL]
 
 workflows:
   interview_turn:

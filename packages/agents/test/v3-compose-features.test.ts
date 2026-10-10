@@ -100,6 +100,80 @@ const SYSTEM_NAMES: Readonly<Record<string, string>> = {
 /** Words of a test or a draft that never show on a site. */
 const PLACEHOLDER_WORDS = /(?:^|[^\p{L}])(?:проверка|тест|test|пример|черновик|новая система)(?![\p{L}])/iu;
 
+/** V3-18: what home shows besides the first screen and the form, and what the catalog is called. */
+const HOME: Readonly<Record<string, { body: string[]; services?: string[]; catalog?: string }>> = {
+  "v3-01-interior-studio": {
+    body: ["hero", "services", "catalog", "blog", "form"],
+    services: ["Дизайн квартиры", "Дизайн дома", "Авторский надзор", "Комплектация"],
+  },
+  "v3-02-dental-booking": { body: ["hero", "catalog"] },
+  "v3-03-cleaning-crm": {
+    body: ["hero", "services", "catalog", "blog", "form"],
+    services: ["Уборка квартир после ремонта", "Уборка офисов", "Мойка окон"],
+    catalog: "Виды уборки",
+  },
+  "v3-04-karelia-tours": {
+    body: ["hero", "services", "catalog", "blog", "form"],
+    services: ["Сплавы", "Пешие маршруты", "Зимние поездки на снегоходах"],
+    catalog: "Туры",
+  },
+  "v3-05-ceramics-shop": {
+    body: ["hero", "shop", "services", "blog"],
+    services: ["Кружки", "Тарелки", "Вазы ручной работы"],
+  },
+};
+
+describe("V3-18: home previews the modules' data and the brief's services; the catalog is called as the brief says", () => {
+  for (const [id, input] of Object.entries(EVAL_BRIEFS))
+    test(id, async () => {
+      const { site } = await briefSite(id, input);
+      const want = HOME[id];
+      const page = home(site);
+      expect(page.sections.map((s) => s.type).filter((t) => t !== "header" && t !== "footer")).toEqual(
+        want?.body,
+      );
+      // No closing call on home: the first screen's button is the main action already.
+      expect(page.sections.some((s) => s.type === "cta")).toBe(false);
+      const services = sectionOf(page, "services")?.props as { title: string; items: { title: string }[] };
+      if (want?.services) {
+        expect(services.title).toBe("Что мы предлагаем");
+        expect(services.items.map((x) => x.title)).toEqual(want.services);
+      } else expect(services).toBeUndefined();
+      const preview = sectionOf(page, "catalog")?.props;
+      const catalog = site.pages.find((p) => p.kind === "catalog");
+      if (preview) {
+        // A preview: the first six items, nothing while empty, the way to the whole catalog.
+        expect(preview).toMatchObject({ preview: true, pageSize: 6 });
+        expect(preview.categoryEntity).toBeUndefined();
+        expect((preview.action as { href: string }).href).toBe(catalog?.route);
+      }
+      if (want?.catalog) {
+        const noun = want.catalog.toLowerCase();
+        expect(catalog?.title).toBe(want.catalog);
+        expect(preview?.title).toBe(want.catalog);
+        expect((preview?.action as { label: string } | undefined)?.label).toBe(`Все ${noun}`);
+        const own = sectionOf(catalog, "catalog").props;
+        expect(own.title).toBe(`Все ${noun}`);
+        expect(own.empty).toBe(`${want.catalog} скоро появятся`);
+        // The page's first screen says what the page holds, not only its title and a button.
+        expect(typeof sectionOf(catalog, "hero").props.lead).toBe("string");
+      } else if (catalog) expect(catalog.title).toBe("Каталог и цены");
+      // The shop's goods on home: a preview of six with the way to all of them, no filter (V3-18).
+      const shop = sectionOf(page, "shop")?.props;
+      if (shop) {
+        expect(shop).toMatchObject({
+          preview: true,
+          pageSize: 6,
+          all: { label: "Все товары", href: "/shop" },
+        });
+        expect(shop.categoryEntity).toBeUndefined();
+      }
+      // A blog preview shows the latest three articles and hides while there are none.
+      const blog = sectionOf(page, "blog")?.props;
+      if (blog) expect(blog).toMatchObject({ preview: true, pageSize: 3, action: { href: "/blog" } });
+    });
+});
+
 describe("texts of the skeleton from the brief (no model)", () => {
   for (const [id, input] of Object.entries(EVAL_BRIEFS))
     test(id, async () => {
@@ -327,6 +401,32 @@ describe("texts of the skeleton from the brief (no model)", () => {
     expect(sectionOf(home(bare.site), "hero").props.title).toBe("Клининг");
     expect(home(bare.site).seo.title).toBe("Клининг");
   });
+
+  test("V3-18 (pilot v3-05): a country or a delivery scope is not where the business is", () => {
+    const brief = systemBriefSchema.parse({
+      ...EVAL_BRIEFS["v3-05-ceramics-shop"],
+      audience: "Покупатели посуды ручной работы в России, заказывают с телефона",
+    });
+    const request =
+      "Мы небольшая керамическая мастерская: кружки, тарелки, вазы ручной работы. Доставка по России СДЭК, отправляем в Казань и в Москву.";
+    const copy = briefCopy({ name: "Проверка", niche: "керамика", keywordNiche: false, brief, request });
+    expect(copy.title).toBe("Керамическая мастерская");
+    expect(copy.site).toBe("Керамическая мастерская");
+    for (const t of [copy.title, copy.home, copy.site, copy.about])
+      expect(t).not.toMatch(/России|Казан|Москв/);
+    expect(placeOf(["Доставка по России и в Беларусь", "Работаем по РФ", "Мастерская в Твери"])).toBe(
+      "в Твери",
+    );
+    // The name the owner gives in so many words is the brand.
+    const named = briefCopy({
+      name: "Проверка",
+      niche: "керамика",
+      keywordNiche: false,
+      brief,
+      request: `${request} Мастерская называется «Глина и печь».`,
+    });
+    expect(named).toMatchObject({ title: "Керамическая мастерская «Глина и печь»", site: "Глина и печь" });
+  });
 });
 
 describe("the owner's photos of «Фото сайта» on the v3 pages", () => {
@@ -415,7 +515,9 @@ describe("the client cabinet /me of «Кабинет посетителя»", ()
     });
     expect(props.signIn.href).toBe("/login?role=visitor&next=%2Fme");
     // The page passes the lint: one h1, the sign-in link is a link of the site.
-    const issues = lintSitePage(site, me, { numbers: new Set() } as never).filter(
+    // (The footer's «© <year>» is a fact of the composition.)
+    const year = String(new Date().getUTCFullYear());
+    const issues = lintSitePage(site, me, { numbers: new Set([year]) } as never).filter(
       (i) => i.severity === "error",
     );
     expect(issues).toEqual([]);

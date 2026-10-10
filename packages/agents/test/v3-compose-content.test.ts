@@ -117,6 +117,7 @@ describe("pages of «Контент и блог»", () => {
   });
 
   test("menus and the footer list the pages without the entry pages; the owner's name of the blog is the title", () => {
+    // V3-18: the lists of «Контент и блог» start empty — they live in the footer, not in the header.
     const { site } = composeSite(contentContext({ params: { blog_title: "Новости" } }));
     const home = page(site, "/");
     const header = home.sections.find((s) => s.type === "header")?.props as
@@ -126,8 +127,6 @@ describe("pages of «Контент и блог»", () => {
     expect(nav).toEqual([
       { label: "Главная", href: "/" },
       { label: "Каталог и цены", href: "/services" },
-      { label: "Новости", href: "/blog" },
-      { label: "Информация", href: "/pages" },
     ]);
     const footer = home.sections.find((s) => s.type === "footer")?.props as {
       columns: { links: { href: string }[] }[];
@@ -136,9 +135,37 @@ describe("pages of «Контент и блог»", () => {
     expect(links.some(isParamRoute)).toBe(false);
     expect(links).toEqual(expect.arrayContaining(["/blog", "/pages"]));
     for (const p of site.pages)
-      expect(p.header, p.route).toBe(!isParamRoute(p.route) && p.kind !== "credits");
+      expect(p.header, p.route).toBe(!isParamRoute(p.route) && p.kind !== "credits" && p.kind !== "content");
     expect(page(site, "/blog").title).toBe("Новости");
     expect(page(site, "/blog").seo.title).toBe("Новости — Белая линия");
+  });
+
+  test("V3-18: the site's information pages are a list without dates; the articles are previewed on home", () => {
+    const { site } = composeSite(contentContext());
+    const pages = section(site, "/pages", "blog");
+    expect(pages?.props).toMatchObject({ dates: false });
+    // The variant that goes by the months of the dates is never taken for them.
+    expect(pages?.pattern).not.toBe("blog-archive");
+    expect(section(site, "/blog", "rubric")?.props).not.toHaveProperty("dates");
+    const preview = section(site, "/", "blog");
+    expect(preview?.props).toMatchObject({
+      entity: "article",
+      path: "/blog/",
+      pageSize: 3,
+      preview: true,
+      action: { label: "Все записи", href: "/blog" },
+    });
+  });
+
+  test("V3-18: a blog-only site keeps its articles in the header, never the information pages", () => {
+    const ctx = contentContext();
+    const front = {
+      ...ctx.publicFront,
+      screens: ctx.publicFront.screens.filter((s) => s.module === "content" || s.route === "/"),
+      actions: ctx.publicFront.actions.filter((a) => a.module === "content"),
+    };
+    const { site } = composeSite({ ...ctx, publicFront: front });
+    expect(site.pages.filter((p) => p.header).map((p) => p.route)).toEqual(["/", "/blog"]);
   });
 
   test("without rubrics and pages: the list of articles is a blog pattern, no rubric or page routes", () => {

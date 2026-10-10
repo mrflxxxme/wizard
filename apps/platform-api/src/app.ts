@@ -44,6 +44,7 @@ import { abuseRoutes } from "./routes/abuse.js";
 import { adminRoutes } from "./routes/admin.js";
 import { capabilityRoutes } from "./routes/admin-capability.js";
 import { adminPilotRoutes } from "./routes/admin-pilot.js";
+import { adminSystemsRoutes } from "./routes/admin-systems.js";
 import { authRoutes } from "./routes/auth.js";
 import { billingRoutes, yookassaWebhook } from "./routes/billing.js";
 import { creditRoutes } from "./routes/credits.js";
@@ -437,6 +438,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
       kms: opts.secretWindow?.kms !== undefined ? opts.secretWindow.kms : windowKmsOf(process.env, secrets),
       ...opts.integrations,
       ...(opts.secretWindow?.platformDomains ? { platformDomains: opts.secretWindow.platformDomains } : {}),
+      notice: { mailer, log },
     }),
   );
   api.route("/", webhookRoutes(deps));
@@ -470,6 +472,8 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   api.route("/", gapsRoutes({ ...abuse, gapsNow: opts.now }));
   // V3-06: /admin — the monthly share of «пока не умею» in the capability maps of briefs.
   api.route("/", capabilityRoutes({ ...abuse, ...(opts.now ? { now: opts.now } : {}) }));
+  // V3-18: /admin «Системы и сбои» — every system with its last build and spend, failed runs with the error.
+  api.route("/", adminSystemsRoutes(abuse));
   // B2-26: module factory — «Кандидаты в модули» and the consent to «Теперь умеем» letters.
   api.route("/", factoryRoutes({ ...abuse, factoryNow: opts.now, modules: opts.modules }));
   api.route("/", runRoutes(deps, opts.pingMs !== undefined ? { pingMs: opts.pingMs } : {}));

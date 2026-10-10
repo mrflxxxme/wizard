@@ -7,12 +7,13 @@ import type { Selectable } from "kysely";
 import { z } from "zod";
 import { getLatestBrief } from "../briefs/store.js";
 import { V3_BUILD_CAP_CREDITS } from "../builds-v3/host.js";
+import { techreviewBlockersOf } from "../builds-v3/techreview-verdict.js";
 import { json } from "../db/index.js";
 import type { SystemsTable } from "../db/types.js";
 import { ApiError, invalid, notFound } from "../errors.js";
 import { type AppEnv, type AuthUser, checkOrgAccess, isUuid, type OrgRole } from "../http/auth.js";
 import { type Deps, jsonBody, parseQuery } from "../http/util.js";
-import { publishBlockers } from "../publish/blockers.js";
+import { publishBlockers, techreviewBlockers } from "../publish/blockers.js";
 import { draftPreviewUrl } from "../publish/preview-url.js";
 import { prodUrl } from "../publish/prod.js";
 import { orgDemoReplay, requireDemoScenario } from "../runs/demo-replay.js";
@@ -278,6 +279,8 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
         d.config.cardBindingRequired,
         d.config.prodG2Required || d.config.founderReviewRequired,
       ),
+      // V3-18: the reasons of a GATES_FAILED the techreview of the v3 build gave (the owner sees them in words).
+      techreviewBlockers: await techreviewBlockers(d.db, s),
     });
   });
 
@@ -585,7 +588,11 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
       .where("kind", "=", "build")
       .orderBy("created_at", "desc")
       .executeTakeFirst();
-    const hasFailure = reports.some((g) => !g.passed) || lastBuild?.status === "failed";
+    // V3-18: the techreview of the v3 build that left the draft found blockers — the revision cannot be published.
+    const hasFailure =
+      reports.some((g) => !g.passed) ||
+      lastBuild?.status === "failed" ||
+      (s0.draft_revision > 0 && (await techreviewBlockersOf(d.db, s0.id, s0.draft_revision)).length > 0);
     const run = await tx(async (t) => {
       const s = await lockSystem(t, s0.id);
       if (!hasFailure || (s.stage !== "ready" && s.stage !== "failed"))

@@ -28,6 +28,8 @@ export const SECTION_TYPES = [
   "shop",
   "cart",
   "order",
+  // V3-18: the page of one product (/shop/:id).
+  "product",
 ] as const;
 export type SectionType = (typeof SECTION_TYPES)[number];
 

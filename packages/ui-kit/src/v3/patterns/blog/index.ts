@@ -41,6 +41,10 @@ export const blogSlots = z.object({
   pageSize: z.number().int().min(3).max(24).optional(),
   /** One action of the section, e.g. all posts (catalog K09). */
   action: linkSlot.optional(),
+  /** A preview on another page (home, V3-18): nothing while the list is empty, no «Показать ещё». */
+  preview: z.boolean().optional(),
+  /** false — the entries go without dates: the pages of the site, not posts (V3-18). */
+  dates: z.boolean().optional(),
 });
 
 /** Preview content (tests, previews): an example business, never published as the client's text (D49). */
@@ -64,6 +68,8 @@ const base = blogSlots.pick({
   empty: true,
   pageSize: true,
   action: true,
+  preview: true,
+  dates: true,
 });
 
 export const BLOG_PATTERNS: readonly PatternMeta[] = [
@@ -117,7 +123,8 @@ export const BLOG_PATTERNS: readonly PatternMeta[] = [
     layout: "columns",
     title: "Компактный указатель без картинок: записи по месяцам в колонках, строки «день — заголовок»",
     archetypes: ["*"],
-    slots: base,
+    // The index goes by the months of the dates: never for entries without dates.
+    slots: base.omit({ dates: true }),
     needs: "content",
     license: "own",
     origin: "own",

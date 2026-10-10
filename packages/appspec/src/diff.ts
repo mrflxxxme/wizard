@@ -228,9 +228,9 @@ export function diffSpecs(prev: AppSpec | null, next: AppSpec): SpecChange[] {
   if (!same(base.compliance, next.compliance)) {
     const a = base.compliance ?? {};
     const b = next.compliance ?? {};
-    const operator = (["operatorName", "operatorContact", "operatorAddress", "operatorInn"] as const).some(
-      (k) => !same(a[k], b[k]),
-    );
+    const operator = (
+      ["operatorName", "operatorContact", "operatorAddress", "operatorInn", "operatorOgrn"] as const
+    ).some((k) => !same(a[k], b[k]));
     out.push({
       kind: "compliance",
       text_ru: operator ? "Обновлены сведения об операторе ПДн" : "Обновлены настройки персональных данных",

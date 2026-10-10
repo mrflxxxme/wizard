@@ -241,6 +241,105 @@ describe("list query params", () => {
   });
 });
 
+describe("search q (V3-18)", () => {
+  let key = "";
+  let mine = "";
+  beforeAll(async () => {
+    key = `srch${Date.now()}`;
+    mine = await seedRow(h.sql, schemaA, spec, "ticket", {
+      holder_name: `Анна ${key}`,
+      holder_phone: "+79161234567",
+      company: "ООО Ромашка",
+    });
+    await seedRow(h.sql, schemaA, spec, "ticket", {
+      holder_name: `Борис ${key}`,
+      holder_phone: "+79037654321",
+    });
+    for (const cap of [7, 70, 700]) await seedRow(h.sql, schemaA, spec, "stream", { name: `${key}-${cap}` });
+    await h.sql.unsafe(
+      `update ${quoteIdent(schemaA)}.${quoteIdent("stream")} set capacity = (split_part(name, '-', 2))::int where name like $1`,
+      [`${key}-%`],
+    );
+  });
+  const get = (path: string, who = "organizer") =>
+    h.rt.fetch(request("GET", A, path, { cookie: cookie[who] }));
+  const ids = async (res: Response) => ((await json(res)).items as { id: string }[]).map((i) => i.id);
+
+  it("matches any readable text field, a phone by its digits in any notation", async () => {
+    expect(await ids(await get(`/api/data/ticket?q=${encodeURIComponent(`анна ${key}`)}`))).toEqual([mine]);
+    expect(await ids(await get(`/api/data/ticket?q=${encodeURIComponent("8 (916) 123-45-67")}`))).toEqual([
+      mine,
+    ]);
+    expect(await ids(await get(`/api/data/ticket?q=${encodeURIComponent("ромашк")}`))).toContain(mine);
+    const both = await json(await get(`/api/data/ticket?q=${key}`));
+    expect(both.total).toBe(2);
+  });
+
+  it("an int field by equality («№70» is not 7 or 700), together with filters", async () => {
+    const body = (await json(
+      await get(`/api/data/stream?q=${encodeURIComponent("№70")}&filter[name][contains]=${key}`),
+    )) as { items: { name: string }[] };
+    expect(body.items.map((i) => i.name)).toEqual([`${key}-70`]);
+  });
+
+  it("hidden fields never match: a volunteer cannot find a ticket by the holder's phone or name", async () => {
+    expect(
+      await ids(await get(`/api/data/ticket?q=${encodeURIComponent("+7 916 123 45 67")}`, "volunteer")),
+    ).toEqual([]);
+    expect(
+      await ids(await get(`/api/data/ticket?q=${encodeURIComponent(`Анна ${key}`)}`, "volunteer")),
+    ).toEqual([]);
+  });
+
+  it("LIKE wildcards are escaped; q longer than 100 → 422", async () => {
+    expect((await json(await get("/api/data/ticket?q=%25%25"))).total).toBe(0);
+    expect((await get(`/api/data/ticket?q=${"я".repeat(101)}`)).status).toBe(422);
+  });
+});
+
+describe("allowedValues (V3-18)", () => {
+  const G = "gamma--draft.localhost:4100";
+  let schemaG = "";
+  let moderator = "";
+  beforeAll(async () => {
+    const limited = structuredClone(spec);
+    for (const p of limited.permissions)
+      if (p.role === "moderator" && p.entity === "speaker_application")
+        p.allowedValues = { status: ["rejected"] };
+    ({ schema: schemaG } = await h.system("gamma", limited));
+    moderator = await login(h.rt, G, "moderator");
+  });
+
+  it("a value outside the list → 422 FIELD_READONLY (VALUE_NOT_ALLOWED); a listed one passes", async () => {
+    const id = await seedRow(h.sql, schemaG, spec, "speaker_application");
+    const patch = (body: unknown) =>
+      h.rt.fetch(request("PATCH", G, `/api/data/speaker_application/${id}`, { cookie: moderator, body }));
+    const denied = await patch({ status: "approved" });
+    expect(denied.status).toBe(422);
+    const err = (await json(denied)).error as { code: string; details: { fields: { code: string }[] } };
+    expect(err.code).toBe("FIELD_READONLY");
+    expect(err.details.fields[0]?.code).toBe("VALUE_NOT_ALLOWED");
+    expect((await patch({ status: null })).status).toBe(422);
+    // The refused update is rolled back.
+    const [row] = await h.sql.unsafe(
+      `select status from ${quoteIdent(schemaG)}.${quoteIdent("speaker_application")} where id = $1`,
+      [id],
+    );
+    expect(row?.status).toBe("new");
+    // A row outside the role's rows stays 404 before any value check (G1 row isolation).
+    const foreign = await h.rt.fetch(
+      request("PATCH", G, `/api/data/speaker_application/00000000-0000-4000-8000-000000000000`, {
+        cookie: moderator,
+        body: { status: "approved" },
+      }),
+    );
+    expect(foreign.status).toBe(404);
+    const ok = await patch({ status: "rejected" });
+    expect(ok.status).toBe(200);
+    expect(((await json(ok)).item as { status: string }).status).toBe("rejected");
+  });
+});
+
 describe("writes", () => {
   const post = (entity: string, body: unknown, who = "organizer") =>
     h.rt.fetch(request("POST", A, `/api/data/${entity}`, { cookie: cookie[who], body }));

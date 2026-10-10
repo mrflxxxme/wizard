@@ -358,6 +358,8 @@ export function compileBooking(ctx: ModuleContext): ModuleFragments {
                 ops: ["read", "update"] as ("read" | "update")[],
                 rowFilter: { [mine]: `$user.${mine}` },
                 readonlyFields: fields.map((f) => f.name).filter((n) => n !== "status"),
+                // V3-18: the status only to «cancelled» — not «confirmed» or «done» of his own booking via the API.
+                allowedValues: { status: ["cancelled"] },
               },
             },
           ]

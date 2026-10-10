@@ -8,6 +8,8 @@ import type {
   AbuseReport,
   AbuseStatus,
   AbuseTicket,
+  AdminRun,
+  AdminSystem,
   Answer,
   ApiErrorBody,
   Billing,
@@ -301,6 +303,7 @@ export function createApiClient(opts: ClientOptions = {}) {
         operatorContact: string;
         operatorAddress?: string;
         operatorInn?: string;
+        operatorOgrn?: string;
         /** Lawyer's template (agents/consent.ts ids); consentText — the owner's own text instead (M2-11). */
         consentTemplateId?: string;
         consentText?: string;
@@ -595,6 +598,11 @@ export function createApiClient(opts: ClientOptions = {}) {
       call<{ months: CapabilityMonth[] }>("GET", "/admin/capability-share", {
         query: { months: months === undefined ? undefined : String(months) },
       }),
+    /** V3-18 /admin «Системы и сбои»: client systems with the last build and spend (staff). */
+    adminListSystems: () => call<{ items: AdminSystem[] }>("GET", "/admin/systems"),
+    /** V3-18 /admin «Системы и сбои»: runs by status, failed by default (staff). */
+    adminListRuns: (status = "failed") =>
+      call<{ items: AdminRun[] }>("GET", "/admin/runs", { query: { status } }),
   };
 }
 

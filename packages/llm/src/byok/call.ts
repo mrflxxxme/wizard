@@ -58,6 +58,8 @@ export const BYOK_PREFIX = "byok:";
 
 const MAX_BYOK_ATTEMPTS = 2;
 const BYOK_BACKOFF_MS = 1000;
+/** The longest Retry-After a BYOK attempt waits, ms (the router's MAX_RETRY_AFTER_MS, V3-18). */
+const BYOK_MAX_RETRY_AFTER_MS = 30_000;
 
 let sharedFetch: typeof globalThis.fetch | undefined;
 /** The guarded fetch of the process (one undici agent for every BYOK call). */
@@ -250,10 +252,18 @@ export async function routeByok(a: RouteByokArgs): Promise<RouteOutput | null> {
         aborted ||
         !err.retryable ||
         err.code === "PROVIDER_BALANCE_EXHAUSTED" ||
-        attempt === MAX_BYOK_ATTEMPTS
+        attempt === MAX_BYOK_ATTEMPTS ||
+        // V3-18: a Retry-After past the cap is not waited for — the platform chain takes the call.
+        (err.retryAfterMs !== null && err.retryAfterMs > BYOK_MAX_RETRY_AFTER_MS)
       )
         break;
-      await a.sleep(err.retryAfterMs ?? BYOK_BACKOFF_MS);
+      try {
+        await a.sleep(err.retryAfterMs ?? BYOK_BACKOFF_MS);
+      } catch {
+        // The run was cancelled during the pause.
+        lastCode = "ABORTED";
+        break;
+      }
     }
   }
   if (lastCode !== "POLICY_CHANGED" && lastCode !== "ABORTED")

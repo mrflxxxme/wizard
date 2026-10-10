@@ -175,6 +175,113 @@ describe("queue", () => {
     }
   });
 
+  test("V3-18: a run past its deadline is stopped and finalized failed RUN_TIMEOUT, even if it ignores the abort", async () => {
+    let release!: () => void;
+    const hold = new Promise<void>((r) => (release = r));
+    let aborted = false;
+    // A hung build: it hears the abort but never stops by itself (a call without the signal).
+    const build: RunExecutors["build"] = async (host) => {
+      host.signal.addEventListener("abort", () => (aborted = true), { once: true });
+      await hold;
+      return { summary_ru: "ok" };
+    };
+    const api = await startApi(tdb.url, {
+      executors: { interviewTurn: fakeInterview, build },
+      createRouter: countingRouter(0).factory,
+      config: { runDeadlineMs: 300, cancelGraceMs: 200 },
+    });
+    try {
+      const c = await startBuild(api, "Система с дедлайном");
+      const done = await waitRun(api, c.buildRunId, ["failed", "succeeded", "cancelled"]);
+      expect(aborted).toBe(true);
+      expect(done.status).toBe("failed");
+      expect(done.failure).toEqual({
+        code: "RUN_TIMEOUT",
+        message_ru:
+          "Прогон шёл дольше отведённого времени (1 мин) и остановлен. Запустите его ещё раз — готовые этапы сборки сохранены.",
+      });
+      const ev = await valid(api, c.buildRunId);
+      expect(ev.at(-1)).toMatchObject({
+        type: "run_failed",
+        payload: { code: "RUN_TIMEOUT", retryable: true },
+      });
+      // The lock is free: the system can be built again at once.
+      const lock = await api.deps.db
+        .selectFrom("platform.locks")
+        .select("run_id")
+        .where("system_id", "=", c.systemId)
+        .executeTakeFirst();
+      expect(lock).toBeUndefined();
+      // The hung executor ends later: its own finalize is a no-op, the run stays as the watchdog left it.
+      release();
+      await api.engine.idle();
+      expect((await api.req("GET", `/runs/${c.buildRunId}`)).body.status).toBe("failed");
+    } finally {
+      release();
+      await api.dispose();
+    }
+  });
+
+  test("V3-18: a cancel the run does not hear is forced after the grace; waiting for input is not counted by the deadline", async () => {
+    let release!: () => void;
+    const hold = new Promise<void>((r) => (release = r));
+    let asked = false;
+    const build: RunExecutors["build"] = async (host) => {
+      if (!asked) {
+        asked = true;
+        // The owner thinks for a while: needs_input is not the run's own time.
+        await host.needsInput({
+          decisionId: "pick",
+          prompt_ru: "Выберите вариант",
+          options: [{ id: "a", label: "Вариант А", recommended: true }],
+        });
+      }
+      await hold;
+      return { summary_ru: "ok" };
+    };
+    const api = await startApi(tdb.url, {
+      executors: { interviewTurn: fakeInterview, build },
+      createRouter: countingRouter(0).factory,
+      config: { runDeadlineMs: 1_500, cancelGraceMs: 200 },
+    });
+    try {
+      const c = await startBuild(api, "Система с отменой");
+      await waitRun(api, c.buildRunId, ["needs_input"]);
+      const pending = (
+        await api.deps.db
+          .selectFrom("platform.runs")
+          .select("pending_input")
+          .where("id", "=", c.buildRunId)
+          .executeTakeFirstOrThrow()
+      ).pending_input as { inputId: string };
+      await new Promise((r) => setTimeout(r, 2_500));
+      expect((await api.req("GET", `/runs/${c.buildRunId}`)).body.status).toBe("needs_input");
+      const answer = await api.req("POST", `/runs/${c.buildRunId}/input`, {
+        body: { inputId: pending.inputId, choice: "a" },
+      });
+      expect(answer.status).toBeLessThan(300);
+      await waitRun(api, c.buildRunId, ["running"]);
+      const cancel = await api.req("POST", `/runs/${c.buildRunId}/cancel`);
+      expect(cancel.status).toBe(202);
+      const done = await waitRun(api, c.buildRunId, ["cancelled", "failed"], 5_000);
+      expect(done.status).toBe("cancelled");
+      expect((await valid(api, c.buildRunId)).at(-1)).toMatchObject({
+        type: "run_finished",
+        payload: { status: "cancelled" },
+      });
+    } finally {
+      release();
+      await api.dispose();
+    }
+  });
+
+  test("V3-18: WIZARD_RUN_DEADLINE_MIN parsing (default 45 min); the forced cancel after 20 s", () => {
+    expect(loadConfig({}).runDeadlineMs).toBe(45 * 60_000);
+    expect(loadConfig({ WIZARD_RUN_DEADLINE_MIN: "90" }).runDeadlineMs).toBe(90 * 60_000);
+    expect(loadConfig({ WIZARD_RUN_DEADLINE_MIN: "-1" }).runDeadlineMs).toBe(45 * 60_000);
+    expect(loadConfig({}).cancelGraceMs).toBe(20_000);
+  });
+
   test("WIZARD_RUN_CONCURRENCY parsing", () => {
     expect(loadConfig({}).runConcurrency).toBe(2);
     expect(loadConfig({ WIZARD_RUN_CONCURRENCY: "5" }).runConcurrency).toBe(5);

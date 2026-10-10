@@ -18,6 +18,13 @@ export interface BriefCopy {
   title: string;
   /** Lead of the first screen (≤ 260): 2–4 services the brief or the owner lists, else the visitor's action. */
   lead?: string;
+  /** The services (or goods) the brief or the owner lists, 2–8 of them as he wrote them (V3-18: «Услуги» on home). */
+  services?: string[];
+  /**
+   * What the catalog shows, as a plural noun of the brief, lower case («туры», «изделия»): the catalog's page and
+   * headings say it instead of «Услуги и цены» (V3-18).
+   */
+  catalog?: string;
   /** The button the brief quotes for a request («Обсудить проект»), ≤ 40. */
   action?: string;
   /** Heading of the request form: the quoted button, else «Заявка на <что>». */
@@ -139,29 +146,58 @@ export function toVisitor(sentence: string): string | null {
   return cap(out.join("").replace(SITE_TAIL, ""));
 }
 
+/** Countries and regions wider than a locality («в России», «по РФ»): not where the business is. */
+const COUNTRY = /^(?:Росси|РФ$|Беларус|Белорусс|Казахстан|СНГ$|Европ|Мир$|Миру$)/u;
+/** A delivery or shipping scope right before a place («доставка по Москве», «отправляем по всей стране»). */
+const DELIVERY_BEFORE =
+  /(?:достав|отправ|пересыл|высыла|шл[её]м|везём|везем)[\p{L}]*(?:\s+[\p{L}-]+){0,3}\s*$/iu;
+
+/**
+ * A place of a text that says where the business is (V3-18): not a country («в России», «по РФ») and not the scope
+ * of a delivery («доставка по России», «отправляем в Казань»).
+ */
+function localPlace(text: string, at: number, name: string): boolean {
+  if (COUNTRY.test(name)) return false;
+  const before =
+    text
+      .slice(Math.max(0, at - 60), at)
+      .split(/[.;:!?]/)
+      .at(-1) ?? "";
+  return !DELIVERY_BEFORE.test(before);
+}
+
 /** The first place the brief names: «в Казани», «по Карелии» (a preposition and a capitalised name). */
 export function placeOf(texts: readonly string[]): string | undefined {
-  const re = /(?:^|[\s,(«])([ВвПп]о?)\s+([А-ЯЁ][а-яё]+(?:-[А-ЯЁ]?[а-яё]+)?)(?=$|[\s,.;:)»])/u;
-  for (const t of texts) {
-    const m = re.exec(t);
-    if (m) return `${(m[1] as string).toLowerCase()} ${m[2]}`;
-  }
+  const re = /(?:^|[\s,(«])([ВвПп]о?)\s+([А-ЯЁ][а-яё]+(?:-[А-ЯЁ]?[а-яё]+)?|РФ)(?=$|[\s,.;:)»])/gu;
+  for (const t of texts)
+    for (const m of t.matchAll(re))
+      if (localPlace(t, m.index ?? 0, m[2] as string)) return `${(m[1] as string).toLowerCase()} ${m[2]}`;
   return undefined;
 }
 
-/** «показывает услуги: дизайн квартиры, дизайн дома, авторский надзор, комплектация» → the listed services. */
-export function listedServices(steps: readonly string[]): string[] | null {
+/**
+ * Lists the steps show: «показывает разделы: торты, пирожные» → {what: «разделы», items: [«торты», «пирожные»]}
+ * (2–8 items of ≤ 60 characters each).
+ */
+export function shownLists(steps: readonly string[]): { what: string; items: string[] }[] {
+  const out: { what: string; items: string[] }[] = [];
   for (const step of steps) {
-    const m = /^показыва\S*\s+[^:]{1,40}:\s*(.+)$/i.exec(clean(step));
+    const m = /^показыва\S*\s+([^:]{1,40}):\s*(.+)$/i.exec(clean(step));
     if (!m) continue;
-    const items = (m[1] as string)
+    const items = (m[2] as string)
       .replace(/[.]$/, "")
       .split(/,\s*|\s+и\s+/)
       .map((x) => x.trim())
       .filter(Boolean);
-    if (items.length >= 2 && items.length <= 8 && items.every((x) => x.length <= 60)) return items;
+    if (items.length >= 2 && items.length <= 8 && items.every((x) => x.length <= 60))
+      out.push({ what: (m[1] as string).trim(), items });
   }
-  return null;
+  return out;
+}
+
+/** «показывает услуги: дизайн квартиры, дизайн дома, авторский надзор, комплектация» → the listed services. */
+export function listedServices(steps: readonly string[]): string[] | null {
+  return shownLists(steps)[0]?.items ?? null;
 }
 
 /** Generic words of a list that say nothing about the offer. */
@@ -181,6 +217,9 @@ export function catalogNoun(steps: readonly string[]): string | null {
   }
   return null;
 }
+
+/** A plural noun in the nominative (the last word: «туры», «авторские изделия»), not a genitive («мастеров»). */
+const PLURAL_RE = /(?:ы|и|а|я)$/u;
 
 /** A button the brief quotes («Обсудить проект»): an infinitive first, ≤ 40 characters. */
 export function quotedAction(texts: readonly string[]): string | undefined {
@@ -327,6 +366,14 @@ export function quotedName(sentence: string): string | undefined {
   return undefined;
 }
 
+/** The name the owner gives in so many words: «называется «Глина»», «под названием «Глина»», «бренд «Глина»». */
+export function namedAs(request: string): string | undefined {
+  const m = /(?:называ[\p{L}]*|под названием|бренд|марк[аой])\s*[—:-]?\s*«([^«»]{2,40})»/iu.exec(
+    clean(request),
+  );
+  return m ? quotedName(`«${m[1] as string}»`) : undefined;
+}
+
 interface Places {
   /** «в Казани»: where the business is. */
   in?: string;
@@ -339,8 +386,9 @@ interface Places {
 /** Places a text names: «в Казани», «по Карелии», «из Твери» (a preposition and a capitalised name). */
 function placesIn(text: string): Places {
   const out: Places = {};
-  const re = /(?:^|[\s,(«])(в|во|по|из)\s+([А-ЯЁ][а-яё]+(?:-[А-ЯЁ]?[а-яё]+)?)(?=$|[\s,.;:)»])/gu;
+  const re = /(?:^|[\s,(«])(в|во|по|из)\s+([А-ЯЁ][а-яё]+(?:-[А-ЯЁ]?[а-яё]+)?|РФ)(?=$|[\s,.;:)»])/gu;
   for (const m of text.matchAll(re)) {
+    if (!localPlace(text, m.index ?? 0, m[2] as string)) continue;
     const prep = (m[1] as string).toLowerCase();
     const key = prep === "из" ? "from" : prep === "по" ? "along" : "in";
     out[key] ??= `${prep} ${m[2]}`;
@@ -437,7 +485,10 @@ export function briefCopy(input: CopyInput): BriefCopy {
     norm(name) !== norm(business?.what ?? "")
       ? name
       : undefined;
-  const brand = (business ? quotedName(business.sentence) : undefined) ?? own;
+  const brand =
+    (business ? quotedName(business.sentence) : undefined) ??
+    (request ? namedAs(input.request as string) : undefined) ??
+    own;
 
   // The place: of the owner's sentence about the business, else of the brief. «в X» belongs to the business, «по X»
   // to what it offers (the catalog's noun: «Туры по Карелии»), «из X» to where the business comes from.
@@ -503,6 +554,8 @@ export function briefCopy(input: CopyInput): BriefCopy {
   return {
     title,
     ...(lead ? { lead } : {}),
+    ...(services ? { services } : {}),
+    ...(offer && PLURAL_RE.test(offer) && offer.length <= 30 ? { catalog: low(offer) } : {}),
     ...(button ? { action: button } : {}),
     ...(leadForm && leadForm.length <= LIMITS.form ? { leadForm } : {}),
     ...(booking ? { booking } : {}),

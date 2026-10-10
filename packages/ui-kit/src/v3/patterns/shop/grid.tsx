@@ -7,6 +7,7 @@ import {
   type CatalogModel,
   rub,
   type ShopCatalogModel,
+  srcSetOf,
   useContent,
   useShopCatalog,
 } from "@wizard/ui-kit/v3/headless";
@@ -40,6 +41,12 @@ export type ShopGridProps = {
   pageSize?: number;
   /** The cart page: the bar under the goods leads there. */
   cart: Link;
+  /** The product pages (V3-18): a card's name and photo lead to `path` + the product's id. */
+  product?: { path: string };
+  /** V3-18: a preview on another page (home): nothing while the shop is empty, no filter, no «Показать ещё». */
+  preview?: boolean;
+  /** The way to all the goods (a preview's link to /shop). */
+  all?: Link;
   /** Place of the section in the page source: the build injects it (ui-kit.yaml#wz_id), never the composer. */
   wzId?: string;
 };
@@ -161,8 +168,9 @@ function More({ m, shown, growing }: { m: CatalogModel; shown: number; growing: 
 }
 
 /** One product: its photo, name, price, stock and «В корзину» (the stock and the cart decide whether it adds). */
-function Card({ m, row, level }: { m: ShopCatalogModel; row: Row; level: 1 | 2 }) {
+function Card({ m, row, level, path }: { m: ShopCatalogModel; row: Row; level: 1 | 2; path?: string }) {
   const it = m.item(row);
+  const href = path ? `${path}${encodeURIComponent(it.id)}` : null;
   const Name = level === 1 ? "h2" : "h3";
   const out = it.stock !== null && it.stock <= 0;
   const all = !out && !it.canAdd;
@@ -175,6 +183,8 @@ function Card({ m, row, level }: { m: ShopCatalogModel; row: Row; level: 1 | 2 }
       {it.photo ? (
         <img
           src={it.photo}
+          srcSet={srcSetOf(it.photo)}
+          sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
           alt=""
           aria-hidden="true"
           loading="lazy"
@@ -182,7 +192,19 @@ function Card({ m, row, level }: { m: ShopCatalogModel; row: Row; level: 1 | 2 }
         />
       ) : null}
       <div className="flex flex-1 flex-col p-5">
-        <Name className="font-display text-h3 font-bold text-balance wrap-break-word">{it.name}</Name>
+        <Name className="font-display text-h3 font-bold text-balance wrap-break-word">
+          {href ? (
+            <a
+              href={href}
+              data-testid="wz-product-link"
+              className="inline-flex min-h-11 items-center text-foreground underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              {it.name}
+            </a>
+          ) : (
+            it.name
+          )}
+        </Name>
         {it.description ? (
           <p className="mt-2 line-clamp-3 text-body text-muted-foreground">{it.description}</p>
         ) : null}
@@ -223,11 +245,24 @@ function Card({ m, row, level }: { m: ShopCatalogModel; row: Row; level: 1 | 2 }
 }
 
 export default function ShopGrid(props: ShopGridProps) {
-  const { entity = "product", categoryEntity, title, text, level = 2, empty, pageSize = 12, cart } = props;
+  const {
+    entity = "product",
+    categoryEntity,
+    title,
+    text,
+    level = 2,
+    empty,
+    pageSize = 12,
+    cart,
+    product,
+    preview,
+    all,
+  } = props;
   const m = useShopCatalog(entity, { pageSize, ...(props.fields ? { fields: props.fields } : {}) });
   const { items, growing } = useShown(m);
   const uid = useId();
   const Title = level === 1 ? "h1" : "h2";
+  if (preview && !m.isLoading && items.length === 0) return null;
   let body: ReactNode;
   if (m.error && items.length === 0) body = <Failed m={m} />;
   else if (m.isLoading && items.length === 0) body = <Loading />;
@@ -242,10 +277,10 @@ export default function ShopGrid(props: ShopGridProps) {
       <>
         <ul className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {items.map((row) => (
-            <Card key={row.id} m={m} row={row} level={level} />
+            <Card key={row.id} m={m} row={row} level={level} {...(product ? { path: product.path } : {})} />
           ))}
         </ul>
-        <More m={m} shown={items.length} growing={growing} />
+        {preview ? null : <More m={m} shown={items.length} growing={growing} />}
       </>
     );
   return (
@@ -264,8 +299,13 @@ export default function ShopGrid(props: ShopGridProps) {
             {title}
           </Title>
           {text ? <p className="mt-3 text-body text-muted-foreground">{text}</p> : null}
+          {all ? (
+            <a href={all.href} className={`mt-5 ${buttonClass}`}>
+              {all.label}
+            </a>
+          ) : null}
         </div>
-        {categoryEntity ? (
+        {categoryEntity && !preview ? (
           <div className="mt-8">
             <Sections entity={categoryEntity} value={m.category} onChange={m.setCategory} />
           </div>

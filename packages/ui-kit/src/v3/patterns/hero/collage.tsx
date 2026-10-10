@@ -1,6 +1,6 @@
 // First screen «collage»: the offer on the left, two or three photos overlapping with offsets on the right, framed
 // by the page colour; on phones a single photo (catalog D1 Hero collage). Own composition.
-import { useFitWords } from "@wizard/ui-kit/v3/headless";
+import { srcSetOf, useFitWords } from "@wizard/ui-kit/v3/headless";
 import { domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
 import { useState } from "react";
 
@@ -88,6 +88,8 @@ export default function HeroCollage({ title, lead, action, secondary, images, wz
             {first ? (
               <img
                 src={first.src}
+                srcSet={srcSetOf(first.src)}
+                sizes="(min-width: 1024px) 33vw, 100vw"
                 alt={first.alt}
                 fetchPriority="high"
                 className={`col-span-6 row-span-6 sm:col-start-1 sm:col-end-5 sm:row-start-1 sm:row-end-5 ${frameClass}`}
@@ -96,6 +98,8 @@ export default function HeroCollage({ title, lead, action, secondary, images, wz
             {second ? (
               <img
                 src={second.src}
+                srcSet={srcSetOf(second.src)}
+                sizes="(min-width: 1024px) 33vw, 100vw"
                 alt={second.alt}
                 loading="lazy"
                 className={`z-10 col-span-3 col-start-4 row-span-3 row-start-3 hidden sm:block ${frameClass}`}
@@ -104,6 +108,8 @@ export default function HeroCollage({ title, lead, action, secondary, images, wz
             {third ? (
               <img
                 src={third.src}
+                srcSet={srcSetOf(third.src)}
+                sizes="(min-width: 1024px) 33vw, 100vw"
                 alt={third.alt}
                 loading="lazy"
                 className={`z-20 col-span-3 col-start-2 row-span-2 row-start-5 hidden sm:block ${frameClass}`}

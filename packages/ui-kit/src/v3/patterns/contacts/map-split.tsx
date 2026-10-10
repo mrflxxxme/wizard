@@ -1,6 +1,8 @@
 // Contacts «map split»: a static map or a photo of the entrance on one half, the whole of it a link to the place on
 // Яндекс Картах (no embedded widget: the page loads no third-party scripts); on the other half the address, phones,
 // hours and messengers as a list of terms between rules (catalog D1 Contacts «map-split»). Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Image = { src: string; alt: string };
 type Phone = { number: string; href: string; note?: string };
@@ -101,6 +103,8 @@ export default function ContactsMapSplit({
           >
             <img
               src={image.src}
+              srcSet={srcSetOf(image.src)}
+              sizes="(min-width: 1024px) 50vw, 100vw"
               alt={image.alt}
               loading="lazy"
               className="aspect-4/3 w-full object-cover lg:aspect-4/5"

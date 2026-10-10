@@ -3,7 +3,7 @@
 // keeps one rhythm. «Показать ещё» under the grid. The data is the module's: useContent (C4) gives what the role may
 // read, newest first, by pages; dates in Russian. Composition after HyperUI «Blog Cards» (MIT, © Mark Mead), rewritten
 // on the design system tokens.
-import { type PagedList, useContent } from "@wizard/ui-kit/v3/headless";
+import { type PagedList, srcSetOf, useContent } from "@wizard/ui-kit/v3/headless";
 import { type ReactNode, useId, useRef } from "react";
 
 type Link = { label: string; href: string };
@@ -24,6 +24,10 @@ export type BlogCardsProps = {
   /** Posts per «Показать ещё». */
   pageSize?: number;
   action?: Link;
+  /** A preview on another page (home): nothing while the list is empty, no «Показать ещё». */
+  preview?: boolean;
+  /** false — the entries go without dates (the pages of the site, not posts). */
+  dates?: boolean;
 };
 
 const FIELDS: Required<Fields> = {
@@ -190,11 +194,14 @@ function More({
 }
 
 export default function BlogCards(props: BlogCardsProps) {
-  const { entity = "post", path, title, text, empty, pageSize = 6, action } = props;
+  const { entity = "post", path, title, text, empty, pageSize = 6, action, preview, dates = true } = props;
   const f = { ...FIELDS, ...props.fields };
+  // Without dates the date field of a post reads nothing (the list stays sorted by it).
+  const shown = dates ? f : { ...f, date: "" };
   const m = useContent(entity, { sort: { field: f.date, dir: "desc" }, pageSize });
   const { items, growing } = useShown(m);
   const uid = useId();
+  if (preview && !m.isLoading && items.length === 0) return null;
   let body: ReactNode;
   if (m.error && items.length === 0) body = <Failed m={m} />;
   else if (m.isLoading && items.length === 0) body = <Loading cards />;
@@ -204,7 +211,7 @@ export default function BlogCards(props: BlogCardsProps) {
       <>
         <ul className="grid gap-x-8 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
           {items.map((post) => {
-            const p = postOf(post, f, path);
+            const p = postOf(post, shown, path);
             return (
               <li key={post.id} className={`${boxClass} flex min-w-0 flex-col`}>
                 <div className="min-w-0">
@@ -224,6 +231,8 @@ export default function BlogCards(props: BlogCardsProps) {
                 {p.cover ? (
                   <img
                     src={p.cover}
+                    srcSet={srcSetOf(p.cover)}
+                    sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                     alt=""
                     aria-hidden="true"
                     loading="lazy"
@@ -241,7 +250,9 @@ export default function BlogCards(props: BlogCardsProps) {
             );
           })}
         </ul>
-        <More m={m} shown={items.length} growing={growing} className="mt-12 flex justify-center" />
+        {preview ? null : (
+          <More m={m} shown={items.length} growing={growing} className="mt-12 flex justify-center" />
+        )}
       </>
     );
   return (

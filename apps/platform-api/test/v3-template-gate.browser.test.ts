@@ -222,7 +222,10 @@ describe.skipIf(!hasChromium)("captureSite: composed sites built and served in t
       }
     }
     // The page frame is seen section by section: the home page renders its header, body sections and footer.
-    expect(home?.views?.["1440"]?.shapes.length).toBe(siteA.pages[0]?.sections.length);
+    // (V3-18: a preview of the catalog on home renders nothing while the catalog is empty, as here.)
+    expect(home?.views?.["1440"]?.shapes.length).toBe(
+      siteA.pages[0]?.sections.filter((s) => s.props.preview !== true).length,
+    );
   });
 
   test("a re-coloured copy is a template; a site of another archetype and seed is not", () => {

@@ -10,7 +10,7 @@ import {
   literalProblem,
 } from "@wizard/appspec";
 import { WizardError } from "@wizard/sdk";
-import { type AccessPolicy, SYSTEM_FIELD_NAMES } from "@wizard/sdk/host";
+import { type AccessPolicy, disallowedValues, SYSTEM_FIELD_NAMES } from "@wizard/sdk/host";
 import type { FilterCond } from "./access.js";
 
 export interface FieldIssue {
@@ -74,6 +74,19 @@ export function checkWritableKeys(e: Entity, policy: AccessPolicy, fields: Recor
   if (unknown.length) throw fieldsError("UNKNOWN_FIELD", unknown);
   if (hidden.length) throw fieldsError("FIELD_HIDDEN", hidden);
   if (readonly.length) throw fieldsError("FIELD_READONLY", readonly);
+}
+
+/**
+ * V3-18: Permission.allowedValues (e.g. a visitor sets only «cancelled» on his booking) → 422 FIELD_READONLY with
+ * VALUE_NOT_ALLOWED. An update checks it once the row is found, so a foreign row still answers 404.
+ */
+export function checkAllowedValues(policy: AccessPolicy, fields: Record<string, unknown>): void {
+  const bad = disallowedValues(policy, fields);
+  if (bad.length)
+    throw fieldsError(
+      "FIELD_READONLY",
+      bad.map((field) => ({ field, code: "VALUE_NOT_ALLOWED", message: "Это значение установить нельзя" })),
+    );
 }
 
 function isMoney(v: number): boolean {
@@ -204,3 +217,29 @@ export function checkFilters(
 }
 
 export const isNumericType = (t: FieldType): boolean => NUMERIC.has(t);
+
+/** Field types the `q` search matches (runtime.yaml#data_api.query_params.q): text-like, phone digits, int equality. */
+const SEARCH_TYPES = new Set<FieldType>(["string", "text", "email", "phone", "url", "int"]);
+/** Longest `q` accepted. */
+export const SEARCH_MAX = 100;
+
+/** Fields of the `q` search: the entity's search types the role reads (hidden fields never match — no PII probing). */
+export function searchColumns(e: Entity, policy: AccessPolicy): { name: string; type: FieldType }[] {
+  return e.fields
+    .filter((f) => SEARCH_TYPES.has(f.type) && !policy.hidden.has(f.name))
+    .map((f) => ({ name: f.name, type: f.type }));
+}
+
+/** Digits of a phone-like query (≥ 3; 8/7 + 10 digits → the 10 national digits), else null. */
+export function phoneDigits(q: string): string | null {
+  if (!/^[+\d\s()-]+$/.test(q)) return null;
+  const d = q.replace(/\D/g, "");
+  if (d.length < 3) return null;
+  return d.length === 11 && (d[0] === "7" || d[0] === "8") ? d.slice(1) : d;
+}
+
+/** An integer query («1042», «№1042», «#1042») as a number, else null. */
+export function intQuery(q: string): number | null {
+  const m = /^[#№]?\s*(\d{1,15})$/.exec(q);
+  return m ? Number(m[1]) : null;
+}

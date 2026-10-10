@@ -127,6 +127,14 @@ const base = contactsSlots.pick({
   hours: true,
 });
 
+/**
+ * The contacts the owner gave (V3-18): a phone, an e-mail or an address with its map link — the hours and the rest
+ * when he gave them. The variants that lay each part out on its own (centered, cards) take it.
+ */
+const partial = base
+  .partial({ address: true, map: true, phones: true, hours: true })
+  .refine((c) => !!(c.address || c.phones?.length || c.email), "контакты: телефон, почта или адрес");
+
 export const CONTACTS_PATTERNS: readonly PatternMeta[] = [
   definePattern<typeof MapSplit>()(at, "contacts", {
     variant: "map-split",
@@ -145,7 +153,7 @@ export const CONTACTS_PATTERNS: readonly PatternMeta[] = [
     layout: "card",
     title: "Четыре карточки разной ширины: адрес с картой, телефоны, часы работы, мессенджеры",
     archetypes: ["*"],
-    slots: base,
+    slots: partial,
     needs: null,
     license: "own",
     origin: "own",
@@ -219,7 +227,7 @@ export const CONTACTS_PATTERNS: readonly PatternMeta[] = [
     layout: "centered",
     title: "Всё по центральной оси: адрес крупно, телефоны, часы строкой, мессенджеры и карта",
     archetypes: ["*"],
-    slots: base,
+    slots: partial,
     needs: null,
     license: "own",
     origin: "own",

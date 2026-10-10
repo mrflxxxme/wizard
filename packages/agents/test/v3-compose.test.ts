@@ -61,10 +61,18 @@ describe("skeleton: pages, sections, texts", () => {
     expect(a.out.pages.map((p) => p.title)).toEqual(["Главная", "Каталог и цены", "Источники фото"]);
     expect(a.out.notes[0]).toMatch(/^Собрал каркас сайта в стиле «.+»: 3 стр\./);
     // Every section type of the pages has library patterns now; sections whose required content the facts do not give
-    // (FAQ needs two answers — the plan has one; contacts need hours and a map link) are left out, never invented.
+    // (FAQ needs two answers — the plan has one) are left out, never invented.
     expect(a.out.notes.join("\n")).not.toContain("нет подходящего паттерна");
-    for (const p of a.site.pages)
-      expect(p.sections.some((s) => s.type === "faq" || s.type === "contacts")).toBe(false);
+    for (const p of a.site.pages) expect(p.sections.some((s) => s.type === "faq")).toBe(false);
+    // V3-18: the contacts the owner gave (phone, address) on home — without hours or a map of our own.
+    const contacts = a.site.pages[0]?.sections.find((s) => s.type === "contacts")?.props;
+    expect(contacts).toMatchObject({
+      title: "Контакты",
+      address: { text: "Казань, ул. Баумана, 15" },
+      phones: [{ number: "+7 843 200-40-50", href: "tel:+78432004050" }],
+    });
+    expect(contacts?.hours).toBeUndefined();
+    expect(contacts?.map).toBeUndefined();
   });
 
   test("sections bound to the modules (V3-08 patterns with needs): the lead form and the catalog showcase", async () => {
@@ -202,7 +210,8 @@ describe("skeleton: pages, sections, texts", () => {
     delete plan.landing;
     const { site } = await skeleton({ ...ctx, spec, plan });
     const footer = site.pages[0]?.sections.at(-1)?.props as { legal: { operator: string } };
-    expect(footer.legal.operator).toBe("Владелец сайта «Белая линия» — оператор персональных данных");
+    // V3-18: no placeholder of the operator before the owner gives one — the year and the site's name.
+    expect(footer.legal.operator).toBe(`© ${new Date().getUTCFullYear()} Белая линия`);
     const hero = site.pages[0]?.sections.find((s) => s.type === "hero")?.props;
     expect(hero?.title).toBe("Белая линия — стоматологическая клиника");
     expect(JSON.stringify(site)).not.toMatch(/довольн|лучш|гарант|отзыв/i);
@@ -244,6 +253,59 @@ describe("skeleton: pages, sections, texts", () => {
     expect(site.primary).toMatchObject({ kind: "catalog", route: "/services" });
     // The plan's call to action was written for the form: not reused for the catalog link.
     expect(JSON.stringify(site)).not.toContain("Спросить");
+  });
+});
+
+describe("V3-18: photo credits, inner first screens, the footer", () => {
+  const props = (site: SiteModel, route: string, type: string) =>
+    site.pages.find((p) => p.route === route)?.sections.find((s) => s.type === type)?.props;
+
+  test("«Источники фото» only on a site with stock photos, and it names their authors and stocks", async () => {
+    const bare = await skeleton(composeContext({ photos: false }));
+    expect(bare.site.pages.map((p) => p.route)).toEqual(["/", "/services"]);
+    const footer = props(bare.site, "/", "footer") as { columns: { links: { href: string }[] }[] };
+    expect(footer.columns.flatMap((c) => c.links.map((l) => l.href))).not.toContain("/photos");
+    const { site } = await skeleton(composeContext());
+    const credits = props(site, "/photos", "hero");
+    expect(credits?.lead).toBe(
+      "Фотографии на сайте — со стоков, по их бесплатным лицензиям. Авторы: Автор, Pexels.",
+    );
+  });
+
+  test("an inner page's first screen says what the page holds, not only its title and a button", async () => {
+    const { site } = await skeleton(composeContext());
+    const services = props(site, "/services", "hero");
+    expect(services?.title).toBe("Каталог и цены");
+    expect(typeof services?.lead).toBe("string");
+    expect(String(services?.lead ?? "").length).toBeGreaterThan(10);
+  });
+
+  test("the footer: «© <year>» with the operator, both the phone and the e-mail the owner gave", async () => {
+    const ctx = composeContext();
+    const spec: AppSpec = {
+      ...ctx.spec,
+      compliance: { ...ctx.spec.compliance, operatorContact: "+7 843 200-40-50, info@belaya-liniya.ru" },
+    };
+    const { site } = await skeleton({ ...ctx, spec });
+    const year = new Date().getUTCFullYear();
+    const footer = props(site, "/", "footer") as {
+      legal: { operator: string };
+      contacts: { label: string; value: string; href?: string }[];
+    };
+    expect(footer.legal.operator).toBe(`© ${year} ООО «Белая линия»`);
+    expect(footer.contacts.map((c) => [c.label, c.href])).toEqual([
+      ["Телефон", "tel:+78432004050"],
+      ["Почта", "mailto:info@belaya-liniya.ru"],
+      ["Адрес", undefined],
+    ]);
+    expect(siteFacts({ ...ctx, spec })).toMatchObject({
+      phone: "+7 843 200-40-50",
+      email: "info@belaya-liniya.ru",
+    });
+    for (const page of site.pages)
+      expect(lintErrors(lintSitePage(site, page, siteFacts({ ...ctx, spec }), PATTERNS)), page.route).toEqual(
+        [],
+      );
   });
 });
 

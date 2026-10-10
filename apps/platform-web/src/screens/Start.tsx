@@ -35,6 +35,9 @@ export function Start(): ReactNode {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const [systems, setSystems] = useState<System[]>([]);
+  /** «Ваши системы» did not load: said in words with «Повторить» (not an empty list). */
+  const [listFailed, setListFailed] = useState(false);
+  const [listTry, setListTry] = useState(0);
   const keyRef = useRef<string | null>(null);
   const [plan, setPlan] = useState<string | null>(null);
   // B2-02: demo replay of a staff org — only recorded scenarios can start, offered as briefs.
@@ -45,12 +48,27 @@ export function Start(): ReactNode {
   // orgId only when it matters (api.yaml createSystem: required for members of several organizations); the server
   // defaults to the user's organization otherwise — and the seeded M0 id is not an RFC 4122 uuid for z.uuid().
   const orgParam = signedIn && (me?.memberships.length ?? 0) > 1 ? orgId : undefined;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: listTry is the «Повторить» signal
   useEffect(() => {
     let live = true;
     api
       .listSystems(orgParam)
-      .then((r) => live && setSystems(r.items))
-      .catch(() => live && setSystems([]));
+      .then((r) => {
+        if (!live) return;
+        setSystems(r.items);
+        setListFailed(false);
+      })
+      .catch(() => {
+        if (!live) return;
+        setSystems([]);
+        setListFailed(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, [api, orgParam, listTry]);
+  useEffect(() => {
+    let live = true;
     if (signedIn)
       api
         .listMembers(orgId)
@@ -73,7 +91,7 @@ export function Start(): ReactNode {
     return () => {
       live = false;
     };
-  }, [api, orgId, orgParam, signedIn]);
+  }, [api, orgId, signedIn]);
   const usage = useUsage(api, orgId, signedIn);
   const usageLine = usageText(usage);
 
@@ -290,21 +308,28 @@ export function Start(): ReactNode {
                   {ru.start.pilotAbout}
                 </AppLink>
               )}
-              <Button
-                variant="ghost"
-                size="sm"
-                data-testid="start-upload"
-                disabled
-                title={ru.start.uploadHint}
-                className={s.upload}
-              >
-                {ru.start.upload}
-              </Button>
-              <span className={s.srOnly}>{ru.start.uploadHint}</span>
             </span>
           </div>
         </section>
 
+        {listFailed && (
+          <section className={s.systems} aria-labelledby="start-systems" data-testid="start-systems-error">
+            <h2 id="start-systems" className={s.systemsTitle}>
+              {ru.start.systems}
+            </h2>
+            <Alert>
+              {ru.start.systemsFailed}{" "}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setListTry((n) => n + 1)}
+                data-testid="start-systems-retry"
+              >
+                {ru.errors.retry}
+              </Button>
+            </Alert>
+          </section>
+        )}
         {systems.length > 0 && (
           <section className={s.systems} aria-labelledby="start-systems">
             <h2 id="start-systems" className={s.systemsTitle}>

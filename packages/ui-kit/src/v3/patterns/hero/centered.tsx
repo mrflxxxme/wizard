@@ -1,6 +1,6 @@
 // First screen «centered»: the offer centred on a calm field, actions side by side, an optional wide photo below.
 // Composition after HyperUI «Banners» (MIT, © Mark Mead), rewritten on the design system tokens.
-import { useFitWords } from "@wizard/ui-kit/v3/headless";
+import { srcSetOf, useFitWords } from "@wizard/ui-kit/v3/headless";
 import { domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
 import { useState } from "react";
 
@@ -90,6 +90,8 @@ export default function HeroCentered({
           <m.div {...enter(3)} className="mx-auto w-full max-w-page px-gutter pt-12 pb-section">
             <img
               src={image.src}
+              srcSet={srcSetOf(image.src)}
+              sizes="100vw"
               alt={image.alt}
               className="aspect-4/3 w-full rounded-lg bg-muted object-cover sm:aspect-video"
             />

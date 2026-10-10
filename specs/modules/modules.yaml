@@ -612,6 +612,7 @@ catalog:
       - { module: deals, effect: "напоминание ответственному о задаче по сделке" }
       - { module: packages, effect: "напоминание об окончании абонемента" }
       - { module: resources, effect: "напоминание о возврате и просрочке" }
+      - { module: shop, effect: "письма о новом заказе и оплате владельцу, покупателю — номер, состав и ссылка на заказ с его согласия" }
     provides: { routes: ["/cabinet/notifications"] }
     hook: true
     metrics: []
@@ -1316,6 +1317,8 @@ catalog:
     order: 35
     origin: { kind: new }
     goals: [sell_online]
+    requires:
+      - { module: notify, reason: "владелец узнаёт о заказах и оплатах, покупатель получает письмо с номером и ссылкой на заказ" }
     params:
       - { name: product_label, label: "Как называть товар", type: string, maxLength: 40, default: "Товар" }
       - { name: with_categories, label: "Разделы магазина", type: bool, default: true }
@@ -1362,7 +1365,7 @@ catalog:
     # functions/integrations/cdek (мок паспорта до проверки ключа; слой интеграций V3-20 ставит живой клиент и даёт
     # функции shopCdekOptions хосты и ключ контракта). Публичные экраны /shop, /cart, /order/:id — на фронте v3 их
     # собирает сборщик страниц из паттернов shop-*, cart-*, checkout-*, order-*, на v2 — страницы модуля.
-    provides: { entities: [shop_order, shop_payment, product, stock_move, product_category, pickup_point, shop_order_line, delivery_quote], routes: ["/shop", "/cart", "/order/:id"] }
+    provides: { entities: [shop_order, shop_payment, product, stock_move, product_category, pickup_point, shop_order_line, delivery_quote], routes: ["/shop", "/shop/:id", "/cart", "/order/:id"] }
     hook: true
     functions:
       - { name: shopPlaceOrder, kind: mutation, file: functions/shop/placeOrder.ts, public: true, roles: [$public, $owner, $staff, $visitor], collectsPii: true, purpose: "заказ из корзины: цены, остатки и доставка — с сервера, списание остатков, номер заказа", systemDbReason: "Посетитель не меняет товары и не видит заказы: функция списывает остатки, создаёт заказ с ценами из каталога и отдаёт только его номер и сумму" }
@@ -1372,6 +1375,10 @@ catalog:
       - { name: shopSaveQuote, kind: mutation, file: functions/shop/saveQuote.ts, roles: [$owner], when: { param: delivery, includes: cdek }, purpose: "расчёт доставки СДЭК на 30 минут: заказ берёт цену из него, а не со страницы" }
       - { name: shopReturnStock, kind: mutation, file: functions/shop/returnStock.ts, roles: [$owner], when: { param: with_stock }, purpose: "отменённый заказ один раз возвращает свои товары на склад" }
       - { name: shopOrderPaid, kind: mutation, file: functions/shop/orderPaid.ts, roles: [$owner], when: { param: with_stock }, purpose: "заказ, оплаченный после отмены, снова списывает свои товары" }
+      - { name: shopSetStatus, kind: mutation, file: functions/shop/setStatus.ts, public: true, roles: [$owner, $staff], purpose: "статус заказа меняется только по допустимым переходам; оплату и возврат ставит ЮKassa", systemDbReason: "Статус заказа закрыт для прямой правки: функция меняет его только по переходам магазина, оплату и возврат ставит ЮKassa" }
+      - { name: shopRefund, kind: action, file: functions/shop/refund.ts, public: true, roles: [$owner], when: { param: online_payment }, purpose: "владелец возвращает покупателю всю сумму оплаченного заказа через ЮKassa" }
+      - { name: shopExpireOrder, kind: mutation, file: functions/shop/expireOrder.ts, roles: [$owner], when: { param: online_payment }, purpose: "заказ без оплаты отменяется по времени, если платёж не идёт и не ждёт проверки" }
+      - { name: shopStockAdjust, kind: mutation, file: functions/shop/stockAdjust.ts, roles: [$owner], when: { param: with_stock }, purpose: "ручная правка остатка в кабинете попадает в журнал движения остатков" }
     metrics:
       - id: orders_sold
         label: "Продано заказов"
@@ -1456,9 +1463,9 @@ catalog:
           - { kind: status, text: "Заказ в кабинете в статусе «Новый»" }
     tests:
       matrix:
-        - { name: "по умолчанию: самовывоз и СДЭК, оплата ЮKassa, склад", params: {} }
-        - { name: "без онлайн-оплаты и склада: самовывоз и курьер", params: { online_payment: false, with_stock: false, delivery: [pickup, courier] } }
-        - { name: "только СДЭК, без разделов и фото, НДС 22%", params: { delivery: [cdek], with_categories: false, with_photos: false, vat: vat22 } }
+        - { name: "по умолчанию: самовывоз и СДЭК, оплата ЮKassa, склад", params: {}, withModules: [notify] }
+        - { name: "без онлайн-оплаты и склада: самовывоз и курьер", params: { online_payment: false, with_stock: false, delivery: [pickup, courier] }, withModules: [notify] }
+        - { name: "только СДЭК, без разделов и фото, НДС 22%", params: { delivery: [cdek], with_categories: false, with_photos: false, vat: vat22 }, withModules: [notify] }
         - { name: "магазин рядом с лендингом и заявками", params: { delivery: [pickup, courier], product_label: "Букет" }, withModules: [landing, leads, notify] }
-        - { name: "сотрудники собирают заказы", params: {}, withModules: [staff] }
+        - { name: "сотрудники собирают заказы", params: {}, withModules: [staff, notify] }
       gates: [G0, G1]

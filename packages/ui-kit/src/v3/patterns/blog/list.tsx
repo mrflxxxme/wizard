@@ -22,6 +22,10 @@ export type BlogListProps = {
   /** Posts per «Показать ещё». */
   pageSize?: number;
   action?: Link;
+  /** A preview on another page (home): nothing while the list is empty, no «Показать ещё». */
+  preview?: boolean;
+  /** false — the entries go without dates (the pages of the site, not posts). */
+  dates?: boolean;
 };
 
 const FIELDS: Required<Fields> = {
@@ -188,11 +192,14 @@ function More({
 }
 
 export default function BlogList(props: BlogListProps) {
-  const { entity = "post", path, title, text, empty, pageSize = 5, action } = props;
+  const { entity = "post", path, title, text, empty, pageSize = 5, action, preview, dates = true } = props;
   const f = { ...FIELDS, ...props.fields };
+  // Without dates the date field of a post reads nothing (the list stays sorted by it).
+  const shown = dates ? f : { ...f, date: "" };
   const m = useContent(entity, { sort: { field: f.date, dir: "desc" }, pageSize });
   const { items, growing } = useShown(m);
   const uid = useId();
+  if (preview && !m.isLoading && items.length === 0) return null;
   let body: ReactNode;
   if (m.error && items.length === 0) body = <Failed m={m} />;
   else if (m.isLoading && items.length === 0) body = <Loading />;
@@ -202,7 +209,7 @@ export default function BlogList(props: BlogListProps) {
       <>
         <ul className="divide-y divide-border border-y border-border">
           {items.map((post) => {
-            const p = postOf(post, f, path);
+            const p = postOf(post, shown, path);
             return (
               <li key={post.id} className={`${boxClass} grid gap-2 py-8 lg:grid-cols-12 lg:gap-8`}>
                 {p.date ? (
@@ -223,7 +230,7 @@ export default function BlogList(props: BlogListProps) {
             );
           })}
         </ul>
-        <More m={m} shown={items.length} growing={growing} className="mt-10" />
+        {preview ? null : <More m={m} shown={items.length} growing={growing} className="mt-10" />}
       </>
     );
   return (

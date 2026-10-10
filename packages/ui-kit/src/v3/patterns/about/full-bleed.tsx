@@ -1,6 +1,8 @@
 // About «full bleed»: a photo of the place across the full width with the title and lead on a scrim panel at its
 // lower left (readable over any part of the photo, catalog I04); below it the story in a wide column and, beside it,
 // the facts of the brief as a short list. Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Image = { src: string; alt: string };
 
@@ -29,6 +31,8 @@ export default function AboutFullBleed({
       <div className="relative isolate flex min-h-120 items-end overflow-hidden bg-inverse lg:min-h-152">
         <img
           src={image.src}
+          srcSet={srcSetOf(image.src)}
+          sizes="100vw"
           alt={image.alt}
           loading="lazy"
           className="absolute inset-0 -z-10 h-full w-full object-cover"

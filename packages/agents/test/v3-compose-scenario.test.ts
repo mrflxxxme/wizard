@@ -72,6 +72,8 @@ const HOME: PageComposeAnswer = {
         image: { src: TOP, alt: "Светлый кабинет клиники с креслом у окна" },
       },
     },
+    // V3-18: the preview of the catalog on home is bound to the module — the model keeps it, writes its texts.
+    { id: "catalog", pattern: "catalog-list", props: { title: "Услуги и цены" } },
     {
       id: "form",
       pattern: "form-centered",
@@ -178,11 +180,16 @@ describe("page_compose", () => {
     expect(out.pages[0]?.sections.map((s) => [s.id, s.pattern])).toEqual([
       ["header", home.sections[0]?.pattern],
       ["hero", "hero-full-bleed"],
+      ["catalog", "catalog-list"],
       ["form", "form-centered"],
+      // V3-18: the owner's contacts are not the model's: they stay where they were.
+      ["contacts", home.sections.find((s) => s.id === "contacts")?.pattern],
       ["footer", home.sections.at(-1)?.pattern],
     ]);
     // The binding to the module's entity stays even though the model did not repeat it.
-    expect(out.pages[0]?.sections[2]?.props).toMatchObject({ entity: "lead", title: "Запишитесь на приём" });
+    expect(out.pages[0]?.sections[3]?.props).toMatchObject({ entity: "lead", title: "Запишитесь на приём" });
+    // …and the preview of the catalog stays a preview (V3-18).
+    expect(out.pages[0]?.sections[2]?.props).toMatchObject({ entity: "service", preview: true });
     const files = apply(ctx.files, out);
     const next = readSite(files) as SiteModel;
     expect(next.pages[0]?.seo).toEqual({ ...HOME.seo, image: TOP });
@@ -419,7 +426,7 @@ describe("signature sections", () => {
     expect(files.get("ui/sections/first-visit.tsx")).toBe(SIGNATURE_OK.source);
     const next = readSite(files) as SiteModel;
     const ids = next.pages[0]?.sections.map((s) => s.id);
-    expect(ids).toEqual(["header", "hero", "first-visit", "form", "footer"]);
+    expect(ids).toEqual(["header", "hero", "first-visit", "catalog", "form", "contacts", "footer"]);
     expect(files.get(next.pages[0]?.file as string)).toContain('from "../../sections/first-visit"');
     expect(out.notes.join("\n")).toContain("Фирменная секция «Как проходит первый приём»");
     for (const p of next.pages)
@@ -476,7 +483,9 @@ describe("signature sections", () => {
       "header",
       "hero",
       "first-visit",
+      "catalog",
       "form",
+      "contacts",
       "footer",
     ]);
     expect(later.notes.join("\n")).not.toContain("Проверка страницы");

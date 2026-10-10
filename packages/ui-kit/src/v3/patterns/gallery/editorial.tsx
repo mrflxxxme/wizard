@@ -1,6 +1,8 @@
 // Gallery «editorial»: a magazine spread — the lead photo tall across seven columns, two more stacked beside it,
 // the rest in rows of three below; a row that would end with holes widens its last photos instead (catalog L12), and
 // phones get the lead photo across and the others in pairs. Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Photo = { src: string; alt: string; caption?: string };
 
@@ -47,6 +49,8 @@ export default function GalleryEditorial({ title, lead, images, action }: Galler
                   <div className={`relative w-full overflow-hidden rounded-sm bg-muted ${c.crop}`}>
                     <img
                       src={im.src}
+                      srcSet={srcSetOf(im.src)}
+                      sizes="(min-width: 1024px) 50vw, 100vw"
                       alt={im.alt}
                       loading="lazy"
                       className="absolute inset-0 h-full w-full object-cover"

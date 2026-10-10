@@ -1,6 +1,8 @@
 // About «centered»: a short manifesto on one axis — the title, the lead in the text colour, a few quiet paragraphs at
 // a reading measure and the signature of a real person under a short rule; a wide photo of the place closes the
 // section when there is one. Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Image = { src: string; alt: string };
 
@@ -52,6 +54,8 @@ export default function AboutCentered({
         {image ? (
           <img
             src={image.src}
+            srcSet={srcSetOf(image.src)}
+            sizes="(min-width: 1024px) 50vw, 100vw"
             alt={image.alt}
             loading="lazy"
             className="mt-14 aspect-4/3 w-full rounded-lg bg-muted object-cover sm:aspect-21/9"

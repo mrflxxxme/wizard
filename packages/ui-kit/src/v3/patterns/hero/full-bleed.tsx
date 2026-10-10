@@ -1,6 +1,6 @@
 // First screen «full-bleed photo»: the photo fills the screen edge to edge, the offer sits bottom-left on a scrim
 // panel that keeps text readable over any part of the photo (catalog I04). Own composition.
-import { useFitWords } from "@wizard/ui-kit/v3/headless";
+import { srcSetOf, useFitWords } from "@wizard/ui-kit/v3/headless";
 import { domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
 import { useState } from "react";
 
@@ -57,6 +57,8 @@ export default function HeroFullBleed({
       >
         <img
           src={image.src}
+          srcSet={srcSetOf(image.src)}
+          sizes="100vw"
           alt={image.alt}
           fetchPriority="high"
           className="absolute inset-0 -z-10 h-full w-full object-cover"

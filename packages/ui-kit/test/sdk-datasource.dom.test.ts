@@ -50,25 +50,23 @@ function mount(client: SdkClient, role: string, child: ReactNode) {
 }
 
 describe("sdkDataSource", () => {
-  test("ListQuery → sdk options: sort '-field', limit ≤ 100, search → contains on the first string field", () => {
+  test("ListQuery → sdk options: sort '-field', limit ≤ 100, search → q over the role's fields (V3-18)", () => {
     expect(
-      toSdkListOptions(
-        {
-          filter: { status: "new" },
-          sort: { field: "created_at", dir: "desc" },
-          page: 2,
-          pageSize: 25,
-          search: "Ив",
-        },
-        "full_name",
-      ),
+      toSdkListOptions({
+        filter: { status: "new" },
+        sort: { field: "created_at", dir: "desc" },
+        page: 2,
+        pageSize: 25,
+        search: " Ив ",
+      }),
     ).toEqual({
-      filter: { status: "new", full_name: { contains: "Ив" } },
+      filter: { status: "new" },
       sort: "-created_at",
       page: 2,
       limit: 25,
+      search: "Ив",
     });
-    expect(toSdkListOptions({ pageSize: 500 }, undefined)).toEqual({ limit: 100 });
+    expect(toSdkListOptions({ pageSize: 500, search: "  " })).toEqual({ limit: 100 });
   });
 
   test("WzProvider defaults to sdkDataSource; useList hits /api/data with the mapped query", async () => {
@@ -90,7 +88,8 @@ describe("sdkDataSource", () => {
     r = await mount(rt.client, "organizer", h(Probe));
     await flush(20);
     const get = rt.calls.find((c) => c.url.pathname === "/api/data/speaker_application");
-    expect(get?.url.searchParams.get("filter[full_name][contains]")).toBe("Ив");
+    expect(get?.url.searchParams.get("q")).toBe("Ив");
+    expect(get?.url.searchParams.get("filter[full_name][contains]")).toBeNull();
     expect(get?.url.searchParams.get("sort")).toBe("-created_at");
     expect(get?.url.searchParams.get("limit")).toBe("25");
     expect(seen.at(-1)?.data).toEqual({ items: [{ id: "a1", full_name: "Иван" }], total: 1 });

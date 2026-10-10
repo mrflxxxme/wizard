@@ -1,6 +1,8 @@
 // About «letter»: a tall photo of the place with its caption on the left, on the right the story told like a letter —
 // title, a lead in the text colour, quieter paragraphs and the signature of a real person from the brief under a
 // rule. On phones the text comes first. Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Image = { src: string; alt: string };
 
@@ -32,6 +34,8 @@ export default function AboutSplitLetter({
         <figure className="order-2 min-w-0 lg:order-1 lg:col-span-5">
           <img
             src={image.src}
+            srcSet={srcSetOf(image.src)}
+            sizes="(min-width: 1024px) 50vw, 100vw"
             alt={image.alt}
             loading="lazy"
             className="aspect-4/5 w-full rounded-lg bg-muted object-cover"

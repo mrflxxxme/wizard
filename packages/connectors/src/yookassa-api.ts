@@ -39,6 +39,8 @@ export interface ApiPayment {
   confirmation?: { type?: string; confirmation_url?: string };
   captured_at?: string;
   created_at?: string;
+  /** canceled: who and why (a declined card, the payment page left unpaid…). */
+  cancellation_details?: { party?: string; reason?: string };
 }
 
 export interface ApiRefund {

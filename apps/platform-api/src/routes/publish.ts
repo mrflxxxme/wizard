@@ -4,7 +4,7 @@ import { type AppSpec, diffSpecs, type SpecChange } from "@wizard/appspec";
 import { Hono } from "hono";
 import type { Selectable } from "kysely";
 import { z } from "zod";
-import { innValid } from "../auth/region.js";
+import { innValid, ogrnValid } from "../auth/region.js";
 import { TECHREVIEW_BLOCKED_RU, techreviewBlockersOf } from "../builds-v3/techreview-verdict.js";
 import type { SystemsTable } from "../db/types.js";
 import { ApiError, invalid, notFound } from "../errors.js";
@@ -28,6 +28,7 @@ import { toPublication } from "../publish/prod.js";
 import { isPublishable } from "../publish/workflows.js";
 import { withTx } from "../runs/events.js";
 import { insertRun } from "../runs/queue.js";
+import { SECRET_EGRESS_BLOCKED_RU, systemSecretEgressIssues } from "../secrets-v3/agent.js";
 import { applyOpsRevision, loadManifest, loadRevision, loadSpec, lockSystem } from "../services/revisions.js";
 import { toRevisionSummary, toRun } from "../services/serialize.js";
 
@@ -93,6 +94,13 @@ export function publishRoutes(d: Deps): Hono<AppEnv> {
       throw new ApiError("GATES_FAILED", repo.message_ru, {
         reason: "REPO_NOT_MERGED",
         ...(repo.pr ? { pr: repo.pr } : {}),
+      });
+    // V3-18 (D37): window keys reach only the hosts their window showed — also for a spec that bypassed the build hook.
+    const [egress] = await systemSecretEgressIssues(d.pg, s.id, rev.spec as unknown as AppSpec);
+    if (egress)
+      throw new ApiError("GATES_FAILED", SECRET_EGRESS_BLOCKED_RU(egress), {
+        reason: "SECRET_EGRESS",
+        path: egress.path,
       });
     const blockers = specPublishBlockers(rev.spec as unknown as AppSpec, await orgPlan(s.org_id));
     const first = blockers[0];
@@ -226,6 +234,10 @@ export function publishRoutes(d: Deps): Hono<AppEnv> {
           .string()
           .regex(/^[0-9]{10}([0-9]{2})?$/)
           .optional(),
+        operatorOgrn: z
+          .string()
+          .regex(/^[0-9]{13}([0-9]{2})?$/)
+          .optional(),
         policyPage: z
           .string()
           .regex(/^\/[a-z0-9/-]*$/)
@@ -240,6 +252,8 @@ export function publishRoutes(d: Deps): Hono<AppEnv> {
     );
     if (b.operatorInn !== undefined && !innValid(b.operatorInn))
       throw new ApiError("INN_INVALID", BLOCKER_RU.INN_INVALID ?? "ИНН указан с ошибкой");
+    if (b.operatorOgrn !== undefined && !ogrnValid(b.operatorOgrn))
+      throw new ApiError("OGRN_INVALID", BLOCKER_RU.OGRN_INVALID ?? "ОГРН указан с ошибкой");
     const { expectedVersion, retentionWaiver, ...fields } = b;
     const res = await tx(async (t) => {
       const s = await lockSystem(t, s0.id);

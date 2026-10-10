@@ -23,6 +23,8 @@ export const keysRu = {
     loading: "Открываю защищённое окно…",
     expires: (time: string) => `Окно действует до ${time}`,
     viewer: "Ввести ключ может владелец или редактор системы.",
+    /** V3-18: the server answers NOT_OWNER to an editor on any action with a prod key. */
+    prodOwnerOnly: "Боевые ключи может менять только владелец системы.",
     accountHosts: (label: string, suffixes: readonly string[]) =>
       `Ключ уйдёт только на ваш аккаунт (${suffixes.map((x) => `*.${x}`).join(", ") || "свой адрес"}) — адрес появится здесь, когда вы заполните поле «${label}».`,
     noCrypto: "Браузер не умеет шифровать (нужно защищённое соединение https). Откройте Wizard по https.",

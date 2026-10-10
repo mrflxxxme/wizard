@@ -306,7 +306,14 @@ describe.skipIf(!hasChromium)("V3-24: multi-page v3 site with «Контент �
     const header = site.pages[0]?.sections.find((s) => s.type === "header")?.props as {
       nav: { href: string }[];
     };
-    expect(header.nav.map((l) => l.href)).toEqual(["/", "/services", "/blog", "/pages"]);
+    // V3-18: the lists of «Контент и блог» start empty — the footer links them, the header does not.
+    expect(header.nav.map((l) => l.href)).toEqual(["/", "/services"]);
+    const footer = site.pages[0]?.sections.find((s) => s.type === "footer")?.props as {
+      columns: { links: { href: string }[] }[];
+    };
+    expect(footer.columns.flatMap((c) => c.links.map((l) => l.href))).toEqual(
+      expect.arrayContaining(["/blog", "/pages"]),
+    );
     expect(spec.pages?.map((p) => p.route)).toEqual(expect.arrayContaining(["/blog/:slug", "/pages/:slug"]));
     expect(scenarios.map((s) => s.id)).toEqual([
       "GS-content-1",

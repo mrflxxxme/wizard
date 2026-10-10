@@ -1,6 +1,8 @@
 // Team «directory»: the people as rows of a directory under a heavy rule — a small round photo when there is one, the
 // name large in the display face, the role and confirmed facts, booking with the person at the right edge. Works
 // without photos. Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Image = { src: string; alt: string };
 type Person = { name: string; role: string; photo?: Image; bio?: string; facts?: string[]; link?: Link };
@@ -36,6 +38,8 @@ export default function TeamDirectory({ title, intro, people, action, note }: Te
                 {p.photo ? (
                   <img
                     src={p.photo.src}
+                    srcSet={srcSetOf(p.photo.src)}
+                    sizes="(min-width: 1024px) 25vw, 50vw"
                     alt={p.photo.alt}
                     loading="lazy"
                     className="size-14 shrink-0 rounded-full bg-muted object-cover sm:size-16"

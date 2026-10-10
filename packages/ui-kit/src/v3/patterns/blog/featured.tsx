@@ -2,7 +2,7 @@
 // announcement; the next posts on the right as a list of dates and titles with small covers, «Показать ещё» under it.
 // The data is the module's: useContent (C4) gives what the role may read, newest first, by pages; dates in Russian.
 // Own composition.
-import { type PagedList, useContent } from "@wizard/ui-kit/v3/headless";
+import { type PagedList, srcSetOf, useContent } from "@wizard/ui-kit/v3/headless";
 import { type ReactNode, useId, useRef } from "react";
 
 type Link = { label: string; href: string };
@@ -23,6 +23,10 @@ export type BlogFeaturedProps = {
   /** Posts per «Показать ещё». */
   pageSize?: number;
   action?: Link;
+  /** A preview on another page (home): nothing while the list is empty, no «Показать ещё». */
+  preview?: boolean;
+  /** false — the entries go without dates (the pages of the site, not posts). */
+  dates?: boolean;
 };
 
 const FIELDS: Required<Fields> = {
@@ -189,18 +193,21 @@ function More({
 }
 
 export default function BlogFeatured(props: BlogFeaturedProps) {
-  const { entity = "post", path, title, text, empty, pageSize = 5, action } = props;
+  const { entity = "post", path, title, text, empty, pageSize = 5, action, preview, dates = true } = props;
   const f = { ...FIELDS, ...props.fields };
+  // Without dates the date field of a post reads nothing (the list stays sorted by it).
+  const shown = dates ? f : { ...f, date: "" };
   const m = useContent(entity, { sort: { field: f.date, dir: "desc" }, pageSize });
   const { items, growing } = useShown(m);
   const uid = useId();
   const [first, ...rest] = items;
+  if (preview && !m.isLoading && items.length === 0) return null;
   let body: ReactNode;
   if (m.error && items.length === 0) body = <Failed m={m} />;
   else if (m.isLoading && items.length === 0) body = <Loading cards />;
   else if (!first) body = <Empty text={empty} />;
   else {
-    const lead = postOf(first, f, path, 1600);
+    const lead = postOf(first, shown, path, 1600);
     body = (
       <div className="grid gap-12 lg:grid-cols-12">
         <article className={`${boxClass} flex min-w-0 flex-col lg:col-span-7`}>
@@ -218,6 +225,8 @@ export default function BlogFeatured(props: BlogFeaturedProps) {
           {lead.cover ? (
             <img
               src={lead.cover}
+              srcSet={srcSetOf(lead.cover)}
+              sizes="(min-width: 1024px) 50vw, 100vw"
               alt=""
               aria-hidden="true"
               loading="lazy"
@@ -229,7 +238,7 @@ export default function BlogFeatured(props: BlogFeaturedProps) {
           {rest.length ? (
             <ul className="divide-y divide-border border-b border-border lg:border-t">
               {rest.map((post) => {
-                const p = postOf(post, f, path, 480);
+                const p = postOf(post, shown, path, 480);
                 return (
                   <li key={post.id} className={`${boxClass} flex items-start gap-4 py-5`}>
                     <div className="min-w-0 flex-1">
@@ -243,6 +252,8 @@ export default function BlogFeatured(props: BlogFeaturedProps) {
                     {p.cover ? (
                       <img
                         src={p.cover}
+                        srcSet={srcSetOf(p.cover)}
+                        sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                         alt=""
                         aria-hidden="true"
                         loading="lazy"
@@ -254,7 +265,7 @@ export default function BlogFeatured(props: BlogFeaturedProps) {
               })}
             </ul>
           ) : null}
-          <More m={m} shown={items.length} growing={growing} className="mt-6" />
+          {preview ? null : <More m={m} shown={items.length} growing={growing} className="mt-6" />}
         </div>
       </div>
     );

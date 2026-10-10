@@ -646,7 +646,9 @@ class Run implements GoalRun {
 
   async expectText(text: string, opts: { within?: string; timeoutMs?: number } = {}): Promise<void> {
     const scope = opts.within ? this.page.locator(opts.within).first() : this.page.locator("body");
-    const loc = scope.getByText(text, { exact: false }).first();
+    // The first visible match: the same words may come first in a hidden place — an <option> of a list's filter
+    // («Прошла» of the payment status filter of the cabinet, V3-18) is never «visible».
+    const loc = scope.getByText(text, { exact: false }).filter({ visible: true }).first();
     try {
       await loc.waitFor({ state: "visible", timeout: opts.timeoutMs ?? 5_000 });
     } catch {

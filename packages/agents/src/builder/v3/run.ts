@@ -12,10 +12,16 @@
 // template_gate hook also runs right after the skeleton (V3-14): a hit there changes the archetype once per run and
 // recomposes the skeleton before any scenario is paid for.
 import { createHash } from "node:crypto";
-import type { AppSpec, SystemBrief } from "@wizard/appspec";
-import type { GateReport, GoalScenarioInput } from "@wizard/gates";
+import {
+  type AppSpec,
+  MAX_PLAN_PHOTOS,
+  type PlanPhoto,
+  type SystemBrief,
+  type SystemPlan,
+} from "@wizard/appspec";
+import { G0_CHECKS, G1_CHECKS, G2_CHECKS, type GateReport, type GoalScenarioInput } from "@wizard/gates";
 import { createRegistry } from "@wizard/llm";
-import { canonical, type ModuleRegistry } from "@wizard/modules";
+import { canonical, type ModuleRegistry, photoSlots } from "@wizard/modules";
 import { scrub } from "@wizard/pii";
 import {
   archetype as archetypeById,
@@ -25,7 +31,8 @@ import {
 } from "@wizard/ui-kit/v3/design";
 import { stripScrubTokens } from "../../interview-v3/scrub-tokens.js";
 import { DEFAULT_REGISTRY } from "../../planner/catalog.js";
-import { buildBlockers } from "../v2/blockers.js";
+import { erroredBlockers, failedBlockers } from "../v2/blockers.js";
+import { runPhotosStage } from "../v2/photos.js";
 import { withOwnerFields } from "../v2/run.js";
 import { runArtDirector } from "./art-director.js";
 import { readSite, withSitePages } from "./compose/index.js";
@@ -81,6 +88,30 @@ class V3Failure extends Error {
   }
 }
 
+/**
+ * Version of the verdict rules of the hook stages (critic, template gate, techreview) and the gates: bump it when a
+ * check, its severity or a stage's verdict logic changes. With the gate catalogs it is part of the fingerprints of
+ * those stages, so a verdict of older rules is never reused (V3-18).
+ */
+export const V3_RULES_VERSION = 1;
+
+/** The rules fingerprint: V3_RULES_VERSION and the gate catalogs (id, severity, since of every check). */
+export const V3_RULES_FINGERPRINT = sha256({
+  v: V3_RULES_VERSION,
+  checks: [...G0_CHECKS, ...G1_CHECKS, ...G2_CHECKS].map((c) => [c.id, c.severity, c.since ?? null]),
+});
+
+/**
+ * V3-18: a check that could not run (status error — the browser, a timeout, a process) is not the system's failure:
+ * the build is not failed with GATES_FAILED and the paid stages stay.
+ */
+export const CHECKS_UNAVAILABLE_RU =
+  "Проверка не выполнена из-за временного сбоя, повторите сборку — оплаченные этапы сохранятся.";
+
+/** The reason of a scenario kept without its browser check (the check could not run, V3-18). */
+const SCENARIO_UNCHECKED_RU =
+  "проверка в браузере не выполнена из-за временного сбоя — сценарий проверяют итоговые проверки";
+
 /** Files of a composer step as JSON (checkpoints): [path, source | null][]. */
 type FileEntries = [string, string | null][];
 
@@ -109,6 +140,10 @@ const TEMPLATE_STILL_RU =
   "После смены стиля сайт всё ещё похож на недавние сайты в этой нише — его можно сделать своеобразнее правками.";
 const TEMPLATE_LATE_RU =
   "Готовый сайт похож на недавние сайты в этой нише — после сценариев стиль уже не меняю, его можно сделать своеобразнее правками.";
+
+/** The plan with the stock photos of its places (V3-18); unchanged without photos. */
+const withStockPhotos = (plan: SystemPlan, photos: readonly PlanPhoto[]): SystemPlan =>
+  photos.length ? { ...plan, design: { ...plan.design, photos: [...photos] } } : plan;
 
 /** The brief without the «вопрос → ответ» journal: what the pages are made of (answers apply through the plan). */
 const briefForPages = ({ qa: _qa, ...rest }: SystemBrief) => rest;
@@ -184,7 +219,10 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
     },
   ): Promise<{ data: T; reused: boolean }> {
     const cp = saved.get(id);
-    if (o.reuse !== false && cp && cp.fingerprint === o.fingerprint && !o.skip) {
+    // V3-18: a verdict with blockers is never reused — a retry checks again (a transient error is not forever).
+    const prior = cp?.data.blockers;
+    const blocked = Array.isArray(prior) && prior.length > 0;
+    if (o.reuse !== false && cp && cp.fingerprint === o.fingerprint && !o.skip && !blocked) {
       priorMilli += cp.costMilli;
       metrics[id] = { status: "reused", costRub: 0, durationMs: 0 };
       await stageEvent(id, "reused");
@@ -298,6 +336,8 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
   let bp!: BriefPlan;
   let backend!: BackendBuilt;
   let backendFp = "";
+  /** Stock photos of the plan's places (V3-18), applied to every compile of the backend. */
+  let photos: PlanPhoto[] = [];
   let ownerSpec: AppSpec | null = null;
   // Layers of the system's files: backend → design CSS → skeleton → scenarios → hooks (null deletes a file).
   let skeleton = new Map<string, string | null>();
@@ -365,18 +405,68 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
     };
   };
 
+  /**
+   * Stock photos of the plan's places (V3-18; the photos stage of v2, B2-38): the first screen and the other photo
+   * places of the landing get pictures of the niche from the stock the host gives (on the pilot — the CI photo library,
+   * no paid or western API), copies in the platform photo library. Free (no model), within its own time budget;
+   * reused while the niche and the places are the same. No host, no stock, an error — no photos (the skeleton keeps
+   * its text first screens), and the next build tries again.
+   */
+  const stockPhotos = async (): Promise<PlanPhoto[]> => {
+    const plan = bp.plan;
+    const fingerprint = sha256({
+      niche: plan.niche,
+      style: plan.design.photoStyle ?? "",
+      slots: photoSlots(plan, MAX_PLAN_PHOTOS).map((s) => [s.slot, s.type, s.orientation]),
+    });
+    const cp = saved.get("photos");
+    if (cp?.fingerprint === fingerprint && Array.isArray(cp.data.photos))
+      return cp.data.photos as PlanPhoto[];
+    if (!host.photos) return [];
+    const started = now();
+    try {
+      const r = await runPhotosStage({
+        plan,
+        host: host.photos,
+        now,
+        ...(p.photosTimeMs !== undefined ? { budgetMs: p.photosTimeMs } : {}),
+        ...(host.signal ? { signal: host.signal } : {}),
+      });
+      const out = r.plan.design.photos ?? [];
+      // A stock that failed is asked again by the next build; what it found (or that it found nothing) stands.
+      if (!r.fallback || out.length)
+        await save({
+          key: "photos",
+          fingerprint,
+          data: { photos: out, note: r.note },
+          costMilli: 0,
+          durationMs: Math.max(0, now() - started),
+        });
+      return out;
+    } catch {
+      return [];
+    }
+  };
+
   /** Compiles the backend of the current plan (free); a rejected extension goes to «Запросы на развитие». */
   const buildBackend = async () => {
-    const r = compileBackend({
-      plan: bp.plan,
-      registry,
-      extensions: extensionsOf(),
-      design,
-      options: {
-        ...(p.appName ? { appName: p.appName } : {}),
-        ...(p.platformUrl ? { platformUrl: p.platformUrl, systemId: host.systemId } : {}),
-      },
-    });
+    const compile = (plan: SystemPlan) =>
+      compileBackend({
+        plan,
+        registry,
+        extensions: extensionsOf(),
+        design,
+        options: {
+          ...(p.appName ? { appName: p.appName } : {}),
+          ...(p.platformUrl ? { platformUrl: p.platformUrl, systemId: host.systemId } : {}),
+        },
+      });
+    // V3-18: the stock photos of the plan's places; a plan that does not compile with them is built without them.
+    let r = compile(withStockPhotos(bp.plan, photos));
+    if (!r.ok && photos.length) {
+      photos = [];
+      r = compile(bp.plan);
+    }
     if (!r.ok) throw new V3Failure(r.code, r.message_ru, false);
     // V3-20: the brief's integrations (contract clients, mock until the key passes its check) on top of the backend.
     const layer = host.integrations ? await host.integrations({ brief, spec: r.spec, files: r.files }) : null;
@@ -566,6 +656,9 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
       fingerprint: sha256({ plan: bp.plan, ext: p.extensions ?? [], design: designFp }),
       reuse: false,
       run: async () => {
+        // The stock answers differently on a replay (new copies, a timeout under load): durable, so a restarted
+        // worker takes the same skeleton path.
+        photos = host.once ? await host.once("v3_photos", stockPhotos) : await stockPhotos();
         await buildBackend();
         return {
           data: {
@@ -623,7 +716,13 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
     // archetype and the skeleton again; then the live preview.
     await sync();
     const sk = await stage("skeleton", {
-      fingerprint: sha256({ design: designFp, front: backend.publicFront, brief: briefForPages(brief) }),
+      fingerprint: sha256({
+        design: designFp,
+        front: backend.publicFront,
+        brief: briefForPages(brief),
+        // V3-18: the pages show the stock photos (a later build that found them composes again).
+        ...(photos.length ? { photos: photos.map((x) => [x.slot, x.file]) } : {}),
+      }),
       run: async (w) => {
         const compose = async (): Promise<V3ComposeResult> => {
           try {
@@ -713,6 +812,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
     revision = await commit("Каркас страниц в выбранном стиле");
     if (host.preview && (revision !== before || previewRevision === null)) {
       const pr = await host.runStep("v3:preview", () => (host.preview as NonNullable<V3Host["preview"]>)());
+      if (!pr.ok && pr.unavailable) throw new V3Failure("CHECKS_UNAVAILABLE", CHECKS_UNAVAILABLE_RU, true);
       if (!pr.ok)
         throw new V3Failure(
           "GATES_FAILED",
@@ -823,7 +923,29 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
       scenarioSec = Math.round(durations.reduce((s, x) => s + x, 0) / durations.length / 1000);
       scenariosLeft -= 1;
       const costRub = milliRub(costMilli, rpc);
-      if (check.ok) {
+      if (!check.ok && check.unavailable) {
+        // V3-18: the check could not run (infrastructure): the scenario stays on the system, the final gates check it;
+        // its checkpoint is not reused by a later build (it was never checked).
+        states.set(next.id, {
+          id: next.id,
+          title: next.title,
+          priority: next.priority,
+          status: "passed",
+          reason: SCENARIO_UNCHECKED_RU,
+          costRub,
+        });
+        await save({
+          key,
+          fingerprint: fp,
+          data: { status: "unchecked", files: toEntries(r.files), pages: r.pages, notes: r.notes },
+          costMilli,
+          durationMs,
+        });
+        await say(
+          `v3s_${next.id}`,
+          `Готово: ${next.title}. Проверить в браузере не удалось из-за временного сбоя — сценарий проверят итоговые проверки. Сейчас ${spendLine(spentRub(), limits.capRub)}.`,
+        );
+      } else if (check.ok) {
         states.set(next.id, {
           id: next.id,
           title: next.title,
@@ -894,7 +1016,11 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
     for (const st of V3_HOOK_STAGES) {
       await sync();
       const hook = hooks[st];
-      const stateFp = sha256({ files: [...mergedFiles()].sort(([a], [b]) => a.localeCompare(b)), st });
+      const stateFp = sha256({
+        files: [...mergedFiles()].sort(([a], [b]) => a.localeCompare(b)),
+        st,
+        rules: V3_RULES_FINGERPRINT,
+      });
       const budget = st === "template_gate" ? 0 : budgets[st];
       const h = await stage<Record<string, unknown>>(st, {
         fingerprint: stateFp,
@@ -971,16 +1097,23 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
     );
     let ownerInput = false;
     const gates = await stage("gates", {
-      fingerprint: sha256({ revision, state: committed?.hash ?? "" }),
+      fingerprint: sha256({ revision, state: committed?.hash ?? "", rules: V3_RULES_FINGERPRINT }),
       run: async () => {
         const reports: GateReport[] = [];
         for (const level of ["G0", "G1", "G2"] as const) {
-          const r = await host.runGates(
-            level,
-            level === "G1" && host.goalBrowser && goalScenarios.length ? { goalScenarios } : undefined,
-          );
+          const gate = () =>
+            host.runGates(
+              level,
+              level === "G1" && host.goalBrowser && goalScenarios.length ? { goalScenarios } : undefined,
+            );
+          let r = await gate();
+          // V3-18: a check that could not run (status error) is run once more; still not — a retryable failure of the
+          // infrastructure, not GATES_FAILED.
+          if (!r.passed && failedBlockers(r).length === 0 && erroredBlockers(r).length > 0) r = await gate();
           reports.push(r);
-          const blockers = r.passed ? [] : buildBlockers(r);
+          const blockers = r.passed ? [] : failedBlockers(r);
+          if (!r.passed && blockers.length === 0 && erroredBlockers(r).length > 0)
+            throw new V3Failure("CHECKS_UNAVAILABLE", CHECKS_UNAVAILABLE_RU, true, reports);
           if (!r.passed && blockers.length === 0) ownerInput = true;
           if (blockers.length > 0)
             throw new V3Failure(

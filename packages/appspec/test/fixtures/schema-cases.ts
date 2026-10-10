@@ -970,6 +970,34 @@ const mutations: Mutation[] = [
     },
   ],
   [
+    "permission allowedValues ok",
+    true,
+    (s) => {
+      s.permissions[3].allowedValues = { status: ["cancelled"] };
+    },
+  ],
+  [
+    "permission allowedValues empty list",
+    false,
+    (s) => {
+      s.permissions[3].allowedValues = { status: [] };
+    },
+  ],
+  [
+    "permission allowedValues duplicate value",
+    false,
+    (s) => {
+      s.permissions[3].allowedValues = { status: ["a", "a"] };
+    },
+  ],
+  [
+    "permission allowedValues bad field name",
+    false,
+    (s) => {
+      s.permissions[3].allowedValues = { "Bad-Name": ["a"] };
+    },
+  ],
+  [
     "function collectsPii",
     true,
     (s) => {

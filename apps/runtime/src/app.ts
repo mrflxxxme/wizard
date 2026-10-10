@@ -14,7 +14,7 @@ import { readSessionToken, sessionUser } from "./auth/session.js";
 import type { InvalidationBus } from "./data/access.js";
 import { createInvalidationBus } from "./data/events.js";
 import { assertStartupAllowed, draftPreviewOnly, isLocalMode, type RuntimeEnv, readEnv } from "./env.js";
-import { systemFunctions } from "./exec/host.js";
+import { forgetSystemFunctions, systemFunctions } from "./exec/host.js";
 import { photoLibraryRoutes } from "./files/photo-library.js";
 import { createFileStorage, type FileStorage } from "./files/storage.js";
 import type { OutboxMessage, RuntimeHonoEnv, RuntimeServices } from "./http/context.js";
@@ -35,6 +35,7 @@ import {
   parseSystemHost,
   securityHeaders,
 } from "./http/guards.js";
+import { publicApiRateLimits } from "./http/rate-limits.js";
 import { createInternalHandler, type InternalOptions } from "./internal.js";
 import {
   type RetentionPassReport,
@@ -66,7 +67,7 @@ import { notImplemented } from "./routes/stub.js";
 import { platformTelegramHook, telegramApiRoutes, telegramHookRoutes } from "./routes/telegram.js";
 import { webhookHookRoutes } from "./routes/webhook.js";
 import { authRoutes, wizardRoutes } from "./routes/wizard.js";
-import { yookassaHookRoutes } from "./routes/yookassa.js";
+import { yookassaHookRoutes, yookassaSettingsRoutes } from "./routes/yookassa.js";
 import { egressGrantKey } from "./sandbox/egress-grants.js";
 import { createEgressService, type HttpEgressOptions } from "./sandbox/egress-service.js";
 import type { SandboxRpc } from "./sandbox/rpc.js";
@@ -263,6 +264,22 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
     legalTemplates: services.legalTemplates,
     ...(files ? { files } : {}),
     ...(o.log ? { log: o.log } : {}),
+    // V3-18: a dropped system's executor and, with its last copy, its sandbox slot go with it (pilot: 20 slots).
+    onDrop: (sys, last) => {
+      forgetSystemFunctions(sys, last);
+      if (!last || !o.sandbox?.remove) return;
+      const { systemId, env: sysEnv } = sys.entry;
+      void o.sandbox.remove(systemId, sysEnv, { resync: false }).catch((e: unknown) =>
+        o.log?.({
+          ts: new Date().toISOString(),
+          level: "warn",
+          msg: "sandbox_release_failed",
+          system: sys.entry.slug,
+          env: sysEnv,
+          reason: e instanceof Error ? e.name : "unknown",
+        }),
+      );
+    },
     bus: (id, e) => {
       const k = `${id}:${e}`;
       let b = buses.get(k);
@@ -273,6 +290,8 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
       return b;
     },
   });
+  // A system the sandbox freed itself (idle, excluded for hanging): the next request loads and prepares it again.
+  o.sandbox?.onReleased?.((systemId, sysEnv) => systems.evict(systemId, sysEnv));
   const auth = createAuthDeps({
     sql: o.db,
     env,
@@ -329,11 +348,14 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
     "/_wizard/photos",
     photoLibraryRoutes(o.photoLibrary !== undefined ? o.photoLibrary : (files ?? null)),
   );
+  app.route("/_wizard/payments", yookassaSettingsRoutes(connectors));
   app.route("/_wizard", previewRoutes(connectors));
   app.route("/_wizard", wizardRoutes());
   app.route("/_wizard", privacyRoutes());
   app.route("/_wizard", invitePageRoutes());
   app.all("/_wizard/*", () => notFoundPage());
+  // V3-18: runtime.yaml#rate_limits of /api/data, /api/fn and /api/pay* (per user, anonymous — per client network).
+  app.use("/api/*", publicApiRateLimits(services.clock));
   app.route("/api/data", dataRoutes());
   app.route("/api/auth", loginApiRoutes(auth));
   app.route("/api/auth", authRoutes());

@@ -63,7 +63,9 @@ interface Seen {
 }
 
 /** In-process fetch: `/byok-gw` is the user's gateway, `/zai` and `/cloudru` the platform providers. */
-function mockFetch(byok: (s: Seen) => { status: number; body: unknown } | "hang") {
+function mockFetch(
+  byok: (s: Seen) => { status: number; body: unknown; headers?: Record<string, string> } | "hang",
+) {
   const seen: Seen[] = [];
   const started: Array<() => void> = [];
   const fetch = (async (url: string | URL | Request, init?: RequestInit) => {
@@ -85,10 +87,10 @@ function mockFetch(byok: (s: Seen) => { status: number; body: unknown } | "hang"
         sig?.addEventListener("abort", () => reject(sig.reason));
       });
     }
-    const a = answer as { status: number; body: unknown };
+    const a = answer as { status: number; body: unknown; headers?: Record<string, string> };
     return new Response(JSON.stringify(a.body), {
       status: a.status,
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...a.headers },
     });
   }) as typeof globalThis.fetch;
   return { fetch, seen, nextRequest: () => new Promise<void>((r) => started.push(r)) };
@@ -348,6 +350,29 @@ describe("router hook", () => {
       [false, "ok", null, true],
     ]);
     expect(reports).toEqual([{ keyId: "key-1", ok: false, errorCode: "HTTP_401" }]);
+  });
+
+  test("V3-18: Retry-After past 30 s on the user's key is not waited for — the platform chain takes the call", async () => {
+    const m = mockFetch(() => ({
+      status: 429,
+      body: { error: "slow down" },
+      headers: { "retry-after": "120" },
+    }));
+    const { resolver } = resolverOf(m.fetch);
+    const waits: number[] = [];
+    const { router } = mk(m, resolver, { sleep: async (ms) => void waits.push(ms) });
+    const out = await router.route({
+      callType: "page_compose",
+      messages: msgs("Главная страница пекарни"),
+      orgPolicy: OPEN,
+      ctx: { orgId: ORG },
+    });
+    expect(out.byok).toBeUndefined();
+    expect(waits).toEqual([]);
+    expect(m.seen.map((s) => (s.url.includes("/byok-gw") ? "byok" : "platform"))).toEqual([
+      "byok",
+      "platform",
+    ]);
   });
 
   test("everything failing: the LLM_UNAVAILABLE error carries no key", async () => {

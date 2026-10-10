@@ -8,6 +8,7 @@ import type { DesignSystemV3 } from "@wizard/ui-kit/v3/design";
 import type { RunStepFn } from "../../../core/events.js";
 import type { RecordDevelopmentRequest } from "../../../gaps.js";
 import type { HostRoute } from "../../../host/index.js";
+import type { PhotoHost } from "../../v2/photos.js";
 import type { PageComposer, V3BuildContext } from "../contract.js";
 
 /** Stages in build order (builder-v3.md C6; the backend is compiled after the design so cabinets take its tokens). */
@@ -92,6 +93,11 @@ export interface ScenarioCheckResult {
   problems: string[];
   /** false — the host had no browser and checked without it (renders only). */
   browser: boolean;
+  /**
+   * V3-18: the check could not run even after a retry (a check with status error: the browser, a timeout) — not the
+   * scenario's failure: it is kept, not rolled back, and the final gates check it.
+   */
+  unavailable?: boolean;
 }
 
 /** What a stage hook (critic V3-13, template_gate V3-14, techreview V3-15) returns. */
@@ -168,7 +174,7 @@ export interface V3Host {
   /** The page writer of V3-12. */
   composer: PageComposer;
   /** Live preview of the draft (platform: G0 → bundle → preview revision); absent — no preview step. */
-  preview?(): Promise<{ ok: boolean; problems: string[] }>;
+  preview?(): Promise<{ ok: boolean; problems: string[]; unavailable?: boolean }>;
   /** Browser check of one scenario on the committed draft; absent — scenarios are accepted after the composer's lint. */
   checkScenario?(input: ScenarioCheckInput): Promise<ScenarioCheckResult>;
   /** true: the final G1 gets the goal scenarios of the done brief scenarios (a browser runs them). */
@@ -185,6 +191,16 @@ export interface V3Host {
   notifyReady?(notice: V3ReadyNotice): Promise<void>;
   /** Niche memory of the art director: archetypes of the latest builds of the niche, most recent first. */
   recentArchetypes?(niche: string): Promise<string[]>;
+  /**
+   * V3-18: the stock of the photos stage (the v2 PhotoHost: platform egress or the CI photo library, copies in the
+   * platform photo library); absent or null — the site goes without stock photos.
+   */
+  photos?: PhotoHost | null;
+  /**
+   * V3-18: a read whose result the run must see the same after a worker restart (a durable step of the host's
+   * workflow); absent — called directly.
+   */
+  once?<T>(name: string, fn: () => Promise<T>): Promise<T>;
   /**
    * V3-20: the brief's integrations on top of the compiled backend — the host reads the stored contracts and their
    * states and returns the spec and files with functions/integrations/<id>/** (@wizard/agents/integrations
@@ -237,6 +253,8 @@ export interface V3Params {
   now?: () => number;
   /** Seed of the design (default: the system id). */
   seed?: string;
+  /** Time budget of the stock photos (default: the v2 photos stage's). */
+  photosTimeMs?: number;
 }
 
 export type V3FailureCode =
@@ -244,6 +262,8 @@ export type V3FailureCode =
   | "MODULE_BUG"
   | "STAGE_BUDGET_EXCEEDED"
   | "GATES_FAILED"
+  /** V3-18: a check could not run (infrastructure) even after a retry; retryable, the paid stages stay. */
+  | "CHECKS_UNAVAILABLE"
   | "INTERNAL";
 
 /** Per-stage line of build_metrics. */

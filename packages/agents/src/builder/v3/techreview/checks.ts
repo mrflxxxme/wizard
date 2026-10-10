@@ -461,8 +461,15 @@ export async function deterministicChecks(
     integrations?: IntegrationContractRunner;
   },
 ): Promise<TechCheck[]> {
-  const g0 = fromGate(await o.gates("G0", system));
-  const g2 = fromGate(await o.gates("G2", system));
+  // V3-18: a blocker check that could not run (status error) is run once more before it counts as a blocker.
+  const gate = async (level: TechGateLevel) => {
+    const r = await o.gates(level, system);
+    return r.checks.some((c) => c.severity === "blocker" && c.status === "error")
+      ? o.gates(level, system)
+      : r;
+  };
+  const g0 = fromGate(await gate("G0"));
+  const g2 = fromGate(await gate("G2"));
   const shadow = g0.find((c) => c.id === "G0-MIG-02");
   return [
     ...g0,

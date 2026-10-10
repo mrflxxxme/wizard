@@ -106,6 +106,7 @@ describe("V3-10: public front of a backend system", () => {
         "shop:shop /shop",
         "shop:cart /cart",
         "shop:order /order/:id",
+        "shop:product /shop/:id",
       ].sort(),
     );
     expect((all.spec.pages ?? []).map((p) => p.route)).toEqual(

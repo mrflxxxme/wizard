@@ -2,6 +2,7 @@
 // imports them): ui-kit components bind to entities through the data API under the role's permissions, so the pages
 // need no server functions — a table, a card with status actions and create/edit forms per entity the role may read.
 import type { AppSpec, Permission, PermissionOp } from "@wizard/appspec";
+import type { StatusFlow } from "../types.js";
 import { js, jsxEl, pascal } from "./jsx.js";
 
 /** Permission of a role on an entity. */
@@ -23,11 +24,56 @@ export function columns(spec: AppSpec, role: string, entity: string): string[] {
     .slice(0, 6);
 }
 
+/** Filter fields of a cabinet table (V3-18): the role's visible enum and bool fields, the status first, at most 4. */
+export function filterFields(spec: AppSpec, role: string, entity: string): string[] {
+  const e = spec.entities.find((x) => x.name === entity);
+  const hidden = new Set(permOf(spec, role, entity)?.hiddenFields ?? []);
+  const own = (e?.fields ?? []).filter(
+    (f) => !hidden.has(f.name) && ((f.type === "enum" && f.enum?.length) || f.type === "bool"),
+  );
+  const st = statusField(spec, entity);
+  return [...own.filter((f) => f.name === st?.name), ...own.filter((f) => f.name !== st?.name)]
+    .map((f) => f.name)
+    .slice(0, 4);
+}
+
 /** The status field of an entity: `status` of type enum, else the first enum field. */
 export function statusField(spec: AppSpec, entity: string) {
   const e = spec.entities.find((x) => x.name === entity);
   const enums = (e?.fields ?? []).filter((f) => f.type === "enum" && f.enum?.length);
   return enums.find((f) => f.name === "status") ?? enums[0];
+}
+
+/** The role may call the module function `fn` (its roles in the spec). */
+const callable = (spec: AppSpec, role: string, fn: string) =>
+  (spec.functions ?? []).some((f) => f.name === fn && (f.roles ?? []).includes(role));
+
+/**
+ * Buttons of a status flow (V3-18): a status `next` allows from the record's status, through the module's function
+ * (it checks the transition again), and the flow's other function actions in their statuses.
+ */
+function flowActions(
+  spec: AppSpec,
+  role: string,
+  st: NonNullable<ReturnType<typeof statusField>>,
+  flow: StatusFlow,
+): string[] {
+  const out: string[] = [];
+  const from = (to: string) => Object.keys(flow.next).filter((s) => flow.next[s]?.includes(to));
+  if (callable(spec, role, flow.fn))
+    for (const opt of st.enum ?? []) {
+      const sources = from(opt.value);
+      if (!sources.length) continue;
+      out.push(
+        `{ id: ${js(`to_${opt.value}`)}, label: ${js(opt.label)}, kind: "fn", fn: ${js(flow.fn)}, args: { status: ${js(opt.value)} }, visible: (r: Doc) => ${js(sources)}.includes(String(r.${st.name})) }`,
+      );
+    }
+  for (const a of flow.actions ?? [])
+    if (callable(spec, role, a.fn))
+      out.push(
+        `{ id: ${js(a.id)}, label: ${js(a.label)}, tone: "danger", kind: "fn", fn: ${js(a.fn)}${a.confirm ? `, confirm: ${js(a.confirm)}` : ""}, visible: (r: Doc) => ${js([...a.when])}.includes(String(r.${st.name})) }`,
+      );
+  return out;
 }
 
 /** Cabinet page of a role: CabinetLayout with a section per entity (table, card with status actions, forms). */
@@ -36,6 +82,7 @@ export function cabinetPage(
   role: string,
   roleLabel: string,
   entities: readonly string[],
+  flows: Readonly<Record<string, StatusFlow>> = {},
 ): string {
   const parts: string[] = [];
   const sections: string[] = [];
@@ -47,7 +94,9 @@ export function cabinetPage(
     const st = can(spec, role, name, "update") ? statusField(spec, name) : undefined;
     const ro = new Set(permOf(spec, role, name)?.readonlyFields ?? []);
     const actions: string[] = [];
-    if (st && !ro.has(st.name))
+    const flow = flows[name];
+    if (flow && st) actions.push(...flowActions(spec, role, st, flow));
+    else if (st && !ro.has(st.name))
       for (const opt of st.enum ?? [])
         actions.push(
           `{ id: ${js(`to_${opt.value}`)}, label: ${js(opt.label)}, kind: "update", patch: { ${st.name}: ${js(opt.value)} }, visible: (r: Doc) => r.${st.name} !== ${js(opt.value)} }`,
@@ -58,6 +107,10 @@ export function cabinetPage(
       );
     const canCreate = can(spec, role, name, "create");
     const canEdit = can(spec, role, name, "update");
+    // V3-18: filters by status and the other enum/bool fields, search over the role's fields (runtime `q`), CSV for
+    // the owner only.
+    const filters = filterFields(spec, role, name);
+    const tableExtras = `${filters.length ? ` filters={${js(filters)}}` : ""}${role === "owner" ? " exportCsv" : ""}`;
     parts.push(
       [
         `function ${comp}() {`,
@@ -66,7 +119,7 @@ export function cabinetPage(
         '  const [mode, setMode] = useState<"view" | "edit" | "create">("view");',
         "  return (",
         "    <>",
-        `      <DataTable entity={${js(name)}} columns={${js([...cols, "created_at"])}} defaultSort={{ field: "created_at", dir: "desc" }} searchable onRowClick={(r: Doc) => { setSelected(r.id); setMode("view"); }} emptyText="Записей пока нет" />`,
+        `      <DataTable entity={${js(name)}} columns={${js([...cols, "created_at"])}} defaultSort={{ field: "created_at", dir: "desc" }} searchable${tableExtras} onRowClick={(r: Doc) => { setSelected(r.id); setMode("view"); }} emptyText="Записей пока нет" />`,
         `      {selected && mode === "view" ? (`,
         "        <>",
         `          <RecordCard entity={${js(name)}} id={selected} actions={[${actions.join(", ")}]} onDeleted={() => setSelected(null)} />`,

@@ -46,6 +46,8 @@ export const catalogSlots = z.object({
     .optional(),
   /** One action of the section (catalog K09). */
   action: linkSlot.optional(),
+  /** A preview on another page (home, V3-18): nothing while the catalog is empty, no «Показать ещё». */
+  preview: z.boolean().optional(),
 });
 
 /** Preview content (tests, previews): an example business, never published as the client's text (D49). */
@@ -72,7 +74,7 @@ const base = catalogSlots.pick({
 const filtered = base.extend({ categoryEntity: catalogSlots.shape.categoryEntity });
 /** The variants built on the sections need them. */
 const bySections = base.extend({ categoryEntity: ident });
-const paged = { pageSize: catalogSlots.shape.pageSize };
+const paged = { pageSize: catalogSlots.shape.pageSize, preview: catalogSlots.shape.preview };
 const acting = { itemAction: catalogSlots.shape.itemAction };
 
 export const CATALOG_PATTERNS: readonly PatternMeta[] = [

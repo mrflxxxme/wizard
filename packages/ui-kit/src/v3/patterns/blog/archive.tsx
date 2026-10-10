@@ -23,6 +23,8 @@ export type BlogArchiveProps = {
   /** Posts per «Показать ещё». */
   pageSize?: number;
   action?: Link;
+  /** A preview on another page (home): nothing while the list is empty, no «Показать ещё». */
+  preview?: boolean;
 };
 
 const FIELDS: Required<Fields> = {
@@ -204,7 +206,7 @@ function monthOf(iso: string | undefined): { key: string; month: string; day: st
 }
 
 export default function BlogArchive(props: BlogArchiveProps) {
-  const { entity = "post", path, title, text, empty, pageSize = 12, action } = props;
+  const { entity = "post", path, title, text, empty, pageSize = 12, action, preview } = props;
   const f = { ...FIELDS, ...props.fields };
   const m = useContent(entity, { sort: { field: f.date, dir: "desc" }, pageSize });
   const { items, growing } = useShown(m);
@@ -216,6 +218,7 @@ export default function BlogArchive(props: BlogArchiveProps) {
     if (last && last.key === at.key) last.posts.push({ post, day: at.day });
     else months.push({ key: at.key, month: at.month, posts: [{ post, day: at.day }] });
   }
+  if (preview && !m.isLoading && items.length === 0) return null;
   let body: ReactNode;
   if (m.error && items.length === 0) body = <Failed m={m} />;
   else if (m.isLoading && items.length === 0) body = <Loading />;
@@ -249,7 +252,7 @@ export default function BlogArchive(props: BlogArchiveProps) {
             </section>
           ))}
         </div>
-        <More m={m} shown={items.length} growing={growing} className="mt-10" />
+        {preview ? null : <More m={m} shown={items.length} growing={growing} className="mt-10" />}
       </>
     );
   return (

@@ -46,3 +46,9 @@ export function instrumentFetch<A extends unknown[]>(
     }
   };
 }
+
+/** V3-18: promise rejections nobody handled; logged and counted, the process keeps serving (main.ts). */
+export const unhandledRejections = runtimeMetrics.counter(
+  "wizard_runtime_unhandled_rejections_total",
+  "Promise rejections of the runtime process that nothing handled (logged; the process keeps running)",
+);

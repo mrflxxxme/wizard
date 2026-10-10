@@ -34,6 +34,8 @@ const joinRu = (a: readonly string[]): string =>
 
 export const canvas = {
   brand: "Born to Build",
+  /** V3-18: the logo leads to the list of systems. */
+  home: "Born to Build — к списку систем",
   loading: "Открываю систему…",
   sample: "пример данных",
   frames: { site: "Сайт", cab: "Кабинет", phone: "Телефон" } as Record<string, string>,
@@ -71,6 +73,18 @@ export const canvas = {
     sketchReady: "Набросал систему по вашему описанию. Уточню пару деталей.",
     answered: (label: string) => `Учёл: ${label.toLowerCase()}`,
     piiShort: "Личные данные из сообщения скрыты и не попадут к моделям.",
+    /** V3-18: a chat turn failed (the server's words come first). */
+    turnFailed: "Не получилось ответить. Попробуйте ещё раз.",
+    answerCount: (n: number, max: number) => `${n} из ${max} знаков`,
+    answerTooLong: (n: number, max: number) =>
+      `Ответ на вопрос — не длиннее ${max} знаков, сейчас ${n}. Сократите его и отправьте ещё раз.`,
+  },
+  /** V3-18: the main area of a v3 system before its build. */
+  v3: {
+    emptyTitle: "Здесь появится ваша система",
+    interview:
+      "Отвечайте на вопросы в чате — из ответов сложится бриф. После «Собрать» здесь будут появляться страницы системы.",
+    card: "Бриф готов. Нажмите «Собрать» — здесь будут появляться страницы системы по мере сборки.",
   },
   plan: {
     title: "План готов",

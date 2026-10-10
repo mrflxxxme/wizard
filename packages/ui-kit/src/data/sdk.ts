@@ -11,9 +11,7 @@ import {
 } from "@wizard/sdk";
 import { useMemo } from "react";
 import { ru } from "../i18n/ru.js";
-import { useRoleSpec } from "./context.js";
 import { toWzError, useMutationState } from "./mutation.js";
-import { titleField } from "./roleSpec.js";
 import type {
   AiActionResult,
   AsyncResult,
@@ -45,7 +43,7 @@ type ListState = {
 type QState = { data: unknown; error: WizardError | undefined; isLoading: boolean; refetch(): void };
 const list = useEntityList as unknown as (
   e: string,
-  o: { filter?: Loose; sort?: string; page?: number; limit?: number },
+  o: { filter?: Loose; sort?: string; page?: number; limit?: number; search?: string },
 ) => ListState;
 const one = useEntity as unknown as (e: string, id: string | undefined) => QState;
 const mut = useEntityMutation as unknown as (e: string) => {
@@ -57,26 +55,29 @@ const fnQuery = useQuery as unknown as (n: string, a: unknown) => QState;
 
 const err = (e: WizardError | undefined) => (e ? toWzError(e) : undefined);
 
-/** ListQuery → sdk EntityListOptions (sort "-field", limit ≤ 100, search → contains on the first string field). */
-export function toSdkListOptions(
-  q: ListQuery,
-  searchField: string | undefined,
-): { filter?: Loose; sort?: string; page?: number; limit?: number } {
+/** ListQuery → sdk EntityListOptions (sort "-field", limit ≤ 100, search → `q` over the role's readable fields). */
+export function toSdkListOptions(q: ListQuery): {
+  filter?: Loose;
+  sort?: string;
+  page?: number;
+  limit?: number;
+  search?: string;
+} {
   const filter: Loose = { ...(q.filter ?? {}) };
-  if (q.search && searchField) filter[searchField] = { contains: q.search };
+  const search = q.search?.trim();
   return {
     ...(Object.keys(filter).length ? { filter } : {}),
     ...(q.sort ? { sort: q.sort.dir === "desc" ? `-${q.sort.field}` : q.sort.field } : {}),
     ...(q.page ? { page: q.page } : {}),
     ...(q.pageSize ? { limit: Math.min(100, q.pageSize) } : {}),
+    ...(search ? { search } : {}),
   };
 }
 
 export function sdkDataSource(): DataSource {
   return {
     useList<T>(entity: string, q: ListQuery): AsyncResult<{ items: T[]; total: number }> {
-      const spec = useRoleSpec();
-      const s = list(entity, toSdkListOptions(q, titleField(spec, entity)));
+      const s = list(entity, toSdkListOptions(q));
       const data = useMemo(() => ({ items: s.items as T[], total: s.total }), [s.items, s.total]);
       const e = err(s.error);
       return {
@@ -85,6 +86,21 @@ export function sdkDataSource(): DataSource {
         ...(e ? { error: e } : {}),
         refetch: s.refetch,
       };
+    },
+    useListFetcher() {
+      const client = useSdkClient();
+      return useMemo(
+        () =>
+          async <T>(entity: string, q: ListQuery): Promise<{ items: T[]; total: number }> => {
+            try {
+              const r = await client.listEntities<T>(entity, toSdkListOptions(q));
+              return { items: r.items, total: r.total };
+            } catch (e) {
+              throw toWzError(e as WizardError);
+            }
+          },
+        [client],
+      );
     },
     useRecord<T>(entity: string, id: string): AsyncResult<T> {
       const s = one(entity, id);

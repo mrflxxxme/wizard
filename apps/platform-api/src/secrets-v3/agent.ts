@@ -7,6 +7,7 @@ import type postgres from "postgres";
 import { z } from "zod";
 import { ApiError } from "../errors.js";
 import { latestContracts } from "../integrations-v3/store.js";
+import { RunFailure } from "../runs/types.js";
 import { requestSecret, SECRET_WINDOW_NAME } from "./service.js";
 import { listBindings, secretRefExists, systemOrg, withOrg } from "./store.js";
 
@@ -152,6 +153,24 @@ export function secretEgressIssues(
 }
 
 /**
+ * D37 of a system's spec against its window keys (draft and prod bindings). V3-18: the build hook below and the
+ * publish gate both ask it, so a spec that reached a revision past the hook still cannot ship a key to another host.
+ */
+export async function systemSecretEgressIssues(
+  pg: postgres.Sql,
+  systemId: string,
+  spec: SpecFunctions,
+): Promise<SecretEgressIssue[]> {
+  const sys = await systemOrg(pg, systemId);
+  const bindings = sys ? await withOrg(pg, sys.orgId, (tx) => listBindings(tx, systemId)) : [];
+  return secretEgressIssues(spec, bindings);
+}
+
+/** The refusal of a publication whose functions would send a window key to a host the owner did not see. */
+export const SECRET_EGRESS_BLOCKED_RU = (issue: SecretEgressIssue): string =>
+  `Публиковать нельзя: ${issue.message_ru}. Пересоберите версию или откройте окно ключа заново с этим адресом`;
+
+/**
  * V3Host.integrations with the key window (builds-v3/host.ts): after the integrations layer the spec must keep window
  * keys within their hosts (else the build stops, like a widened contract egress), and the agent opens windows for the
  * keys still missing. Asking for keys never fails a build.
@@ -163,10 +182,14 @@ export function withKeyWindow<I, R extends { spec: SpecFunctions } | null>(
   return async (input) => {
     const out = await hook(input);
     if (out) {
-      const sys = await systemOrg(o.pg, o.systemId);
-      const bindings = sys ? await withOrg(o.pg, sys.orgId, (tx) => listBindings(tx, o.systemId)) : [];
-      const issues = secretEgressIssues(out.spec, bindings);
-      if (issues.length) throw new Error(`secret egress: ${issues.map((i) => i.message_ru).join("; ")}`);
+      const issues = await systemSecretEgressIssues(o.pg, o.systemId, out.spec);
+      // V3-18: deterministic — a repeat of the same build stops the same way (retryable: false), said in Russian.
+      if (issues.length)
+        throw new RunFailure(
+          "GATES_FAILED",
+          `Сборка остановлена: ключ доступа ушёл бы на адрес, которого владелец не видел в окне ключа. ${issues.map((i) => i.message_ru).join("; ")}. Повтор сборки этого не исправит — напишите команде, мы поправим интеграцию.`,
+          false,
+        );
       await requestMissingKeys({ pg: o.pg }, { systemId: o.systemId, runId: o.runId ?? null }).catch((e) =>
         o.log?.("key window request failed", e),
       );

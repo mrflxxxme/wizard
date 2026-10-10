@@ -546,7 +546,45 @@ const cases: Case[] = [
     "LIMIT_EXCEEDED",
     "/entities/1/indexes/0/fields",
   ],
+  // V3-18: allowedValues — an enum field the role writes, values of its enum.
+  [
+    "allowedValues on a non-enum field",
+    (s) => {
+      (s.permissions[1] as { allowedValues?: unknown }).allowedValues = { title: ["x"] };
+    },
+    "UNKNOWN_FIELD",
+    "/permissions/1/allowedValues/title",
+  ],
+  [
+    "allowedValues on a readonly field",
+    (s) => {
+      Object.assign(s.permissions[1] as object, {
+        readonlyFields: ["state"],
+        allowedValues: { state: ["done"] },
+      });
+    },
+    "UNKNOWN_FIELD",
+    "/permissions/1/allowedValues/state",
+  ],
+  [
+    "allowedValues value outside the enum",
+    (s) => {
+      (s.permissions[1] as { allowedValues?: unknown }).allowedValues = { state: ["done", "later"] };
+    },
+    "SCHEMA_INVALID",
+    "/permissions/1/allowedValues/state/1",
+  ],
 ];
+
+describe("allowedValues (V3-18)", () => {
+  test("an enum field with its values passes; an empty list is a schema error", () => {
+    const spec = miniSpec();
+    (spec.permissions[1] as { allowedValues?: unknown }).allowedValues = { state: ["done"] };
+    expect(errorsOf(spec)).toEqual([]);
+    (spec.permissions[1] as { allowedValues?: unknown }).allowedValues = { state: [] };
+    expect(errorsOf(spec).map((e) => e.code)).toContain("SCHEMA_INVALID");
+  });
+});
 
 describe("semantic rules (ops.yaml#semantic_rules)", () => {
   test.each(cases)("%s → %s", (_name, mutate, code, path) => {

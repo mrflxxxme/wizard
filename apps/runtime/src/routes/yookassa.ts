@@ -9,12 +9,16 @@ import {
   yookassaHookToken,
   yookassaPlatform,
   yookassaSourceAllowed,
+  yookassaWebhookUrl,
 } from "@wizard/connectors";
 import { Hono } from "hono";
 import { clientIpOf } from "../auth/client-ip.js";
 import type { RuntimeContext, RuntimeHonoEnv } from "../http/context.js";
 import { notFoundPage } from "../http/errors.js";
+import { sessionOf } from "../http/subject.js";
 import type { ConnectorHost } from "../preview/connectors.js";
+import { documentHeaders, escapeHtml, htmlPage } from "../preview/headers.js";
+import { requestOrigin } from "./pay.js";
 
 /** connector-interface.md §2 «Вебхуки»: body ≤ 256 KiB. */
 export const YOOKASSA_HOOK_BODY_MAX = 256 * 1024;
@@ -72,6 +76,54 @@ export function yookassaHookRoutes(host: ConnectorHost): Hono<RuntimeHonoEnv> {
       });
       return status(500);
     }
+  });
+  app.all("*", () => notFoundPage());
+  return app;
+}
+
+/** Route of the owner's page with the ЮKassa notification address (yookassa.yaml#webhooks.path). */
+export const PAYMENTS_SETTINGS_PAGE = "/_wizard/payments";
+
+/**
+ * GET /_wizard/payments (isAdmin roles): the HTTP-notification URL of each ЮKassa integration — the owner pastes it
+ * into the ЮKassa dashboard (Интеграция → HTTP-уведомления). The token is derived from the shop's secret key, which
+ * only the runtime holds, so the address is shown here and not in the platform's cabinet.
+ */
+export function yookassaSettingsRoutes(host: ConnectorHost): Hono<RuntimeHonoEnv> {
+  const app = new Hono<RuntimeHonoEnv>();
+  app.get("/", async (c) => {
+    const title = "Уведомления ЮKassa";
+    const s = await sessionOf(c).catch(() => null);
+    if (s?.subject.id == null) {
+      const body = `<p><a href="/login?next=${encodeURIComponent(PAYMENTS_SETTINGS_PAGE)}">Войдите</a> как владелец системы.</p>`;
+      return c.body(htmlPage(title, body), 200, documentHeaders("no-store"));
+    }
+    if (!s.subject.isAdmin) {
+      const body = "<p>Нет доступа: страница доступна только владельцу системы.</p>";
+      return c.body(htmlPage(title, body), 403, documentHeaders("no-store"));
+    }
+    const sys = c.get("system");
+    const items: string[] = [];
+    for (const integ of host.integrations(sys.spec, "yookassa")) {
+      let line: string;
+      if (!yookassaPlatform(host).live) {
+        line = "Приём уведомлений включится в опубликованной системе с подключёнными ключами ЮKassa.";
+      } else {
+        try {
+          const url = await yookassaWebhookUrl(host.ctx(sys, integ, requestOrigin(c)));
+          line = `<code data-testid="wz-yookassa-webhook-url">${escapeHtml(url)}</code>`;
+        } catch (e) {
+          if (!isConnectorError(e)) throw e;
+          line =
+            "Сначала подключите ключи ЮKassa (shopId и секретный ключ) — адрес строится из секретного ключа.";
+        }
+      }
+      items.push(`<li>${line}</li>`);
+    }
+    const body = items.length
+      ? `<p>Скопируйте адрес и вставьте его в личном кабинете ЮKassa: «Интеграция» → «HTTP-уведомления», отметьте события payment.succeeded, payment.canceled, payment.waiting_for_capture и refund.succeeded. Без него заказ отмечается оплаченным, только когда покупатель вернулся на сайт после оплаты.</p><ul>${items.join("")}</ul><p>Адрес секретный: не публикуйте его.</p>`
+      : "<p>В системе нет приёма оплаты через ЮKassa.</p>";
+    return c.body(htmlPage(title, body), 200, documentHeaders("no-store"));
   });
   app.all("*", () => notFoundPage());
   return app;

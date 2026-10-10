@@ -5,7 +5,7 @@
 // [data-wz-product], wz-cart-add, wz-cart-link (builder-v3.md C3).
 import { z } from "zod";
 import { definePattern } from "../define.js";
-import { line, linkSlot, para } from "../slots.js";
+import { line, linkSlot, para, SAME_ORIGIN_PATH_RE } from "../slots.js";
 import type { PatternMeta } from "../types.js";
 import type Grid from "./grid.js";
 import type List from "./list.js";
@@ -39,6 +39,12 @@ export const shopSlots = z.object({
   pageSize: z.number().int().min(3).max(48).optional(),
   /** The cart page. */
   cart: linkSlot,
+  /** V3-18: the product pages — a card's name and photo lead to `path` + the product's id («/shop/»). */
+  product: z.object({ path: z.string().regex(SAME_ORIGIN_PATH_RE, "путь страницы товара") }).optional(),
+  /** V3-18: a preview on home — nothing while the shop is empty, no filter, no «Показать ещё». */
+  preview: z.boolean().optional(),
+  /** The way to all the goods from a preview. */
+  all: linkSlot.optional(),
 });
 
 /** Preview content (tests, previews): an example business, never published as the client's text (D49). */
@@ -51,6 +57,7 @@ export const SHOP_EXAMPLE = {
   empty: "Товары скоро появятся",
   pageSize: 8,
   cart: { label: "Корзина", href: "/cart" },
+  product: { path: "/shop/" },
 } satisfies z.input<typeof shopSlots>;
 
 const at = import.meta.url;

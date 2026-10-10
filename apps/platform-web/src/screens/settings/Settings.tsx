@@ -85,6 +85,7 @@ interface SpecLike {
     operatorContact?: string;
     operatorAddress?: string;
     operatorInn?: string;
+    operatorOgrn?: string;
     consentTemplateId?: string;
     consentText?: string;
     policyPage?: string;
@@ -113,7 +114,7 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
   const [busy, setBusy] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<OrgRole>("editor");
-  const [operator, setOperator] = useState({ name: "", contact: "", address: "", inn: "" });
+  const [operator, setOperator] = useState({ name: "", contact: "", address: "", inn: "", ogrn: "" });
   const [confirm, setConfirm] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   // Deletion journal (owner): newest first, «Показать ещё» follows nextCursor.
@@ -181,6 +182,7 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
           contact: c.operatorContact ?? "",
           address: c.operatorAddress ?? "",
           inn: c.operatorInn ?? "",
+          ogrn: c.operatorOgrn ?? "",
         });
         setConsent({
           own: (c.consentText ?? "").trim() !== "",
@@ -348,6 +350,7 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
       operatorContact: operator.contact.trim(),
       ...(operator.address.trim() ? { operatorAddress: operator.address.trim() } : {}),
       ...(operator.inn.trim() ? { operatorInn: operator.inn.trim() } : {}),
+      ...(operator.ogrn.trim() ? { operatorOgrn: operator.ogrn.trim() } : {}),
     };
     if (await act("pd", () => api.setCompliance(systemId, body), ru.settings.saved)) {
       await loadSystem().catch(() => {});
@@ -364,6 +367,7 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
       operatorContact: operator.contact.trim(),
       ...(operator.address.trim() ? { operatorAddress: operator.address.trim() } : {}),
       ...(operator.inn.trim() ? { operatorInn: operator.inn.trim() } : {}),
+      ...(operator.ogrn.trim() ? { operatorOgrn: operator.ogrn.trim() } : {}),
       consentTemplateId: consent.templateId,
       // An empty own text means «по шаблону»: the platform renders the template (agents/consent.ts).
       consentText: consent.own ? consent.text.trim() : "",
@@ -830,6 +834,16 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
                     value={operator.inn}
                     onChange={(e) => setOperator({ ...operator, inn: e.target.value })}
                     data-testid="settings-pd-inn"
+                  />
+                </label>
+                <label className={s.field}>
+                  <span>{ru.settings.operatorOgrn}</span>
+                  <input
+                    inputMode="numeric"
+                    pattern="[0-9]{13}([0-9]{2})?"
+                    value={operator.ogrn}
+                    onChange={(e) => setOperator({ ...operator, ogrn: e.target.value })}
+                    data-testid="settings-pd-ogrn"
                   />
                 </label>
               </fieldset>

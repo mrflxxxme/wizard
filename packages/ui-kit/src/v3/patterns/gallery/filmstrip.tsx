@@ -1,6 +1,7 @@
 // Gallery «filmstrip»: a row of large photos running off the edge of the screen with snap points — turned by finger,
 // by the arrow keys once the row has focus, or by the named buttons next to the title; it never scrolls by itself and
 // jumps without smooth scrolling under reduced motion (catalog D1 Gallery «scroll-snap», M06). Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
 import { useEffect, useRef, useState } from "react";
 
 type Link = { label: string; href: string };
@@ -80,6 +81,8 @@ export default function GalleryFilmstrip({ title, lead, images, action }: Galler
               <figure>
                 <img
                   src={im.src}
+                  srcSet={srcSetOf(im.src)}
+                  sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                   alt={im.alt}
                   loading="lazy"
                   className="aspect-4/3 w-full rounded-md bg-muted object-cover"

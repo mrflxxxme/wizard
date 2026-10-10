@@ -1,14 +1,16 @@
 // V3-21 «Окно ключа в чате» of platform-api (security/data-boundary.yaml#secret_window): browser-encrypted keys of
 // external APIs stored as secret://<name> of a system, sent only to the hosts the window showed, checked by the V3-20
 // contract, rotated and removed; keys typed into the chat as text are refused.
-/** request_secret for agents, the build hook asking for missing keys, the D37 check of window keys. */
+/** request_secret for agents, the build hook asking for missing keys, the D37 check of window keys (build and publish). */
 export {
   REQUEST_SECRET_TOOL,
   type RequestSecretToolResult,
   requestMissingKeys,
   runRequestSecret,
+  SECRET_EGRESS_BLOCKED_RU,
   type SecretEgressIssue,
   secretEgressIssues,
+  systemSecretEgressIssues,
   withKeyWindow,
 } from "./agent.js";
 /** Window cryptography: P-256 ECDH + HKDF-SHA-256 + AES-256-GCM, context-bound; the server-side mirror for tests. */

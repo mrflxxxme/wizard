@@ -66,6 +66,8 @@ export type RecordAction<T = Rec> = {
   kind: "update" | "delete" | "fn" | "link" | "ai";
   patch?: Record<string, unknown>;
   fn?: string;
+  /** kind=fn: more arguments of the call besides the record's id (e.g. the target status of a status flow). */
+  args?: Record<string, unknown>;
   /** kind=ai: aiActions[].name (runtime.yaml#ai_actions). */
   ai?: string;
   href?: string;
@@ -86,6 +88,8 @@ export interface DataTableProps<T = Rec> extends WzBase {
   query?: ListQuery;
   filters?: string[];
   searchable?: boolean;
+  /** V3-18: «Выгрузить CSV» — every page under the current filter and search, only the role's visible fields. */
+  exportCsv?: boolean;
   defaultSort?: { field: string; dir: "asc" | "desc" };
   pageSize?: 10 | 25 | 50;
   onRowClick?(row: T): void;

@@ -292,6 +292,41 @@ describe("the panel of the live build", () => {
     expect($("canvas-v3-live-leave")).toBeNull();
     expect($("canvas-v3-live-time-left")?.textContent).toBe("Шла 12 мин");
   });
+
+  test("V3-18 «Остановить сборку»: asked first, then stopped; a refusal in words; none without the right", async () => {
+    const live = v3Live([stageEv(snap({ stage: "scenarios", spent: 40 }))]);
+    if (!live) throw new Error("no live");
+    const onStop = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce(
+        new ApiError(409, { code: "RUN_NOT_CANCELLABLE", message_ru: "Прогон уже завершён" }),
+      )
+      .mockResolvedValueOnce(undefined);
+    await mount(
+      {},
+      h(V3LivePanel, { live, now: Date.now(), notify: "granted", onAskNotify: () => {}, onStop }),
+    );
+    const click = async (id: string) => {
+      await act(async () => $(id)?.click());
+      await settle();
+    };
+    await click("canvas-v3-live-stop");
+    expect(onStop).not.toHaveBeenCalled();
+    expect($("canvas-v3-live-stop-confirm")?.textContent).toContain("Остановить сборку?");
+    await click("canvas-v3-live-stop-no");
+    expect($("canvas-v3-live-stop-confirm")).toBeNull();
+    await click("canvas-v3-live-stop");
+    await click("canvas-v3-live-stop-yes");
+    expect($("canvas-v3-live-stop-error")?.textContent).toBe("Прогон уже завершён");
+    await click("canvas-v3-live-stop-yes");
+    expect(onStop).toHaveBeenCalledTimes(2);
+    expect($("canvas-v3-live-stop-confirm")).toBeNull();
+    expect($("canvas-v3-live-stop-error")).toBeNull();
+    act(() => root?.unmount());
+    container?.remove();
+    await mount({}, h(V3LivePanel, { live, now: Date.now(), notify: "granted", onAskNotify: () => {} }));
+    expect($("canvas-v3-live-stop")).toBeNull();
+  });
 });
 
 describe("the growing system", () => {

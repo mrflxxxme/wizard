@@ -192,6 +192,8 @@ export interface SystemView {
   messages: Message[];
   activeRunId?: string | null;
   publishBlockers?: string[];
+  /** V3-18: what the techreview of the v3 build found (the reasons of GATES_FAILED in words). */
+  techreviewBlockers?: string[];
   /** B2-02: the org replays recorded model answers (no spend). */
   demoReplay?: boolean;
   /** B2-25: modules — the canvas screen (beta v2 plan), legacy (or absent) — the v1 workspace. */
@@ -940,6 +942,40 @@ export interface CapabilityMonth {
   notYet: number;
   /** notYet / requirements, 0…1. */
   share: number;
+}
+
+/** V3-18 GET /admin/systems: a client system in the founder console «Системы и сбои». */
+export interface AdminSystem {
+  id: string;
+  name: string;
+  slug: string;
+  org: { id: string; name: string; kind: string };
+  stage: string;
+  suspended: boolean;
+  draftRevision: number;
+  previewRevision: number | null;
+  publishedRevision: number | null;
+  lastBuild: { status: string; failureCode: string | null; at: string | null } | null;
+  modelSpendRub: number;
+  creditsUsed: number;
+  lastActivityAt: string | null;
+  createdAt: string | null;
+}
+
+/** V3-18 GET /admin/runs: a run (by default a failed one) with its error and cost. */
+export interface AdminRun {
+  id: string;
+  org: { id: string; name: string };
+  system: { id: string; name: string } | null;
+  kind: string;
+  mode: string | null;
+  status: string;
+  errorCode: string | null;
+  messageRu: string | null;
+  modelSpendRub: number;
+  creditsUsed: number;
+  createdAt: string | null;
+  finishedAt: string | null;
 }
 
 /** V3-17 workflows.yaml#events.schemas.v3_progress: a brief scenario on the live checklist of a v3 build. */

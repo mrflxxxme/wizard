@@ -21,6 +21,19 @@
   max-width: 320px;
 }
 
+.export {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.exportError {
+  color: var(--w-bad);
+  font-size: var(--w-font-size-sm);
+}
+
 .controlLabel {
   color: var(--w-muted);
   font-size: var(--w-font-size-sm);

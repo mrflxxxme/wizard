@@ -116,7 +116,7 @@ screens:
       error: "role=alert с message_ru; 402 INSUFFICIENT_CREDITS → «Пополнить» (→ S-billing); текст промпта сохраняется"
     rules:
       - "M2-09: /?template=<id> (переход с S-welcome) — шаблон выбран и заготовка промпта подставлена; у org на тарифе pilot — ссылка «Как устроен пилот» (start-pilot-about → /welcome; в test_ids не входит: рендерится только у пилотных org)"
-    test_ids: [start-prompt, start-submit, start-template-<id>, start-upload, start-policy, start-ru-only, start-usage, start-system-card, support-open, platform-top, theme-toggle]
+    test_ids: [start-prompt, start-submit, start-template-<id>, start-policy, start-ru-only, start-usage, start-system-card, support-open, platform-top, theme-toggle]
     acceptance:
       - "Playwright (fixture): бриф «форум» → «Начать» → URL /s/<id>, в ленте сообщение пользователя"
       - "Клик по шаблону заполняет textarea; при пустом промпте кнопка disabled; @1024px без горизонтального скролла"

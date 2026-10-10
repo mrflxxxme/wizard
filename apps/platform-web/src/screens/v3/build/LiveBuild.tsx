@@ -206,10 +206,13 @@ function Details({ live }: { live: V3Live }): ReactNode {
 export function LivePreview({
   systemId,
   revision,
+  settled = false,
 }: {
   systemId: string;
   /** Revision of the snapshot (null — no preview yet); a new one reloads the frame. */
   revision: number | null;
+  /** V3-18: a built system outside a build (opened again, published) — no «grows» caption. */
+  settled?: boolean;
 }): ReactNode {
   const { api } = usePlatform();
   const [info, setInfo] = useState<PreviewUrl | null>(null);
@@ -273,7 +276,7 @@ export function LivePreview({
             key={info.revision}
             className={s.iframe}
             src={src}
-            title={T.preview.frame}
+            title={settled ? T.preview.frameSettled : T.preview.frame}
             sandbox="allow-scripts allow-forms allow-same-origin allow-popups"
             data-testid="canvas-v3-live-frame"
           />
@@ -290,12 +293,16 @@ export function LivePreview({
               </span>
             </div>
             <p className={s.pendingText}>
-              {revision === null || failed ? T.preview.pending : T.preview.loading}
+              {settled && failed
+                ? T.preview.unavailable
+                : revision === null || failed
+                  ? T.preview.pending
+                  : T.preview.loading}
             </p>
           </div>
         )}
       </div>
-      {src && <p className={s.caption}>{T.preview.growing}</p>}
+      {src && !settled && <p className={s.caption}>{T.preview.growing}</p>}
     </section>
   );
 }
@@ -305,10 +312,70 @@ export interface V3LivePanelProps {
   now: number;
   notify: NotifyState;
   onAskNotify(): void;
+  /** V3-18: stop the running build (POST /runs/:id/cancel); absent — no «Остановить» (a viewer, another run). */
+  onStop?(): Promise<void>;
+}
+
+/** «Остановить сборку» with a confirmation: what is spent stays spent, the steps done are kept for the next build. */
+function StopBuild({ onStop }: { onStop(): Promise<void> }): ReactNode {
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function stop() {
+    setBusy(true);
+    setError(null);
+    try {
+      await onStop();
+      setConfirm(false);
+    } catch (e) {
+      setError(e instanceof Error && e.message ? e.message : T.stop.failed);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className={s.stop} data-testid="canvas-v3-live-stop-box">
+      {confirm ? (
+        <>
+          <p data-testid="canvas-v3-live-stop-confirm">{T.stop.confirm}</p>
+          <div className={s.stopRow}>
+            <ActionButton
+              size="sm"
+              variant="secondary"
+              busy={busy}
+              disabled={busy}
+              testId="canvas-v3-live-stop-yes"
+              onClick={() => void stop()}
+            >
+              {busy ? T.stop.stopping : T.stop.yes}
+            </ActionButton>
+            <ActionButton
+              size="sm"
+              variant="ghost"
+              disabled={busy}
+              testId="canvas-v3-live-stop-no"
+              onClick={() => setConfirm(false)}
+            >
+              {T.stop.no}
+            </ActionButton>
+          </div>
+        </>
+      ) : (
+        <ActionButton size="sm" variant="ghost" testId="canvas-v3-live-stop" onClick={() => setConfirm(true)}>
+          {T.stop.button}
+        </ActionButton>
+      )}
+      {error && (
+        <p className={s.stopError} role="alert" data-testid="canvas-v3-live-stop-error">
+          {error}
+        </p>
+      )}
+    </div>
+  );
 }
 
 /** The panel of the live build: what is going on, the time, the money, the scenarios and «Подробнее». */
-export function V3LivePanel({ live, now, notify, onAskNotify }: V3LivePanelProps): ReactNode {
+export function V3LivePanel({ live, now, notify, onAskNotify, onStop }: V3LivePanelProps): ReactNode {
   const p = live.progress;
   const clock = liveClock(live, now);
   const stageLabel = p.stages.find((x) => x.id === p.stage)?.label_ru ?? T.starting;
@@ -338,6 +405,7 @@ export function V3LivePanel({ live, now, notify, onAskNotify }: V3LivePanelProps
           )}
           {notify === "granted" && <p data-testid="canvas-v3-live-notify-on">{T.notify.on}</p>}
           {notify === "denied" && <p>{T.notify.denied}</p>}
+          {onStop && <StopBuild onStop={onStop} />}
         </div>
       )}
       <Details live={live} />
@@ -353,6 +421,8 @@ export interface UseV3LiveOptions {
   events: readonly RunEvent[];
   /** The canvas live region. */
   announce(text: string): void;
+  /** V3-18: stop the followed build (absent — the member may not, or no build runs). */
+  onStop?(): Promise<void>;
 }
 
 export interface V3LiveView {
@@ -452,7 +522,13 @@ export function useV3Live(o: UseV3LiveOptions): V3LiveView {
       data-testid="canvas-v3-live"
       data-phase={live.phase}
     >
-      <V3LivePanel live={live} now={now} notify={notify} onAskNotify={askNotifyNow} />
+      <V3LivePanel
+        live={live}
+        now={now}
+        notify={notify}
+        onAskNotify={askNotifyNow}
+        {...(o.onStop ? { onStop: o.onStop } : {})}
+      />
       <LivePreview systemId={o.systemId} revision={p.previewRevision} />
     </section>
   );

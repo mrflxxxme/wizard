@@ -146,7 +146,15 @@ interface Editable {
 }
 
 /** Binding slots of the patterns with needs (V3-08): the model writes the texts around them, not these. */
-const FIXED_KEYS = ["entity", "booking", "categoryEntity", "fields", "itemAction"] as const;
+const FIXED_KEYS = [
+  "entity",
+  "booking",
+  "categoryEntity",
+  "fields",
+  "itemAction",
+  "preview",
+  "dates",
+] as const;
 
 /** Slot names of a variant (its zod object schema); null — not an object schema. */
 const slotKeys = (p: PatternMeta): string[] | null => {
@@ -160,9 +168,15 @@ const keepsBinding = (p: PatternMeta, fixed: Record<string, unknown>): boolean =
   return keys === null || Object.keys(fixed).every((k) => keys.includes(k));
 };
 
+/**
+ * Sections the model never edits but the page keeps in place: signature sections of earlier scenarios, and (V3-18) the
+ * contacts — only the owner's phone, e-mail and address, which reach a T1 model scrubbed and could not come back.
+ */
+const KEPT: ReadonlySet<string> = new Set(["signature", "contacts"]);
+
 function editable(page: SitePage, library: readonly PatternMeta[]): Editable[] {
   return page.sections
-    .filter((s) => s.type !== "header" && s.type !== "footer" && s.type !== "signature")
+    .filter((s) => s.type !== "header" && s.type !== "footer" && !KEPT.has(s.type))
     .map((s) => {
       const meta = library.find((p) => p.id === s.pattern);
       const needs = meta?.needs ?? null;
@@ -302,9 +316,10 @@ function applyAnswer(page: SitePage, edit: Editable[], v: PageComposeAnswer): Si
       ...(e.section.photos ? { photos: e.section.photos } : {}),
     };
   });
-  // Signature sections of earlier scenarios are not the model's to change: they stay after the same neighbour.
+  // Signature sections of earlier scenarios and the contacts are not the model's to change: they stay after the same
+  // neighbour.
   page.sections.forEach((s, i) => {
-    if (s.type !== "signature") return;
+    if (!KEPT.has(s.type)) return;
     const prev = page.sections[i - 1];
     const at = prev?.type === "header" ? 0 : body.findIndex((x) => x.id === prev?.id) + 1 || body.length;
     body.splice(at, 0, s);
@@ -578,7 +593,10 @@ export function signatureRequest(o: {
 
 // ------------------------------------------------------------------------------------------------ the step
 
-/** Pages a scenario touches: those of its module (moduleHint, or the module of a bound section), else the home page. */
+/**
+ * Pages a scenario touches: those of its module (moduleHint, or the module of a bound section — not a preview of its
+ * data on home, V3-18), else the home page.
+ */
 function scenarioPages(site: SiteModel, s: BriefScenario, ctx: V3BuildContext): SitePage[] {
   const modules = new Set<string>(s.moduleHint ? [s.moduleHint] : []);
   const entityModule = new Map(ctx.publicFront.actions.map((a) => [a.entity, a.module]));
@@ -586,7 +604,10 @@ function scenarioPages(site: SiteModel, s: BriefScenario, ctx: V3BuildContext): 
     (p) =>
       (p.module && modules.has(p.module)) ||
       p.sections.some(
-        (x) => typeof x.props.entity === "string" && modules.has(entityModule.get(x.props.entity) ?? ""),
+        (x) =>
+          typeof x.props.entity === "string" &&
+          x.props.preview !== true &&
+          modules.has(entityModule.get(x.props.entity) ?? ""),
       ),
   );
   const home = site.pages.find((p) => p.route === "/");

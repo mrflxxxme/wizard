@@ -79,6 +79,7 @@ export {
   signatureSchema,
   verifySystem,
 } from "./scenario.js";
+export { seedHintsFromBrief } from "./seed-hints.js";
 export {
   ANCHOR_LABELS,
   bindingOf,

@@ -1,5 +1,7 @@
 // Gallery «grid»: an even grid of one crop, two columns from sm and three from lg, each photo with its caption
 // under it (catalog D1 Gallery «grid»). The calm default when the photos are of one kind. Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Photo = { src: string; alt: string; caption?: string };
 
@@ -22,6 +24,8 @@ export default function GalleryGrid({ title, lead, images, action }: GalleryGrid
               <figure>
                 <img
                   src={im.src}
+                  srcSet={srcSetOf(im.src)}
+                  sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                   alt={im.alt}
                   loading="lazy"
                   className="aspect-4/3 w-full rounded-md bg-muted object-cover"

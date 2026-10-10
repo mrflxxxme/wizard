@@ -7,6 +7,7 @@
 import { passportAccountFromUrl, passportStateOfContract } from "@wizard/agents/integrations";
 import { egressHostProblem, platformDomains } from "@wizard/connectors";
 import { hasSecret } from "@wizard/pii";
+import type { Mailer } from "../auth/mailer.js";
 import { getLatestBrief } from "../briefs/store.js";
 import { sealKey } from "../byok/kms.js";
 import { ApiError, invalid, notFound } from "../errors.js";
@@ -16,6 +17,7 @@ import {
   latestContracts,
   setContractCheck,
 } from "../integrations-v3/store.js";
+import { orgOwnerEmails } from "../publish/moderation.js";
 import {
   isSealedSecret,
   newWindowKeyPair,
@@ -55,6 +57,8 @@ import {
 export type SecretWindowDeps = VaultDeps & {
   /** Domains of the platform a key never goes to (default: connectors platformDomains of the env). */
   platformDomains?: readonly string[];
+  /** V3-18: platform mail — the owners learn that a payment key of prod was replaced; none — no letter. */
+  notice?: { mailer: Mailer; log?: (msg: string, e?: unknown) => void };
 };
 
 /** secret://<name>: a letter, then letters, digits and «_», up to 64 (db.yaml#secret_windows.name). */
@@ -148,6 +152,13 @@ const CONNECTOR_KEY_LABELS: Readonly<Record<string, string>> = {
   yookassa_secret_key: "Оплата ЮKassa: секретный ключ (test_… для тестового магазина)",
 };
 const CONNECTOR_NAMES: Readonly<Record<string, string>> = { yookassa: "Оплата ЮKassa" };
+/** V3-18: key names of the connectors (the module keys), bound to their connector even before the spec declares them. */
+const CONNECTOR_KEY_NAMES: Readonly<Record<string, string>> = {
+  yookassa_shop_id: "yookassa",
+  yookassa_secret_key: "yookassa",
+};
+/** Connectors that take payments: a new prod key of theirs is announced to the owners. */
+const PAYMENT_CONNECTORS: ReadonlySet<string> = new Set(["yookassa"]);
 
 interface ConnectorKey {
   integration: string;
@@ -184,6 +195,52 @@ async function connectorKeys(deps: Pick<SecretWindowDeps, "pg">, systemId: strin
     }
   }
   return out;
+}
+
+/** The connector whose key secret://<name> is (a module key name or a secretRef of a connector integration). */
+async function connectorOfKey(
+  deps: Pick<SecretWindowDeps, "pg">,
+  systemId: string,
+  name: string,
+): Promise<string | null> {
+  const known = CONNECTOR_KEY_NAMES[name];
+  if (known) return known;
+  return (await connectorKeys(deps, systemId)).find((k) => k.name === name)?.connector ?? null;
+}
+
+/** env of a window of the system; null — no such window (the route answers 404 through the service). */
+export async function windowEnv(
+  deps: Pick<SecretWindowDeps, "pg">,
+  systemId: string,
+  windowId: string,
+): Promise<Env | null> {
+  const orgId = await orgOf(deps, systemId);
+  const w = await withOrg(deps.pg, orgId, (tx) => getWindow(tx, systemId, windowId));
+  return w?.env ?? null;
+}
+
+/** V3-18: a new prod key of a payment connector → a letter to every owner of the org (never the key itself). */
+async function noticePaymentKey(deps: SecretWindowDeps, w: WindowRow, last4: string): Promise<void> {
+  if (!deps.notice || w.env !== "prod") return;
+  const connector = await connectorOfKey(deps, w.systemId, w.name);
+  if (!connector || !PAYMENT_CONNECTORS.has(connector)) return;
+  try {
+    const sys = await deps.db
+      .selectFrom("platform.systems")
+      .select(["name", "org_id"])
+      .where("id", "=", w.systemId)
+      .executeTakeFirst();
+    if (!sys) return;
+    const label = CONNECTOR_KEY_LABELS[w.name] ?? CONNECTOR_NAMES[connector] ?? connector;
+    const text = [
+      `В опубликованной системе «${sys.name}» заменён ключ приёма оплаты: ${label} (${dots(last4)}).`,
+      "Если это сделали не вы или не другой владелец организации, срочно смените ключ в личном кабинете ЮKassa и в разделе «Ключи» системы.",
+    ].join("\n\n");
+    for (const to of await orgOwnerEmails(deps.db, sys.org_id))
+      await deps.notice.mailer.send({ kind: "notice", to, subject: "Заменён ключ приёма оплаты", text });
+  } catch (e) {
+    deps.notice.log?.("payment key notice failed", e);
+  }
 }
 
 /** V3-23: the window of a module connector's key (no contract: the recipient is the connector's fixed host). */
@@ -291,9 +348,13 @@ export async function requestSecret(
   const env = p.env ?? "draft";
   const orgId = await orgOf(deps, p.systemId);
   let hosts: string[];
-  const contract = p.integrationId ? await latestContract(deps.pg, p.systemId, p.integrationId) : null;
+  // V3-18: a connector's key goes only to the connector's fixed hosts, whatever domain the agent named.
+  const connector = await connectorOfKey(deps, p.systemId, p.name);
+  const contract =
+    !connector && p.integrationId ? await latestContract(deps.pg, p.systemId, p.integrationId) : null;
   const domain = p.domain?.trim().toLowerCase().replace(/\.$/, "");
-  if (contract) {
+  if (connector) hosts = [...(CONNECTOR_KEY_HOSTS[connector] ?? [])];
+  else if (contract) {
     const c = contract.contract;
     if (c.auth.secret === null) throw invalid(`API «${c.name}» работает без ключа`, { reason: "KEYLESS" });
     if (c.auth.secret !== ref(p.name))
@@ -470,6 +531,7 @@ export async function submitWindow(
     );
   }
   const r = await acceptKey(deps, { window: w, sealed: p.sealed, userId: p.userId, contracts, passport: wp });
+  if (r.saved && r.binding) await noticePaymentKey(deps, w, r.binding.last4);
   const integrationNames = await names(deps, p.systemId);
   const secret = r.binding
     ? secretView(

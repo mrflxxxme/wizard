@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { createLogger } from "@wizard/pii/log";
 import { metricsListenFromEnv } from "@wizard/pii/metrics";
-import { startMetricsServer } from "@wizard/platform-api";
+import { platformMetrics, startMetricsServer } from "@wizard/platform-api";
 import { startWorker } from "./worker.js";
 
 const root = resolve(join(import.meta.dirname, "..", "..", ".."));
@@ -17,7 +17,16 @@ const fatal = (msg: string) => (e: unknown) => {
   process.exit(1);
 };
 process.on("uncaughtException", fatal("uncaught"));
-process.on("unhandledRejection", fatal("unhandled rejection"));
+// V3-18: a rejected promise nobody handled is logged and counted, not fatal — exiting would kill every build in flight
+// (they resume from dbos.* only after a restart and lose their sandbox pods to the next reconcile).
+const unhandled = platformMetrics.counter(
+  "wizard_worker_unhandled_rejections_total",
+  "Promise rejections of the worker process that nothing handled (logged; the process keeps running)",
+);
+process.on("unhandledRejection", (e: unknown) => {
+  unhandled.inc();
+  logger.error("unhandled rejection", e);
+});
 
 // platform-api migrates the platform schema; DBOS.launch migrates dbos.
 const worker = await startWorker({ logger, migrate: false }).catch(fatal("start failed"));

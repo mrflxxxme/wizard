@@ -62,6 +62,7 @@ data_api:                                    # CRUD по AppSpec; все отв�
     - "DELETE /api/data/:entity/:id      → 204"
   query_params:
     filter: "filter[<field>]=<v> (eq) | filter[<field>][<op>]=<v>, op ∈ eq, ne, lt, lte, gt, gte, in (через запятую), contains (string/text, ILIKE с экранированием); filter[<field>]=null → IS NULL; только видимые поля роли"
+    q: "V3-18: q=<текст> ≤ 100 символов — поиск по видимым роли полям: string/text/email/url — ILIKE с экранированием, phone — по цифрам (8/7 + 10 цифр → 10 цифр), int — равенство («1042», «№1042»); условия через OR, вместе с filter, rowFilter и RLS через AND; скрытые поля роли не участвуют (без подбора ПДн)"
     sort: "sort=-created_at,name — до 3 полей, только видимые; по умолчанию -created_at"
     page: "page ≥ 1, по умолчанию 1"
     limit: "1..100, по умолчанию 20; больше 100 → 422"
@@ -105,7 +106,7 @@ permissions:                                 # первый рубеж — по�
     - "3. rowFilter: подставить $user.id и $user.<attr> (поле системной сущности users, ops.yaml#semantic_rules); NULL-значение или $user.* у публичной роли → условие FALSE. read/update/delete: AND к WHERE; строка вне фильтра → 404, не 403 (не раскрывать существование)"
     - "4. create: поля из rowFilter принудительно равны значению фильтра; другое значение от клиента → 403"
     - "5. hiddenFields: удаляются из ответа; filter/sort по ним → 422 FIELD_HIDDEN; запись в них → 422 FIELD_HIDDEN"
-    - "6. readonlyFields: присутствие в теле create/update → 422 FIELD_READONLY (при create берётся default)"
+    - "6. readonlyFields: присутствие в теле create/update → 422 FIELD_READONLY (при create берётся default). allowedValues (V3-18): значение поля вне списка → 422 FIELD_READONLY, fields[].code = VALUE_NOT_ALLOWED"
     - "7. Выполнение в транзакции с контекстом postgres.context; RLS отсекает то же самое повторно"
     - "8. Роль с isAdmin не обходит матрицу: права админа — это его permissions"
   test: "Матрица role×entity×op из permissions форума: ожидаемые 200/403/404 (M0-09); RLS-тест прямым SELECT под wizard_runtime с контекстом роли без read → 0 строк"

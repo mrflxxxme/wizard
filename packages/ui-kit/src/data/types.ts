@@ -150,6 +150,8 @@ export type AiActionResult = {
 
 export interface DataSource {
   useList<T = Rec>(entity: string, q: ListQuery): AsyncResult<{ items: T[]; total: number }>;
+  /** ext (V3-18): an imperative page fetch of a list (DataTable «Выгрузить CSV» walks the pages). */
+  useListFetcher?(): <T = Rec>(entity: string, q: ListQuery) => Promise<{ items: T[]; total: number }>;
   useRecord<T = Rec>(entity: string, id: string): AsyncResult<T>;
   useCreate(entity: string): Mutation<[values: Record<string, unknown>, opts?: WriteOpts], Rec>;
   useUpdate(entity: string): Mutation<[id: string, patch: Record<string, unknown>, opts?: WriteOpts], Rec>;

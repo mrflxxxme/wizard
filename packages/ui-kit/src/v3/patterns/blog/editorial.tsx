@@ -23,6 +23,10 @@ export type BlogEditorialProps = {
   /** Posts per «Показать ещё». */
   pageSize?: number;
   action?: Link;
+  /** A preview on another page (home): nothing while the list is empty, no «Показать ещё». */
+  preview?: boolean;
+  /** false — the entries go without dates (the pages of the site, not posts). */
+  dates?: boolean;
 };
 
 const FIELDS: Required<Fields> = {
@@ -189,11 +193,14 @@ function More({
 }
 
 export default function BlogEditorial(props: BlogEditorialProps) {
-  const { entity = "post", path, title, text, empty, pageSize = 3, action } = props;
+  const { entity = "post", path, title, text, empty, pageSize = 3, action, preview, dates = true } = props;
   const f = { ...FIELDS, ...props.fields };
+  // Without dates the date field of a post reads nothing (the list stays sorted by it).
+  const shown = dates ? f : { ...f, date: "" };
   const m = useContent(entity, { sort: { field: f.date, dir: "desc" }, pageSize });
   const { items, growing } = useShown(m);
   const uid = useId();
+  if (preview && !m.isLoading && items.length === 0) return null;
   let body: ReactNode;
   if (m.error && items.length === 0) body = <Failed m={m} />;
   else if (m.isLoading && items.length === 0) body = <Loading />;
@@ -203,7 +210,7 @@ export default function BlogEditorial(props: BlogEditorialProps) {
       <>
         <ul className="border-b-2 border-foreground">
           {items.map((post) => {
-            const p = postOf(post, f, path);
+            const p = postOf(post, shown, path);
             return (
               <li
                 key={post.id}
@@ -230,7 +237,7 @@ export default function BlogEditorial(props: BlogEditorialProps) {
             );
           })}
         </ul>
-        <More m={m} shown={items.length} growing={growing} className="mt-10" />
+        {preview ? null : <More m={m} shown={items.length} growing={growing} className="mt-10" />}
       </>
     );
   return (

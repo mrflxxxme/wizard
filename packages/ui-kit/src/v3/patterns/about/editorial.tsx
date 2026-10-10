@@ -1,6 +1,8 @@
 // About «editorial»: a magazine spread — the title large across the top, then under a heavy rule a wide photo with its
 // caption and, beside it, the lead as a standfirst in the display face and the story opening with a drop cap.
 // Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Image = { src: string; alt: string };
 
@@ -37,6 +39,8 @@ export default function AboutEditorial({
           <figure className="min-w-0 lg:col-span-7">
             <img
               src={image.src}
+              srcSet={srcSetOf(image.src)}
+              sizes="(min-width: 1024px) 50vw, 100vw"
               alt={image.alt}
               loading="lazy"
               className="aspect-3/2 w-full bg-muted object-cover"

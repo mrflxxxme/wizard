@@ -50,6 +50,8 @@ export interface KeyWindowFormProps {
   /** A key the chat intercepted: it moves here in memory, never into a message. */
   initialValue?: string;
   editable: boolean;
+  /** Why the member cannot enter the key here (default: a viewer); V3-18 — a prod key for a non-owner. */
+  readOnlyReason?: string;
   busy: boolean;
   error: string | null;
   /** Encrypt and send; the form clears its field before awaiting. */
@@ -233,7 +235,11 @@ export function KeyWindowForm(p: KeyWindowFormProps): ReactNode {
           )}
         </>
       )}
-      {w && !p.editable && <p className={s.meta}>{T.window.viewer}</p>}
+      {w && !p.editable && (
+        <p className={s.meta} data-testid="key-window-readonly">
+          {p.readOnlyReason ?? T.window.viewer}
+        </p>
+      )}
       {w && p.editable && (
         <form className={s.form} onSubmit={submit} noValidate autoComplete="off">
           {defs.map((f, i) => (

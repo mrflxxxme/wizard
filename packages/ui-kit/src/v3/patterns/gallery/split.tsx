@@ -1,6 +1,8 @@
 // Gallery «split»: the title, the lead and the action hold the left third and stay in view on wide screens, while
 // the photos run in two columns on the right, the second set lower than the first for a staggered rhythm.
 // Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Photo = { src: string; alt: string; caption?: string };
 
@@ -19,6 +21,8 @@ function Column({ photos, crop }: { photos: Photo[]; crop: string }) {
           <figure>
             <img
               src={im.src}
+              srcSet={srcSetOf(im.src)}
+              sizes="(min-width: 1024px) 50vw, 100vw"
               alt={im.alt}
               loading="lazy"
               className={`w-full rounded-md bg-muted object-cover ${crop}`}

@@ -45,6 +45,11 @@ export interface SystemDb {
 export interface ConnectorStore {
   get<T = unknown>(key: string): Promise<T | undefined>;
   set(key: string, value: unknown, ttlMs?: number): Promise<void>;
+  /**
+   * Atomic compare-and-set: stores `value` only when `key` holds nothing (or an expired value); true — this call
+   * stored it (the caller won the claim). Hosts without it fall back to get-then-set (claimOnce).
+   */
+  setIfAbsent?(key: string, value: unknown, ttlMs?: number): Promise<boolean>;
 }
 
 export interface OutboxMessage {

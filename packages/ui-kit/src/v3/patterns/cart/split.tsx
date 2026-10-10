@@ -5,8 +5,8 @@
 // the cart of this browser, asks the module for the СДЭК points and price, places the order by the module's function
 // (the prices and the stock are the server's) and takes the buyer to the payment or to the order's page. Own
 // composition.
-import { type CheckoutField, rub, useCheckout } from "@wizard/ui-kit/v3/headless";
-import { type FormEvent, type ReactNode, useId } from "react";
+import { type CheckoutField, rub, srcSetOf, useCheckout } from "@wizard/ui-kit/v3/headless";
+import { type FormEvent, Fragment, type ReactNode, useId } from "react";
 
 type Link = { label: string; href: string };
 type Method = "pickup" | "cdek" | "courier";
@@ -26,6 +26,8 @@ export type CartSplitProps = {
     cdekFn?: string;
     payment?: { integration: string; binding: string };
     orderPath?: string;
+    /** A separate box of the letters about the order (V3-18). */
+    consentMessages?: boolean;
   };
   /** Back to the goods. */
   back?: Link;
@@ -33,6 +35,8 @@ export type CartSplitProps = {
   empty?: string;
   /** A line of the shop under the sums (returns, delivery terms), from the brief. */
   note?: string;
+  /** The seller's pages (V3-18): the offer the order accepts, delivery and payment, returns. */
+  terms?: { offer: Link; delivery?: Link; returns?: Link };
   /** Place of the section in the page source: the build injects it (ui-kit.yaml#wz_id), never the composer. */
   wzId?: string;
 };
@@ -49,6 +53,9 @@ const textButtonClass =
   "inline-flex min-h-11 items-center text-small font-bold text-muted-foreground underline underline-offset-4 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 const backClass =
   "inline-flex min-h-11 items-center gap-2 text-body font-bold text-foreground underline decoration-primary decoration-2 underline-offset-4 hover:decoration-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
+
+const termsLinkClass =
+  "text-inherit underline underline-offset-2 hover:no-underline focus-visible:outline-2 focus-visible:outline-ring";
 
 const LABELS: Record<CheckoutField, string> = {
   name: "Имя и фамилия",
@@ -121,15 +128,17 @@ function Check(props: {
   onChange(v: boolean): void;
   invalid?: boolean;
   describedBy?: string;
+  /** The box may stay empty (the letters about the order): not required. */
+  optional?: boolean;
 }) {
-  const { id, checked, onChange, invalid, describedBy } = props;
+  const { id, checked, onChange, invalid, describedBy, optional } = props;
   return (
     <span className="relative -ml-2.5 flex size-11 shrink-0 items-center justify-center">
       <input
         id={id}
         type="checkbox"
         checked={checked}
-        required
+        required={!optional}
         onChange={(e) => onChange(e.target.checked)}
         aria-invalid={invalid ? true : undefined}
         aria-describedby={describedBy}
@@ -194,6 +203,8 @@ function Lines({ c, empty, back }: { c: ReturnType<typeof useCheckout>; empty?: 
             {l.photo ? (
               <img
                 src={l.photo}
+                srcSet={srcSetOf(l.photo)}
+                sizes="96px"
                 alt=""
                 aria-hidden="true"
                 loading="lazy"
@@ -260,11 +271,13 @@ function Checkout({
   checkout,
   level,
   note,
+  terms,
 }: {
   c: ReturnType<typeof useCheckout>;
   checkout: CartSplitProps["checkout"];
   level: 1 | 2;
   note?: string;
+  terms?: CartSplitProps["terms"];
 }) {
   const uid = useId();
   const Heading = level === 1 ? "h2" : "h3";
@@ -499,6 +512,22 @@ function Checkout({
             {c.consent.error ? <Problem id={`${consentId}-err`}>{c.consent.error}</Problem> : null}
           </div>
         ) : null}
+        {c.messages ? (
+          <div data-testid="wz-consent-messages" className="flex items-start gap-2">
+            <Check
+              id={`${consentId}-messages`}
+              checked={c.messages.checked}
+              onChange={c.messages.set}
+              optional
+            />
+            <label
+              htmlFor={`${consentId}-messages`}
+              className="min-w-0 pt-2.5 text-small text-muted-foreground"
+            >
+              {c.messages.text}
+            </label>
+          </div>
+        ) : null}
         {c.formError ? (
           <div id={`${uid}-form-err`} role="alert">
             <Problem>{c.formError}</Problem>
@@ -512,6 +541,29 @@ function Checkout({
         >
           {c.pending ? "Оформляем заказ…" : checkout.online ? "Оформить и оплатить" : "Оформить заказ"}
         </button>
+        {terms ? (
+          <p data-testid="wz-checkout-terms" className="text-small text-muted-foreground">
+            Оформляя заказ, вы принимаете условия{" "}
+            <a href={terms.offer.href} target="_blank" rel="noopener" className={termsLinkClass}>
+              публичной оферты
+            </a>
+            {terms.delivery || terms.returns ? (
+              <>
+                {". "}
+                {[terms.delivery, terms.returns]
+                  .filter((l): l is Link => !!l)
+                  .map((l, i) => (
+                    <Fragment key={l.href}>
+                      {i > 0 ? " · " : null}
+                      <a href={l.href} target="_blank" rel="noopener" className={termsLinkClass}>
+                        {l.label}
+                      </a>
+                    </Fragment>
+                  ))}
+              </>
+            ) : null}
+          </p>
+        ) : null}
         {note ? <p className="text-small text-muted-foreground">{note}</p> : null}
       </form>
     </div>
@@ -519,7 +571,7 @@ function Checkout({
 }
 
 export default function CartSplit(props: CartSplitProps) {
-  const { title, level = 2, checkout, back, empty, note } = props;
+  const { title, level = 2, checkout, back, empty, note, terms } = props;
   const c = useCheckout(checkout);
   const uid = useId();
   const Title = level === 1 ? "h1" : "h2";
@@ -557,7 +609,7 @@ export default function CartSplit(props: CartSplitProps) {
             </div>
             {c.cart.lines.length > 0 ? (
               <div className="min-w-0 lg:sticky lg:top-8">
-                <Checkout c={c} checkout={checkout} level={level} note={note} />
+                <Checkout c={c} checkout={checkout} level={level} note={note} terms={terms} />
               </div>
             ) : null}
           </div>

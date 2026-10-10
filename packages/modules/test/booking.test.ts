@@ -238,6 +238,8 @@ describe("compiled spec by parameters", () => {
     });
     expect(perm(r, "visitor", "booking")?.readonlyFields).not.toContain("status");
     expect(perm(r, "visitor", "booking")?.readonlyFields).toContain("starts_at");
+    // V3-18: the visitor only cancels his booking — no other status via the API.
+    expect(perm(r, "visitor", "booking")?.allowedValues).toEqual({ status: ["cancelled"] });
     expect(r.spec.workflows?.find((w) => w.name === "client_from_booking")?.steps[0]?.params).toEqual({
       name: "clientFromBooking",
       args: { id: "$record.id", matchBy: "phone", create: true },

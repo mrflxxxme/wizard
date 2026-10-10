@@ -4,7 +4,7 @@ import { WizardError } from "@wizard/sdk";
 import { Hono } from "hono";
 import { aiFilledFields } from "../ai/actions.js";
 import type { FilterCond, FilterOp, ListQuery, SortKey } from "../data/access.js";
-import { fieldsError } from "../data/validate.js";
+import { fieldsError, SEARCH_MAX } from "../data/validate.js";
 import type { RuntimeContext, RuntimeHonoEnv } from "../http/context.js";
 import { subjectOf } from "../http/subject.js";
 
@@ -50,11 +50,14 @@ export function parseListQuery(params: URLSearchParams): ListQuery {
       sort.push({ field, dir: desc ? "desc" : "asc" });
     }
   }
+  const search = (params.get("q") ?? "").trim();
+  if (search.length > SEARCH_MAX) throw bad("q", `q: не длиннее ${SEARCH_MAX} символов`);
   return {
     filter,
     sort,
     page: intParam(params.get("page"), "page", 1, 1, 1_000_000),
     limit: intParam(params.get("limit"), "limit", 20, 1, 100),
+    ...(search ? { search } : {}),
   };
 }
 

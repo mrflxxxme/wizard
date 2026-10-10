@@ -334,6 +334,13 @@ describe("transport units", () => {
     expect(
       decodeURIComponent(buildListQuery({ filter: { a: null, b: { contains: "x" } }, sort: "-a" })),
     ).toBe("?filter[a]=null&filter[b][contains]=x&sort=-a");
+    // V3-18: search → q (trimmed; blank is dropped).
+    const qs = new URLSearchParams(buildListQuery({ search: " +7 916 ", limit: 5 }).slice(1));
+    expect([...qs]).toEqual([
+      ["limit", "5"],
+      ["q", "+7 916"],
+    ]);
+    expect(buildListQuery({ search: "  " })).toBe("");
   });
 
   test("SseParser handles comments, multi-line data, CRLF and chunk boundaries", () => {

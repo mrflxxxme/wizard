@@ -1,6 +1,8 @@
 // Pricing «split photo»: a tall photo of the work or the place on one half (it stays in view while the list scrolls
 // on wide screens), a short price list between rules with the action on the other; on phones the photo comes first
 // as a wide band. Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Image = { src: string; alt: string };
 type Price = { amount: number; from?: boolean; unit?: string };
@@ -40,6 +42,8 @@ export default function PricingSplitPhoto({
         <div className="min-w-0 lg:col-span-5">
           <img
             src={image.src}
+            srcSet={srcSetOf(image.src)}
+            sizes="(min-width: 1024px) 50vw, 100vw"
             alt={image.alt}
             loading="lazy"
             className="aspect-16/10 w-full rounded-lg bg-muted object-cover lg:sticky lg:top-8 lg:aspect-3/4"

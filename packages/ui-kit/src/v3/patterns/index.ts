@@ -18,6 +18,7 @@ import { HEADER_PATTERNS } from "./header/index.js";
 import { HERO_PATTERNS } from "./hero/index.js";
 import { ORDER_PATTERNS } from "./order/index.js";
 import { PRICING_PATTERNS } from "./pricing/index.js";
+import { PRODUCT_PATTERNS } from "./product/index.js";
 import { RUBRIC_PATTERNS } from "./rubric/index.js";
 import { type PatternQuery, selectPattern } from "./select.js";
 import { SERVICES_PATTERNS } from "./services/index.js";
@@ -49,6 +50,7 @@ export const PATTERNS: readonly PatternMeta[] = [
   ...SHOP_PATTERNS,
   ...CART_PATTERNS,
   ...ORDER_PATTERNS,
+  ...PRODUCT_PATTERNS,
 ];
 
 /** Deterministic choice of a variant for a section: by seed, archetype, without repeating used ones (C3). */

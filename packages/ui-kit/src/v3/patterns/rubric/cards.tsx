@@ -3,7 +3,13 @@
 // heading of the rubric and the row of rubric links (the current one marked). The data is the module's: useRubric (C4)
 // gives what the role may read, newest first, by pages; dates in Russian. Composition after HyperUI «Blog Cards» (MIT,
 // © Mark Mead), rewritten on the design system tokens.
-import { type PagedList, type RubricModel, useEntryTitle, useRubric } from "@wizard/ui-kit/v3/headless";
+import {
+  type PagedList,
+  type RubricModel,
+  srcSetOf,
+  useEntryTitle,
+  useRubric,
+} from "@wizard/ui-kit/v3/headless";
 import { type ReactNode, useId, useRef } from "react";
 
 type Post = PagedList["items"][number];
@@ -348,6 +354,8 @@ export default function RubricCards(props: RubricCardsProps) {
                         {p.cover ? (
                           <img
                             src={p.cover}
+                            srcSet={srcSetOf(p.cover)}
+                            sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                             alt=""
                             aria-hidden="true"
                             loading="lazy"

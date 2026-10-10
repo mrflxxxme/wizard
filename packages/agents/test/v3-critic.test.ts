@@ -331,7 +331,7 @@ describe("V3-13 critic", () => {
       "hero:hero-split",
       "form:form-inline",
       "services:services-price-list",
-      "footer:footer-columns",
+      "footer:footer-contact-first",
     ]);
     expect(r.files.get("ui/pages/site/Home.tsx")).toContain(
       'import ServicesPriceList from "../../patterns/services-price-list";',

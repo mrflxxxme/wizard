@@ -301,7 +301,8 @@ components:
         columns?: (string | ColumnDef<T>)[];   // по умолчанию первые 6 видимых полей
         query?: ListQuery;                     // базовый фильтр
         filters?: string[];                    // поля enum/bool/date/ref для панели фильтров
-        searchable?: boolean;                  // полнотекстовый поиск data API
+        searchable?: boolean;                  // поиск data API (q: текстовые поля, телефон по цифрам, номер)
+        exportCsv?: boolean;                   // V3-18: кнопка «Выгрузить CSV» (все страницы под фильтром и поиском; UTF-8 BOM, «;»; только видимые поля роли)
         defaultSort?: { field: string; dir: 'asc' | 'desc' };
         pageSize?: 10 | 25 | 50;               // по умолчанию 25
         onRowClick?(row: T): void;
@@ -315,7 +316,7 @@ components:
       - "enum → Badge с label; money/date — Intl; ref → подпись записи; pii-поля у ролей без update показываются как есть (маскирование — задача runtime)"
       - "sm: строки → карточки (label: value), без горизонтального скролла; пагинация «Назад/Вперёд» + «стр. N из M»"
       - "Заголовки сортируемых колонок — button с aria-sort"
-    test_ids: [wz-datatable, wz-datatable-row, wz-datatable-sort-<field>, wz-datatable-filter-<field>, wz-datatable-search, wz-datatable-page-next, wz-datatable-page-prev]
+    test_ids: [wz-datatable, wz-datatable-row, wz-datatable-sort-<field>, wz-datatable-filter-<field>, wz-datatable-search, wz-datatable-export, wz-datatable-page-next, wz-datatable-page-prev]
     acceptance:
       - "Playwright (memory DS, 60 записей): сортировка по дате меняет порядок; фильтр по enum оставляет только совпадающие; страница 3 при pageSize 25 содержит 10 строк"
       - "Роль с hiddenFields [phone]: колонки phone нет в DOM, и в ответе useList ключа phone нет"
@@ -335,6 +336,7 @@ components:
         kind: 'update' | 'delete' | 'fn' | 'link' | 'ai';   // ai — M3 (M3-02)
         patch?: Record<string, unknown>;      // kind=update, напр. {status:'approved'}
         fn?: string; href?: string;           // kind=fn — mutation-функция; kind=link
+        args?: Record<string, unknown>;       // kind=fn — аргументы вызова кроме id (V3-18: целевой статус потока статусов)
         ai?: string;                          // kind=ai — aiActions[].name (runtime.yaml#ai_actions)
         confirm?: string;                     // текст подтверждения (обязателен для delete)
         visible?(r: T): boolean };
@@ -834,9 +836,15 @@ components:
       interface ShopProductsProps extends WzBase {
         entity?: string; categoryEntity?: string; fields?: ShopFields;   // по умолчанию product, поля модуля
         cartPath?: string; emptyText?: string; pageSize?: number;
+        productPath?: string;                                            // V3-18: «/shop/» — название ведёт на страницу товара
       }
     behaviour: ["Товары в продаже в порядке владельца: фото, цена, остаток, «В корзину» (недоступна без остатка или когда весь остаток уже в корзине); ссылка на корзину с количеством и суммой"]
-    test_ids: [wz-shop, wz-product, wz-product-stock, wz-cart-add, wz-cart-link, wz-empty]
+    test_ids: [wz-shop, wz-product, wz-product-link, wz-product-stock, wz-cart-add, wz-cart-link, wz-empty]
+  - name: ShopProduct
+    milestone: V3
+    props: "interface ShopProductProps extends WzBase { entity?: string; path?: string; fields?: ShopFields; cartPath?: string; shopPath?: string }   // path — «/shop/»"
+    behaviour: ["V3-18: товар адреса /shop/<id> (useProduct: роль видит только товары в продаже): фото, название, цена, остаток, «В корзину», полное описание, ссылки «Все товары» и в корзину; нет товара — «Товар не найден»"]
+    test_ids: [wz-shop-product, wz-product, wz-product-stock, wz-cart-add, wz-cart-link, wz-empty]
   - name: ShopCart
     milestone: V3
     props: "interface ShopCartProps extends WzBase { shopPath?: string }"
@@ -844,11 +852,12 @@ components:
     test_ids: [wz-cart, wz-cart-line, wz-cart-dec, wz-cart-inc, wz-cart-remove, wz-cart-total, wz-empty]
   - name: ShopCheckout
     milestone: V3
-    props: "interface ShopCheckoutProps extends WzBase, UseCheckoutOptions {}   // methods, online, courierPrice?, pointEntity?, placeFn?, cdekFn?, payment?, orderPath?"
+    props: "interface ShopCheckoutProps extends WzBase, UseCheckoutOptions { terms?: {offer: string; delivery?: string; returns?: string} }   // methods, online, courierPrice?, pointEntity?, placeFn?, cdekFn?, payment?, orderPath?, consentMessages?"
     behaviour:
       - "Способ получения (самовывоз из пункта, СДЭК: город → пункты, цена и срок функции модуля; курьер с адресом), имя, телефон, почта для чека, комментарий, согласие на ПДн (G2-PII-04)"
       - "Заказ — функция модуля shopPlaceOrder (цены и остатки сервера, повтор при CONFLICT); затем оплата ЮKassa (usePay с секретом покупателя) или страница заказа"
-    test_ids: [wz-checkout, wz-field-delivery, wz-field-pickup_point, wz-field-cdek_city, wz-cdek-find, wz-cdek-quote, wz-field-cdek_point, wz-consent, wz-checkout-total, wz-checkout-submit]
+      - "V3-18: consentMessages — отдельная неотмеченная галочка «Согласен получать письма о заказе» (уходит в заказ только с указанной почтой); terms — у кнопки «Оформляя заказ, вы принимаете условия публичной оферты» со ссылками на оферту, доставку и возврат (ст. 26.1 ЗоЗПП)"
+    test_ids: [wz-checkout-terms, wz-consent-messages, wz-checkout, wz-field-delivery, wz-field-pickup_point, wz-field-cdek_city, wz-cdek-find, wz-cdek-quote, wz-field-cdek_point, wz-consent, wz-checkout-total, wz-checkout-submit]
   - name: ShopOrder
     milestone: V3
     props: "interface ShopOrderProps extends WzBase, UseOrderOptions { shopPath?: string }   // path?, orderFn?, payment?"

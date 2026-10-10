@@ -147,7 +147,8 @@ export class Prober {
         else problem ??= `роль не может загрузить файл в поле «${f.label}»`;
         continue;
       }
-      const v = this.d.gen.value(e, f, 0);
+      const allowed = p?.allowedValues?.[f.name];
+      const v = allowed?.length ? allowed[0] : this.d.gen.value(e, f, 0);
       if (v === undefined) problem ??= `для поля «${f.label}» нельзя сгенерировать синтетическое значение`;
       else body[f.name] = v;
     }
@@ -171,6 +172,9 @@ export class Prober {
         fieldPiiCategory(x) === "none",
     );
     if (!f) return {};
+    // V3-18: a role limited to some values of an enum (a visitor may only cancel a booking) writes one of those.
+    const allowed = p?.allowedValues?.[f.name];
+    if (allowed?.length) return { [f.name]: allowed[0] };
     const v = this.d.gen.value(e, f, 1);
     return v === undefined ? {} : { [f.name]: v };
   }

@@ -45,7 +45,13 @@ import {
 import type postgres from "postgres";
 import { platformMailer } from "../auth/smtp-mailer.js";
 import { phoneOtpAllowed } from "../billing/plans.js";
-import { buildByBrief, isV3Build, kyselyOver, type V3BuildOptions } from "../builds-v3/host.js";
+import {
+  buildByBrief,
+  draftSeedHints,
+  isV3Build,
+  kyselyOver,
+  type V3BuildOptions,
+} from "../builds-v3/host.js";
 import { type Config, pipelineOrgsOn } from "../config.js";
 import { recordInterviewFallback } from "../ops/metrics.js";
 import type { EventType } from "../runs/events.js";
@@ -558,6 +564,8 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
             browser: goalBrowser(),
             ...(o.modules ? { registry: o.modules } : {}),
             log: (msg, err) => g1Logger.error(msg.replace(/\s+/g, "_"), err),
+            // V3-18: the stock photos of the site, as plan builds get them (WIZARD_STOCK_MODE; library on the pilot).
+            photos: photoHost(),
           });
       }
       const qa = createHostQa(host, { milestone: o.config.milestone });
@@ -609,7 +617,11 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
         migratorRole,
         runtimeRole,
       });
-      if (created) await seedDraft(o.pg, { systemKey: a.systemKey, spec: a.spec, migratorRole });
+      if (created) {
+        // V3-18: a system with a brief seeds its preview with the names of the offer the brief lists.
+        const hints = await draftSeedHints(db(), a.systemId, a.spec);
+        await seedDraft(o.pg, { systemKey: a.systemKey, spec: a.spec, migratorRole, hints });
+      }
       // platform.deployments.spec_hash of this revision: the runtime compares it with manifest.specHash.
       const [row] = await o.pg<{ h: string }[]>`
         select encode(sha256(convert_to(spec::text, 'UTF8')), 'hex') as h

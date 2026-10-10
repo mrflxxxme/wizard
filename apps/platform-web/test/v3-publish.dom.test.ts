@@ -142,6 +142,16 @@ describe("what stops the publication of a v3 system", () => {
     const m = v3PublishModel({ ...base, codes: ["OPERATOR_NAME_REQUIRED", "OPERATOR_ADDRESS_REQUIRED"] });
     expect(m).toMatchObject({ operator: true, address: true, inn: false, blockers: [], canPublish: false });
     expect(v3PublishModel({ ...base, codes: ["INN_INVALID"] }).inn).toBe(true);
+    // V3-18: the shop's seller requisites are fixed in the same operator form: address, ИНН and ОГРН asked.
+    const seller = v3PublishModel({ ...base, codes: ["SELLER_REQUISITES_REQUIRED"] });
+    expect([seller.operator, seller.address, seller.inn, seller.ogrn, seller.blockers]).toEqual([
+      true,
+      true,
+      true,
+      true,
+      [],
+    ]);
+    expect(v3PublishModel({ ...base, codes: ["OGRN_INVALID"] }).ogrn).toBe(true);
     expect(v3PublishModel({ ...base, codes: [] }).canPublish).toBe(true);
   });
 
@@ -186,7 +196,13 @@ describe("what stops the publication of a v3 system", () => {
     expect(done?.finished?.prodUrl).toBe(PROD);
     expect(ownerCabinetUrl(PROD)).toBe("http://dental.localhost:4100/login?next=%2Fcabinet");
     expect(ownerCabinetUrl("не адрес")).toBeNull();
-    const ok = { name: "ИП Иванова А. А.", contact: "privacy@dental.example", address: "Москва", inn: "" };
+    const ok = {
+      name: "ИП Иванова А. А.",
+      contact: "privacy@dental.example",
+      address: "Москва",
+      inn: "",
+      ogrn: "",
+    };
     expect(operatorProblem(ok, { address: true })).toBeNull();
     expect(operatorProblem({ ...ok, name: "ИП" }, { address: true })).toBe(publishRu.operator.nameShort);
     expect(operatorProblem({ ...ok, contact: "почта" }, { address: true })).toBe(
@@ -197,6 +213,8 @@ describe("what stops the publication of a v3 system", () => {
     );
     expect(operatorProblem({ ...ok, address: "" }, { address: false })).toBeNull();
     expect(operatorProblem({ ...ok, inn: "12345" }, { address: true })).toBe(publishRu.operator.innBad);
+    expect(operatorProblem({ ...ok, ogrn: "123" }, { address: true })).toBe(publishRu.operator.ogrnBad);
+    expect(operatorProblem({ ...ok, ogrn: "1027700132195" }, { address: true })).toBeNull();
   });
 });
 

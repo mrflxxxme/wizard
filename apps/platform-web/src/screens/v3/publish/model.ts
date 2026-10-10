@@ -31,6 +31,8 @@ export interface V3PublishModel {
   address: boolean;
   /** The INN given is wrong (INN_INVALID). */
   inn: boolean;
+  /** V3-18: the seller's ОГРН/ОГРНИП asked (a shop: SELLER_REQUISITES_REQUIRED or OGRN_INVALID). */
+  ogrn: boolean;
   /** A blocker fixed on S-billing (card, plan); `card` — the card binding. */
   billing: boolean;
   card: boolean;
@@ -59,8 +61,9 @@ export function v3PublishModel(i: V3PublishInput): V3PublishModel {
   return {
     blockers,
     operator: i.codes.some((c) => SETTINGS_BLOCKERS.has(c)),
-    address: i.codes.includes("OPERATOR_ADDRESS_REQUIRED"),
-    inn: i.codes.includes("INN_INVALID"),
+    address: i.codes.includes("OPERATOR_ADDRESS_REQUIRED") || i.codes.includes("SELLER_REQUISITES_REQUIRED"),
+    inn: i.codes.includes("INN_INVALID") || i.codes.includes("SELLER_REQUISITES_REQUIRED"),
+    ogrn: i.codes.includes("OGRN_INVALID") || i.codes.includes("SELLER_REQUISITES_REQUIRED"),
     billing: i.codes.some((c) => BILLING_BLOCKERS.has(c)),
     card: i.codes.includes("CARD_BINDING_REQUIRED"),
     review: i.codes.includes("FOUNDER_REVIEW_PENDING"),

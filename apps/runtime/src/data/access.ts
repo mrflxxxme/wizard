@@ -46,6 +46,8 @@ export interface ListQuery {
   sort: readonly SortKey[];
   page: number;
   limit: number;
+  /** `q`: search over the role's readable text, phone and int fields (V3-18). */
+  search?: string;
 }
 
 export interface ListResult {

@@ -2,7 +2,7 @@
 // three columns, the section filter above, «Показать ещё» under it. The data is the module's: useCatalog (C4) gives the
 // visible items in the owner's order, the section filter and the paging; prices and photos only from the data.
 // Composition after HyperUI «Product Cards» (MIT, © Mark Mead), rewritten on the design system tokens.
-import { type CatalogModel, useCatalog, useContent } from "@wizard/ui-kit/v3/headless";
+import { type CatalogModel, srcSetOf, useCatalog, useContent } from "@wizard/ui-kit/v3/headless";
 import { type ReactNode, useId, useRef } from "react";
 
 type Link = { label: string; href: string };
@@ -32,6 +32,8 @@ export type CatalogGridProps = {
   /** An action on each item: its path gets ?service=<id> (a booking link). */
   itemAction?: { label: string; path: string };
   action?: Link;
+  /** A preview on another page (home): nothing while the list is empty, no «Показать ещё». */
+  preview?: boolean;
 };
 
 const FIELDS: Required<Fields> = {
@@ -231,11 +233,22 @@ function Sections({
 }
 
 export default function CatalogGrid(props: CatalogGridProps) {
-  const { entity = "service", categoryEntity, title, text, empty, pageSize = 9, itemAction, action } = props;
+  const {
+    entity = "service",
+    categoryEntity,
+    title,
+    text,
+    empty,
+    pageSize = 9,
+    itemAction,
+    action,
+    preview,
+  } = props;
   const f = { ...FIELDS, ...props.fields };
   const m = useCatalog(entity, { pageSize, categoryField: f.category });
   const { items, growing } = useShown(m);
   const uid = useId();
+  if (preview && !m.isLoading && items.length === 0) return null;
   let body: ReactNode;
   if (m.error && items.length === 0) body = <Failed m={m} />;
   else if (m.isLoading && items.length === 0) body = <Loading cards />;
@@ -256,6 +269,8 @@ export default function CatalogGrid(props: CatalogGridProps) {
                 {it.photo ? (
                   <img
                     src={it.photo}
+                    srcSet={srcSetOf(it.photo)}
+                    sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                     alt=""
                     aria-hidden="true"
                     loading="lazy"
@@ -307,7 +322,9 @@ export default function CatalogGrid(props: CatalogGridProps) {
             );
           })}
         </ul>
-        <More m={m} shown={items.length} growing={growing} className="mt-10 flex justify-center" />
+        {preview ? null : (
+          <More m={m} shown={items.length} growing={growing} className="mt-10 flex justify-center" />
+        )}
       </>
     );
   return (

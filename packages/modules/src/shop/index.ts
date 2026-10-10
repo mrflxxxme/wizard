@@ -14,24 +14,33 @@ import {
   SHOP_ROUTES as R,
   SOLD_STATUSES,
   shopOptions,
+  shopStatusFlows,
 } from "./compile.js";
 import {
   CART_WEIGHT_FILE,
   CDEK_OPTIONS_FILE,
   cartWeightSource,
   cdekOptionsSource,
+  EXPIRE_ORDER_FILE,
+  expireOrderSource,
   ORDER_FILE,
   ORDER_PAID_FILE,
   orderPaidSource,
   orderSource,
   PLACE_ORDER_FILE,
   placeOrderSource,
+  REFUND_FILE,
   RETURN_STOCK_FILE,
+  refundSource,
   returnStockSource,
   SAVE_QUOTE_FILE,
+  SET_STATUS_FILE,
+  STOCK_ADJUST_FILE,
   saveQuoteSource,
+  setStatusSource,
+  stockAdjustSource,
 } from "./functions.js";
-import { cartPage, orderPage, shopPage } from "./pages.js";
+import { cartPage, orderPage, productPage, shopPage } from "./pages.js";
 
 /** Roles that open the public pages and call the public functions: everyone (the visitor's own cabinet included). */
 const PUBLIC = ["$public", "$owner", "$staff", "$visitor"];
@@ -51,6 +60,12 @@ export const shopManifest: ModuleManifest = {
   order: 35,
   origin: { kind: "new" },
   goals: ["sell_online"],
+  requires: [
+    {
+      module: "notify",
+      reason: "владелец узнаёт о заказах и оплатах, покупатель получает письмо с номером и ссылкой на заказ",
+    },
+  ],
   params: [
     { name: "product_label", label: "Как называть товар", type: "string", maxLength: 40, default: "Товар" },
     { name: "with_categories", label: "Разделы магазина", type: "bool", default: true },
@@ -129,7 +144,7 @@ export const shopManifest: ModuleManifest = {
   links: [{ module: "staff", effect: "сотрудники с разделом «Магазин» собирают заказы и меняют остатки" }],
   provides: {
     entities: [N.order, N.payment, N.product, N.move, N.category, N.point, N.line, N.quote],
-    routes: [R.shop, R.cart, R.order],
+    routes: [R.shop, R.product, R.cart, R.order],
   },
   hook: true,
   fragments: {
@@ -205,6 +220,42 @@ export const shopManifest: ModuleManifest = {
       when: { param: "with_stock" },
       purpose: "заказ, оплаченный после отмены, снова списывает свои товары",
     },
+    {
+      name: F.setStatus,
+      kind: "mutation",
+      file: SET_STATUS_FILE,
+      // Called by the cabinet's buttons (POST /api/fn): only the shop's roles.
+      public: true,
+      roles: ["$owner", "$staff"],
+      purpose: "статус заказа меняется только по допустимым переходам; оплату и возврат ставит ЮKassa",
+      systemDbReason:
+        "Статус заказа закрыт для прямой правки: функция меняет его только по переходам магазина, оплату и возврат ставит ЮKassa",
+    },
+    {
+      name: F.refund,
+      kind: "action",
+      file: REFUND_FILE,
+      public: true,
+      roles: ["$owner"],
+      when: { param: "online_payment" },
+      purpose: "владелец возвращает покупателю всю сумму оплаченного заказа через ЮKassa",
+    },
+    {
+      name: F.expire,
+      kind: "mutation",
+      file: EXPIRE_ORDER_FILE,
+      roles: ["$owner"],
+      when: { param: "online_payment" },
+      purpose: "заказ без оплаты отменяется по времени, если платёж не идёт и не ждёт проверки",
+    },
+    {
+      name: F.stockAdjust,
+      kind: "mutation",
+      file: STOCK_ADJUST_FILE,
+      roles: ["$owner"],
+      when: { param: "with_stock" },
+      purpose: "ручная правка остатка в кабинете попадает в журнал движения остатков",
+    },
   ],
   screens: [
     {
@@ -215,6 +266,14 @@ export const shopManifest: ModuleManifest = {
       roles: PUBLIC,
       components: ["LandingSection", "ShopProducts"],
       nav: true,
+    },
+    {
+      id: "product",
+      audience: "public",
+      route: R.product,
+      title: "Товар",
+      roles: PUBLIC,
+      components: ["LandingSection", "ShopProduct"],
     },
     {
       id: "cart",
@@ -361,21 +420,23 @@ export const shopManifest: ModuleManifest = {
   ],
   tests: {
     matrix: [
-      { name: "по умолчанию: самовывоз и СДЭК, оплата ЮKassa, склад", params: {} },
+      { name: "по умолчанию: самовывоз и СДЭК, оплата ЮKassa, склад", params: {}, withModules: ["notify"] },
       {
         name: "без онлайн-оплаты и склада: самовывоз и курьер",
         params: { online_payment: false, with_stock: false, delivery: ["pickup", "courier"] },
+        withModules: ["notify"],
       },
       {
         name: "только СДЭК, без разделов и фото, НДС 22%",
         params: { delivery: ["cdek"], with_categories: false, with_photos: false, vat: "vat22" },
+        withModules: ["notify"],
       },
       {
         name: "магазин рядом с лендингом и заявками",
         params: { delivery: ["pickup", "courier"], product_label: "Букет" },
         withModules: ["landing", "leads", "notify"],
       },
-      { name: "сотрудники собирают заказы", params: {}, withModules: ["staff"] },
+      { name: "сотрудники собирают заказы", params: {}, withModules: ["staff", "notify"] },
     ],
     gates: ["G0", "G1"],
   },
@@ -387,19 +448,22 @@ export function shopWarnings(ctx: ModuleContext): string[] {
   const out: string[] = [];
   if (o.online)
     out.push(
-      "Оплата на сайте заработает после ключей ЮKassa (shopId и секретный ключ; для черновика — тестовый магазин). Чеки по 54-ФЗ включаются в личном кабинете ЮKassa.",
+      "Оплата на сайте заработает после ключей ЮKassa (shopId и секретный ключ; для черновика — тестовый магазин). Чеки по 54-ФЗ включаются в личном кабинете ЮKassa. Адрес HTTP-уведомлений для кабинета ЮKassa — на странице /_wizard/payments опубликованной системы (вход владельцем).",
     );
   if (o.delivery.includes("cdek"))
     out.push(
       "Доставка СДЭК считает цены по тестовым данным, пока вы не подключите ключ СДЭК (Account и Secure password) — до этого не публикуйте магазин с доставкой СДЭК.",
     );
+  out.push(
+    "Оферта, «Доставка и оплата» и «Возврат» (/offer, /delivery, /returns) собираются из реквизитов продавца: перед публикацией укажите название, ИНН и адрес (ОГРН или ОГРНИП — если есть) в данных оператора персональных данных.",
+  );
   return out;
 }
 
 export const shopModule: ModuleDefinition = {
   manifest: shopManifest,
   compile: compileShop,
-  screens: { shop: shopPage, cart: cartPage, order: orderPage },
+  screens: { shop: shopPage, product: productPage, cart: cartPage, order: orderPage },
   files: {
     [PLACE_ORDER_FILE]: placeOrderSource,
     [ORDER_FILE]: orderSource,
@@ -408,6 +472,10 @@ export const shopModule: ModuleDefinition = {
     [SAVE_QUOTE_FILE]: saveQuoteSource,
     [RETURN_STOCK_FILE]: returnStockSource,
     [ORDER_PAID_FILE]: orderPaidSource,
+    [SET_STATUS_FILE]: setStatusSource,
+    [REFUND_FILE]: refundSource,
+    [EXPIRE_ORDER_FILE]: expireOrderSource,
+    [STOCK_ADJUST_FILE]: stockAdjustSource,
     // The СДЭК client of the passport in mock mode, only with СДЭК delivery (the integration layer may replace it).
     ...Object.fromEntries(
       Object.entries(CDEK_CLIENT_FILES).map(([path, src]) => [
@@ -417,6 +485,7 @@ export const shopModule: ModuleDefinition = {
     ),
   },
   warnings: shopWarnings,
+  statusFlows: shopStatusFlows,
 };
 
 /** The СДЭК client files the module ships (functions/integrations/cdek/**) when its delivery includes СДЭК. */

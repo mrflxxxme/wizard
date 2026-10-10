@@ -1,5 +1,7 @@
 // About «quote»: the owner's own words set large in the display face, signed with their real name, role and photo
 // from the brief; under a rule the title, lead and story run in two columns. Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Image = { src: string; alt: string };
 
@@ -31,6 +33,8 @@ export default function AboutQuote({ title, lead, paragraphs, quote, action }: A
             {quote.photo ? (
               <img
                 src={quote.photo.src}
+                srcSet={srcSetOf(quote.photo.src)}
+                sizes="(min-width: 1024px) 50vw, 100vw"
                 alt={quote.photo.alt}
                 loading="lazy"
                 className="size-16 shrink-0 rounded-full bg-muted object-cover"

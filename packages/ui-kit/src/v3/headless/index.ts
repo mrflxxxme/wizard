@@ -80,11 +80,16 @@ export {
 export { type LeadFormModel, type UseLeadFormOptions, useLeadForm } from "./lead-form.js";
 /** usePagedList(entity, query, {page, max}) — «Показать ещё» by a page, ≤ 96 rows, read permission. */
 export { LIST_MAX, LIST_PAGE, type PagedList, usePagedList } from "./list.js";
-/** useSitePhotos() — the owner's photos of the site's places («Фото сайта», site_photo), else the stock ones (V3-18). */
+/**
+ * useSitePhotos() — the owner's photos of the site's places («Фото сайта», site_photo), else the stock ones (V3-18);
+ * srcSetOf(src) — the srcset of a picture the runtime serves in widths 480/960/1600.
+ */
 export {
+  IMAGE_WIDTHS,
   SITE_PHOTO_DEFAULTS,
   type SitePhoto,
   type SitePhotos,
+  srcSetOf,
   type UseSitePhotosOptions,
   useSitePhotos,
 } from "./photos.js";
@@ -103,7 +108,8 @@ export {
 /**
  * V3-23 «Интернет-магазин»: useCart() — the cart of this browser; useShopCatalog(entity, o) — goods with «В корзину» and
  * the stock; useCheckout(o) — delivery (self-pickup, СДЭК by the module's quote, courier), contacts with consent, the
- * order and its payment (ЮKassa); useOrder(o) — the order's page by the buyer's secret; rub(sum).
+ * order and its payment (ЮKassa); useOrder(o) — the order's page by the buyer's secret; useProduct(entity, o) — a
+ * product's page by the id of the address (V3-18); rub(sum).
  */
 export {
   type CartLine,
@@ -119,6 +125,7 @@ export {
   orderSecret,
   orderToken,
   type PlacedOrder,
+  type ProductModel,
   productPhoto,
   rememberOrder,
   rub,
@@ -129,9 +136,11 @@ export {
   type ShopItem,
   type UseCheckoutOptions,
   type UseOrderOptions,
+  type UseProductOptions,
   type UseShopCatalogOptions,
   useCart,
   useCheckout,
   useOrder,
+  useProduct,
   useShopCatalog,
 } from "./shop.js";

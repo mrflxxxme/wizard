@@ -210,6 +210,16 @@ export const permissionSchema = z.strictObject({
   hiddenFields: z.array(identSchema).optional(),
   readonlyFields: z.array(identSchema).optional(),
   rowFilterOps: uniqueItems(z.enum(PERMISSION_OPS)).optional(),
+  /** Enum values the role may write into a field on create/update (V3-18: a visitor only cancels his booking). */
+  allowedValues: z
+    .record(
+      identSchema,
+      z
+        .array(identSchema)
+        .min(1)
+        .refine((a) => new Set(a).size === a.length, { message: "Элементы массива должны быть уникальны" }),
+    )
+    .optional(),
 });
 
 export const TRIGGER_TYPES = [
@@ -353,6 +363,11 @@ export const complianceSchema = z.strictObject({
   operatorInn: z
     .string()
     .regex(/^[0-9]{10}([0-9]{2})?$/)
+    .optional(),
+  /** ОГРН (13 digits, an organization) or ОГРНИП (15, an individual entrepreneur): the seller's requisite (V3-18). */
+  operatorOgrn: z
+    .string()
+    .regex(/^[0-9]{13}([0-9]{2})?$/)
     .optional(),
   retentionWaiver: z.strictObject({ reason: cpString(10) }).optional(),
 });

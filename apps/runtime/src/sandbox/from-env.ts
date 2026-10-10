@@ -4,6 +4,7 @@
 //   WIZARD_SANDBOX_RPC_ADDRESS               <runtime pod IP>:<internal port> (the pods have no DNS)
 //   WIZARD_SANDBOX_KEY | WIZARD_INTERNAL_TOKEN  capability HMAC key (64 hex) or the secret it is derived from
 //   WIZARD_SANDBOX_NAMESPACE, _BASE_PORT, _HEALTH_PORT, _SYSTEMS_PER_POD, _MAX_PODS, _MEMORY, _CPU  (chart values)
+//   WIZARD_SANDBOX_IDLE_DRAFT_MIN, _IDLE_PROD_MIN  slot of a system idle this long is freed (30 / 1440; 0 — never)
 import { createHmac } from "node:crypto";
 import { CAPABILITY_KEY_BYTES } from "./capability.js";
 import { inClusterSend, type KubeApi, kubeApi } from "./kube.js";
@@ -30,6 +31,22 @@ const int = (v: string | undefined, d: number) => {
   const n = Number(v);
   return v !== undefined && v !== "" && Number.isInteger(n) && n > 0 ? n : d;
 };
+
+const minutes = (v: string | undefined, d: number) => {
+  const n = Number(v);
+  return v !== undefined && v !== "" && Number.isInteger(n) && n >= 0 ? n * 60_000 : d * 60_000;
+};
+
+/**
+ * V3-18: idle limits of SandboxOrchestrator.startIdleCollector (pilot: 2 pods × 10 slots). A draft is freed after
+ * 30 min without calls, a published system after a day (its next request starts its Worker again).
+ */
+export function sandboxIdleFromEnv(env: Env): { draft: number; prod: number } {
+  return {
+    draft: minutes(env.WIZARD_SANDBOX_IDLE_DRAFT_MIN, 30),
+    prod: minutes(env.WIZARD_SANDBOX_IDLE_PROD_MIN, 1440),
+  };
+}
 
 export function sandboxFromEnv(
   env: Env,

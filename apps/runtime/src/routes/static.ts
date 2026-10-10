@@ -7,10 +7,11 @@ import { withAbuseLink } from "../http/abuse-link.js";
 import type { RuntimeContext, RuntimeHonoEnv } from "../http/context.js";
 import { notFoundPage } from "../http/errors.js";
 import { contentType, IMMUTABLE, NO_CACHE } from "../preview/headers.js";
+import { shopTermsKind } from "../privacy/shop-terms.js";
 import { injectPwa, serviceWorker, webManifest } from "../pwa/pwa.js";
 import { routeDocument } from "../seo/site.js";
 import { loginPage } from "./login.js";
-import { policyPage } from "./privacy.js";
+import { policyPage, shopTermsPage } from "./privacy.js";
 
 const ASSET_RE = /^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,199}$/;
 /** Names produced by @wizard/build: index-<sha256[:12]>.{js,css}. */
@@ -55,6 +56,9 @@ export function staticRoutes(): Hono<RuntimeHonoEnv> {
     if (pathname === "/login") return loginPage(c);
     const policy = sys.compliance.policyPage;
     if (policy && pathname === policy) return policyPage(c);
+    // V3-18: the seller's pages of a shop (offer, delivery and payment, returns).
+    const terms = shopTermsKind(sys.spec, pathname);
+    if (terms) return shopTermsPage(c, terms);
     if (!sys.artifactDir) return notFoundPage();
     // runtime.yaml#static.pwa: generated per system and revision.
     if (pathname === "/sw.js") {

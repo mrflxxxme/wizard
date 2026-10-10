@@ -14,12 +14,25 @@
 // any module throws while it is evaluated, e.g. a timer or a random value at module scope): a prepare starts the pod
 // with the sources that already started plus its own new one only, so a failed start is that system's, and its
 // source never enters a later config — a new system is unplaced, an updated one keeps the revision that ran.
+//
+// Slots come back (V3-18, pilot quota 2 pods × 10): the runtime removes a system it drops from its cache (unpublished,
+// deleted, evicted), and collectIdle() frees systems with no prepare or call for longer than their env's limit; the
+// listeners of onReleased() drop the runtime's loaded copy, so the next request prepares it again. A system whose call
+// was the first to fail before its pod's workerd restarted (liveness: a blocked isolate; OOM) or went into
+// CrashLoopBackOff is excluded from the pod's config like a rejected start, and its revision is refused for
+// quarantineMs — one hanging system does not keep failing the other systems of its pod.
 import { createHash, randomBytes } from "node:crypto";
 import { WizardError } from "@wizard/sdk";
 import type { SandboxEnv } from "./capability.js";
 import type { KubeApi } from "./kube.js";
 import { CONFIGMAP_BUDGET, podConfigMaps, sandboxPod } from "./pod.js";
-import { createWithinQuota, type PodStartContext, podCrashed, waitReachable } from "./pod-start.js";
+import {
+  createWithinQuota,
+  type PodStartContext,
+  podCrashed,
+  podReason,
+  waitReachable,
+} from "./pod-start.js";
 import { SandboxPool, SandboxPoolFullError, type SandboxPoolName } from "./pool.js";
 import type { SandboxRpc } from "./rpc.js";
 import { type WorkerdSystem, workerdPodConfig } from "./workerd-config.js";
@@ -65,6 +78,8 @@ export interface OrchestratorOptions {
   /** A replaced pod is removed once its calls finish, at most this long (default 35 s: action wall limit 30 s). */
   drainMs?: number;
   pollMs?: number;
+  /** A system excluded for hanging or killing its pod: this revision is refused this long (default 10 min). */
+  quarantineMs?: number;
   /** Clock of the deadlines, and its sleep (tests pass a fake pair). */
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
@@ -94,6 +109,8 @@ interface PodRecord {
   configMaps: string[];
   /** Systems this pod runs (`systemId:env` → slot): a system placed after it was rendered is not routed here. */
   systems: ReadonlyMap<string, number>;
+  /** Container restarts the watchdog has seen (0 at the start). */
+  restarts: number;
 }
 
 const OWNER_RE = /^[a-z0-9]([a-z0-9-]{0,18}[a-z0-9])?$/;
@@ -104,6 +121,13 @@ const SANDBOX_FULL = "Песочница заполнена: функции си
 const NOT_LOADED = "Функции системы не загружены";
 /** The pod exited with this system's new source in it (the others had started without it). */
 const CODE_FAILED = "Код системы не запускается в песочнице";
+/** A call of this system was the first to fail before its pod's workerd restarted or kept crashing. */
+const HUNG = "Функция системы зависла или превысила лимит";
+/**
+ * A failed call counts against its system this long: a call hangs at its limit (≤ 5 s), liveness kills workerd
+ * 15–20 s after the isolate blocked, the watchdog looks every 30 s.
+ */
+const STRIKE_WINDOW_MS = 90_000;
 const noop = () => {};
 
 export class SandboxOrchestrator implements SandboxExecutors {
@@ -118,10 +142,22 @@ export class SandboxOrchestrator implements SandboxExecutors {
   private readonly busy = new Map<string, number>();
   /** Calls in flight per pod address (leases). */
   private readonly calls = new Map<string, number>();
+  /** Calls in flight per system (`systemId:env`). */
+  private readonly inflight = new Map<string, number>();
+  /** Start of the oldest call per system that failed (time limit, connection lost) since its pod's last check. */
+  private readonly strikes = new Map<string, number>();
+  /** Last prepare or call per system (collectIdle). */
+  private readonly used = new Map<string, number>();
+  /** Systems excluded by the watchdog: the revision refused, and until when. */
+  private readonly quarantine = new Map<string, { hash: string; until: number }>();
+  private readonly listeners: ((systemId: string, env: SandboxEnv) => void)[] = [];
+  /** Removals in progress per system: a second remove() of it settles with the first (its pod gone, if emptied). */
+  private readonly removing = new Map<string, Promise<void>>();
   /** Replaced pods draining in the background. */
   private readonly retiring = new Set<Promise<void>>();
   private readonly perPod: number;
   private watchdog: ReturnType<typeof setInterval> | undefined;
+  private idleTimer: ReturnType<typeof setInterval> | undefined;
 
   constructor(private readonly o: OrchestratorOptions) {
     if (!OWNER_RE.test(o.owner)) throw new Error(`sandbox owner: [a-z0-9-]{1,20}, got ${o.owner}`);
@@ -182,6 +218,11 @@ export class SandboxOrchestrator implements SandboxExecutors {
    */
   async prepare(s: PrepareInput): Promise<void> {
     const key = `${s.systemId}:${s.env}`;
+    const hash = sha(`${s.functionsSource}\0${s.entities.join(",")}\0${JSON.stringify(s.worker ?? null)}`);
+    const q = this.quarantine.get(key);
+    if (q && q.until > this.now() && q.hash === hash) throw unavailable(HUNG);
+    if (q) this.quarantine.delete(key);
+    this.used.set(key, this.now());
     let podId: string;
     let slot: number;
     try {
@@ -198,7 +239,6 @@ export class SandboxOrchestrator implements SandboxExecutors {
       }
       throw e;
     }
-    const hash = sha(`${s.functionsSource}\0${s.entities.join(",")}\0${JSON.stringify(s.worker ?? null)}`);
     const src: Source = {
       systemId: s.systemId,
       env: s.env,
@@ -355,7 +395,7 @@ export class SandboxOrchestrator implements SandboxExecutors {
       throw e;
     }
     // The switch: from here on calls get the new pod; the old one goes after its calls, outside this pod's queue.
-    this.pods.set(podId, { name, hash, ip, configMaps, systems: keys });
+    this.pods.set(podId, { name, hash, ip, configMaps, systems: keys, restarts: 0 });
     this.log({
       msg: "sandbox_pod_ready",
       step: name,
@@ -425,13 +465,17 @@ export class SandboxOrchestrator implements SandboxExecutors {
   private serial<T>(podId: string, f: () => Promise<T>): Promise<T> {
     const prev = this.locks.get(podId) ?? Promise.resolve();
     this.busy.set(podId, (this.busy.get(podId) ?? 0) + 1);
-    const next = prev
+    const next: Promise<T> = prev
       .catch(() => {})
       .then(f)
       .finally(() => {
         const n = (this.busy.get(podId) ?? 1) - 1;
         if (n > 0) this.busy.set(podId, n);
-        else this.busy.delete(podId);
+        else {
+          // A drained queue leaves nothing behind: pool pod ids are never reused (their sequence only grows).
+          this.busy.delete(podId);
+          if (this.locks.get(podId) === next) this.locks.delete(podId);
+        }
       });
     this.locks.set(podId, next);
     return next;
@@ -452,14 +496,16 @@ export class SandboxOrchestrator implements SandboxExecutors {
    * Rejects with FUNCTIONS_DISABLED: not placed, still restarting after waitMs, or its pod could not start.
    */
   async lease(systemId: string, env: SandboxEnv, waitMs: number): Promise<EndpointLease> {
+    const key = `${systemId}:${env}`;
     const end = this.now() + waitMs;
+    this.used.set(key, this.now());
     let started = false;
     for (;;) {
       const endpoint = this.endpointOf(systemId, env);
       // endpointOf and the hold in one synchronous step: no switch and retire can come in between.
-      if (endpoint) return { endpoint, release: this.hold(endpoint) };
+      if (endpoint) return { endpoint, ...this.hold(endpoint, systemId, env) };
       const p = this.pool.placement({ systemId, env });
-      if (!p) throw unavailable(NOT_LOADED);
+      if (!p) throw unavailable(this.quarantined(key) ? HUNG : NOT_LOADED);
       const left = end - this.now();
       if (left <= 0) throw unavailable("Песочница функций перезапускается");
       if (this.busy.get(p.podId)) {
@@ -492,22 +538,44 @@ export class SandboxOrchestrator implements SandboxExecutors {
     clearTimeout(timer);
   }
 
-  /** Marks a call in flight on a pod (by the endpoint it was given); returns its release. */
-  private hold(endpoint: string): () => void {
+  /**
+   * Marks a call of a system in flight on a pod (by the endpoint it was given); returns its release, and its fail —
+   * the call hit its time limit or lost its connection (the watchdog's evidence when the pod restarts).
+   */
+  private hold(endpoint: string, systemId: string, env: SandboxEnv): Pick<EndpointLease, "release" | "fail"> {
+    const key = `${systemId}:${env}`;
     const ip = endpoint.slice("http://".length, endpoint.lastIndexOf(":")); // endpointOf: http://<ip>:<port>
+    const at = this.now();
     this.calls.set(ip, (this.calls.get(ip) ?? 0) + 1);
+    this.inflight.set(key, (this.inflight.get(key) ?? 0) + 1);
     let released = false;
-    return () => {
-      if (released) return;
-      released = true;
-      const n = (this.calls.get(ip) ?? 1) - 1;
-      if (n > 0) this.calls.set(ip, n);
-      else this.calls.delete(ip);
+    return {
+      release: () => {
+        if (released) return;
+        released = true;
+        const dec = (m: Map<string, number>, k: string) => {
+          const n = (m.get(k) ?? 1) - 1;
+          if (n > 0) m.set(k, n);
+          else m.delete(k);
+        };
+        dec(this.calls, ip);
+        dec(this.inflight, key);
+      },
+      fail: () => {
+        if (this.pool.placement({ systemId, env }))
+          this.strikes.set(key, Math.min(this.strikes.get(key) ?? at, at));
+      },
     };
   }
 
+  private quarantined(key: string): boolean {
+    const q = this.quarantine.get(key);
+    return q !== undefined && q.until > this.now();
+  }
+
   executorFor(sys: { systemId: string; env: SandboxEnv; entities: readonly string[] }): GuestExecutor {
-    if (!this.pool.placement({ systemId: sys.systemId, env: sys.env })) throw unavailable(NOT_LOADED);
+    if (!this.pool.placement({ systemId: sys.systemId, env: sys.env }))
+      throw unavailable(this.quarantined(`${sys.systemId}:${sys.env}`) ? HUNG : NOT_LOADED);
     return new WorkerdExecutor({
       endpoint: () => this.endpointOf(sys.systemId, sys.env),
       lease: (waitMs) => this.lease(sys.systemId, sys.env, waitMs),
@@ -524,18 +592,34 @@ export class SandboxOrchestrator implements SandboxExecutors {
    * Worker so.
    */
   async remove(systemId: string, env: SandboxEnv, o: { resync?: boolean } = {}): Promise<void> {
+    const key = `${systemId}:${env}`;
     const p = this.pool.placement({ systemId, env });
-    if (!p) return;
+    // Already unplaced by a removal still running (the runtime's unload, then G1's release): wait for it, so the
+    // caller sees an emptied pod gone.
+    if (!p) return this.removing.get(key);
+    const done = this.unplace(systemId, env, p.podId, o.resync !== false);
+    this.removing.set(key, done);
+    try {
+      await done;
+    } finally {
+      if (this.removing.get(key) === done) this.removing.delete(key);
+    }
+  }
+
+  private async unplace(systemId: string, env: SandboxEnv, podId: string, resync: boolean): Promise<void> {
+    const key = `${systemId}:${env}`;
     this.pool.remove({ systemId, env });
-    this.sources.delete(`${systemId}:${env}`);
-    this.pending.delete(`${systemId}:${env}`);
-    const emptied = await this.serial(p.podId, async () => {
-      if (this.pool.podSlots(p.podId).some((x) => x !== null)) {
-        if (o.resync !== false) await this.sync(p.podId);
+    this.sources.delete(key);
+    this.pending.delete(key);
+    this.used.delete(key);
+    this.strikes.delete(key);
+    const emptied = await this.serial(podId, async () => {
+      if (this.pool.podSlots(podId).some((x) => x !== null)) {
+        if (resync) await this.sync(podId);
         return undefined;
       }
-      const r = this.pods.get(p.podId);
-      this.pods.delete(p.podId);
+      const r = this.pods.get(podId);
+      this.pods.delete(podId);
       return r;
     });
     if (emptied) await this.retire(emptied);
@@ -543,7 +627,8 @@ export class SandboxOrchestrator implements SandboxExecutors {
 
   /**
    * A pod that disappeared (node restart, eviction) is created again: every `intervalMs` each known pod is looked
-   * up; a missing or failed one is re-synced from the sources kept here.
+   * up; a missing or failed one is re-synced from the sources kept here. A pod whose workerd restarted or keeps
+   * crashing loses the system blamed for it (check()).
    */
   startWatchdog(intervalMs = 30_000): void {
     this.watchdog = setInterval(() => {
@@ -554,24 +639,140 @@ export class SandboxOrchestrator implements SandboxExecutors {
     this.watchdog.unref();
   }
 
+  /**
+   * One watchdog pass. restartPolicy Always keeps a pod whose workerd was killed (liveness: an isolate blocked the
+   * event loop; OOM) in phase Running, so its restarts and CrashLoopBackOff are watched too: the system whose call was
+   * the first to fail (time limit, connection lost) shortly before is blamed — excluded from the config like a
+   * rejected start (the pod restarts without it) and its revision refused for quarantineMs. A pod in CrashLoopBackOff
+   * with nobody to blame is recreated.
+   */
   async check(): Promise<void> {
-    for (const podId of [...this.pods.keys()]) {
-      // In the pod's queue: a sync that switched the record meanwhile is not undone with a stale one.
-      await this.serial(podId, async () => {
-        const r = this.pods.get(podId);
-        if (!r) return;
-        const p = await this.o.kube.getPod(r.name);
-        if (p && p.phase !== "Failed") return;
-        this.log({ msg: "sandbox_pod_lost", level: "warn", step: r.name, reason: p ? p.phase : "Missing" });
-        this.pods.delete(podId);
-        // A failed pod and the ConfigMaps of a lost one would hold quota and storage: removed before the restart.
-        await this.drop(p ? r.name : null, r.configMaps);
-        await this.sync(podId);
-      });
+    const blamed: Source[] = [];
+    try {
+      for (const podId of [...this.pods.keys()]) {
+        let emptied: PodRecord | undefined;
+        // In the pod's queue: a sync that switched the record meanwhile is not undone with a stale one.
+        await this.serial(podId, async () => {
+          const r = this.pods.get(podId);
+          if (!r) return;
+          const p = await this.o.kube.getPod(r.name);
+          if (p && p.phase !== "Failed") {
+            const restarts = p.restarts ?? 0;
+            const crashing = p.reason === "CrashLoopBackOff";
+            if (restarts <= r.restarts && !crashing) return;
+            r.restarts = restarts;
+            const culprit = this.blame(r);
+            this.log({
+              msg: "sandbox_pod_restarted",
+              level: "warn",
+              step: r.name,
+              reason: podReason(p),
+              ...(culprit ? { systemId: culprit.systemId, env: culprit.env } : {}),
+            });
+            if (culprit) {
+              blamed.push(culprit);
+              emptied = this.exclude(culprit, podId);
+              if (!emptied) await this.sync(podId);
+              return;
+            }
+            if (!crashing) return;
+          }
+          const reason = !p ? "Missing" : p.phase === "Failed" ? p.phase : podReason(p);
+          this.log({ msg: "sandbox_pod_lost", level: "warn", step: r.name, reason });
+          this.pods.delete(podId);
+          // A failed pod and the ConfigMaps of a lost one would hold quota and storage: removed before the restart.
+          await this.drop(p ? r.name : null, r.configMaps);
+          await this.sync(podId);
+        });
+        if (emptied) await this.retire(emptied);
+      }
+    } finally {
+      for (const b of blamed) this.released(b.systemId, b.env);
+      const now = this.now();
+      for (const [k, at] of this.strikes) if (at < now - STRIKE_WINDOW_MS) this.strikes.delete(k);
+      for (const [k, q] of this.quarantine) if (q.until <= now) this.quarantine.delete(k);
     }
+  }
+
+  /** The pod's system whose failed call started first within STRIKE_WINDOW_MS (its pod's strikes are cleared). */
+  private blame(r: PodRecord): Source | null {
+    const since = this.now() - STRIKE_WINDOW_MS;
+    let first: { key: string; at: number } | null = null;
+    for (const key of r.systems.keys()) {
+      const at = this.strikes.get(key);
+      this.strikes.delete(key);
+      if (at !== undefined && at >= since && (!first || at < first.at)) first = { key, at };
+    }
+    return first ? (this.sources.get(first.key) ?? null) : null;
+  }
+
+  /** The watchdog's reject(): the system leaves its pod's config and its revision is refused for a while. */
+  private exclude(src: Source, podId: string): PodRecord | undefined {
+    const key = `${src.systemId}:${src.env}`;
+    this.quarantine.set(key, { hash: src.hash, until: this.now() + (this.o.quarantineMs ?? 600_000) });
+    this.log({
+      msg: "sandbox_system_excluded",
+      level: "error",
+      systemId: src.systemId,
+      env: src.env,
+      step: podId,
+    });
+    this.sources.delete(key);
+    this.pending.delete(key);
+    this.used.delete(key);
+    this.pool.remove({ systemId: src.systemId, env: src.env });
+    if (this.pool.podSlots(podId).some((x) => x !== null)) return undefined;
+    const r = this.pods.get(podId);
+    this.pods.delete(podId);
+    return r;
+  }
+
+  /** Called with each system whose slot was freed here (idle, excluded): the runtime drops its loaded copy. */
+  onReleased(listener: (systemId: string, env: SandboxEnv) => void): void {
+    this.listeners.push(listener);
+  }
+
+  private released(systemId: string, env: SandboxEnv): void {
+    for (const l of this.listeners) {
+      try {
+        l(systemId, env);
+      } catch (e) {
+        this.log({ msg: "sandbox_release_listener_failed", level: "warn", systemId, env, error: e });
+      }
+    }
+  }
+
+  /**
+   * Frees the slots of systems with no prepare or call for longer than their env's limit (0 or absent: never) and no
+   * call in flight; their pods are not restarted for it (resync: false). Returns how many were freed.
+   */
+  async collectIdle(idleMs: Partial<Record<SandboxEnv, number>>): Promise<number> {
+    const now = this.now();
+    let freed = 0;
+    for (const [key, src] of [...this.sources]) {
+      const limit = idleMs[src.env];
+      if (!limit || this.pending.has(key) || this.inflight.get(key)) continue;
+      if (now - (this.used.get(key) ?? 0) < limit) continue;
+      this.log({ msg: "sandbox_system_idle", systemId: src.systemId, env: src.env });
+      await this.remove(src.systemId, src.env, { resync: false });
+      this.released(src.systemId, src.env);
+      freed += 1;
+    }
+    return freed;
+  }
+
+  /** collectIdle every `intervalMs` (default 60 s). */
+  startIdleCollector(idleMs: Partial<Record<SandboxEnv, number>>, intervalMs = 60_000): void {
+    this.idleTimer = setInterval(() => {
+      void this.collectIdle(idleMs).catch((e: unknown) =>
+        this.log({ msg: "sandbox_idle_collect_failed", level: "error", error: e }),
+      );
+    }, intervalMs);
+    this.idleTimer.unref();
   }
 
   async close(): Promise<void> {
     if (this.watchdog) clearInterval(this.watchdog);
+    if (this.idleTimer) clearInterval(this.idleTimer);
   }
 }
