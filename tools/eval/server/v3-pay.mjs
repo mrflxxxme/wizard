@@ -137,9 +137,23 @@ export async function payShopOrder({ client, systemId, launch, say = () => {}, t
         .catch(() => "");
       where = `${u.host}${u.pathname}${alert ? ` · «${alert.trim().slice(0, 300)}»` : ""}`;
     } catch {}
-    step(s, false, [note, where].filter(Boolean).join(" · "));
+    const net = calls.slice(-5).join("; ");
+    step(s, false, [note, where, net ? `запросы: ${net}` : ""].filter(Boolean).join(" · "));
     return { status: "failed", steps };
   };
+  /** The page's API calls after the checkout (method, path, status, the start of an error answer): what failed. */
+  const calls = [];
+  const watch = () =>
+    page.on("response", async (r) => {
+      try {
+        const u = new URL(r.url());
+        if (!u.pathname.startsWith("/api/") && !u.pathname.startsWith("/_wizard/pay")) return;
+        const req = r.request();
+        if (req.method() === "GET" && r.status() < 400) return;
+        const body = r.status() >= 400 ? (await r.text().catch(() => "")).slice(0, 160) : "";
+        calls.push(`${req.method()} ${u.pathname} ${r.status()}${body ? ` ${body}` : ""}`);
+      } catch {}
+    });
   try {
     const link = (await client.get(`/systems/${systemId}/preview-url`)).body;
     if (!link?.url) return { status: "failed", steps: [step("ссылка на превью", false, "не получена")] };
@@ -177,9 +191,10 @@ export async function payShopOrder({ client, systemId, launch, say = () => {}, t
     await setField(page, "email", "pay-check@example.com");
     const consent = page.locator(`${sel("wz-consent")} input[type="checkbox"]`).first();
     if ((await consent.count()) > 0) await consent.check({ force: true });
+    watch();
     await form.click();
     const toKassa = await page
-      .waitForURL((u) => /(^|\.)(yoomoney|yookassa)\.ru$/.test(u.hostname), { timeout: 30_000 })
+      .waitForURL((u) => /(^|\.)(yoomoney|yookassa)\.ru$/.test(u.hostname), { timeout: 60_000 })
       .then(() => true)
       .catch(() => false);
     if (!toKassa) return await fail("переход на страницу оплаты ЮKassa");
