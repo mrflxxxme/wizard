@@ -165,16 +165,23 @@ export const THREE_DS_CODE = [
 ];
 const CONFIRM_RE = /Подтвердить|Отправить|Продолжить|Confirm|Submit/i;
 
-/** Types a card value like a person (a masked field may drop a bare fill); → whether its digits stuck. */
+/**
+ * Types a card value like a person (a masked field may drop a bare fill); → whether it stuck: its digits, or as many
+ * mask characters as digits (the page keeps the CVC as «•••» in the field — 11.10.2026).
+ */
 export async function typeCardField(field, value) {
   const want = String(value).replace(/\D/g, "");
-  const digits = async () => String(await field.inputValue().catch(() => "")).replace(/\D/g, "");
+  const stuck = async () => {
+    const raw = String(await field.inputValue().catch(() => ""));
+    const digits = raw.replace(/\D/g, "");
+    return digits === want || (digits === "" && raw.replace(/\s/g, "").length === want.length);
+  };
   await field.click().catch(() => {});
   await field.fill("").catch(() => {});
   await field.pressSequentially(String(value), { delay: 40 }).catch(() => {});
-  if ((await digits()) === want) return true;
+  if (await stuck()) return true;
   await field.fill(String(value)).catch(() => {});
-  return (await digits()) === want;
+  return stuck();
 }
 
 /** The first visible and enabled button of `re` in the page or any frame, waiting up to `ms`; null — none. */
@@ -404,7 +411,9 @@ export async function payShopOrder({
     const cvc = await findCardField(page, CARD_FIELDS.cvc, 3_000);
     if (!cvc) return await kassaFail("поле CVC карты");
     typed.push(await typeCardField(cvc, TEST_CARD.cvc));
-    if (typed.some((ok) => !ok)) return await kassaFail("данные тестовой карты не встали в поля формы");
+    // A value the field does not show back is noted, not fatal: the form's own check decides (an inactive
+    // «Заплатить» or its error text below).
+    if (typed.some((ok) => !ok)) step("не все значения карты видны в полях формы", true, "проверит сама форма");
     // The form as it was before «Заплатить» (next to the failure's shot): what the visitor saw filled.
     if (shotPath)
       await page.screenshot({ path: shotPath.replace(/\.png$/, "-form.png"), fullPage: true }).catch(() => {});
