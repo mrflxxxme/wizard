@@ -126,7 +126,9 @@ export async function payShopOrder({ client, systemId, launch, say = () => {}, t
       const alert = await page
         .evaluate(() => {
           const out = [];
-          for (const el of document.querySelectorAll('[role="alert"], [id$="-err"], [data-testid$="-error"]')) {
+          // Field and delivery problems of the checkout are bold small paragraphs with an icon (cart/split.tsx Problem).
+          const sel = '[role="alert"], [id$="-err"], [data-testid$="-error"], form p.font-bold:has(svg)';
+          for (const el of document.querySelectorAll(sel)) {
             const t = (el.textContent || "").trim();
             if (t && !out.includes(t)) out.push(t);
           }
@@ -178,7 +180,11 @@ export async function payShopOrder({ client, systemId, launch, say = () => {}, t
     const pickupSelect = page.locator(`${sel("wz-field-pickup_point")} select`).first();
     const pickupRadio = page.locator(`${sel("wz-field-pickup_point")} input[type="radio"]`).first();
     const delivery = page.locator(`${sel("wz-field-delivery")} input[value="pickup"]`).first();
-    if ((await delivery.count()) > 0) await delivery.check({ force: true });
+    if ((await delivery.count()) > 0) {
+      await delivery.check({ force: true });
+      // The pickup points render after the method is chosen and load from the data: wait for them (G1's driver does).
+      await pickupRadio.or(pickupSelect).first().waitFor({ state: "attached", timeout: 15_000 }).catch(() => {});
+    }
     if ((await pickupSelect.count()) > 0) {
       const value = await pickupSelect
         .locator("option")

@@ -142,7 +142,7 @@ const LINE_HEIGHT: Record<TypeStep, number> = {
 /** Catalog T04, T09: the hero never above 72 px, running text ≥ 16 px on phones, the smallest text ≥ 13 px. */
 export const DISPLAY_MAX_PX = 72;
 /** The hero on a 360–390 px phone (see typeScale). */
-export const DISPLAY_MOBILE_MAX_PX = 40;
+export const DISPLAY_MOBILE_MAX_PX = 36;
 export const SMALL_MIN_PX = 13;
 const VIEW_MIN = 360;
 const VIEW_MAX = 1280;
@@ -167,8 +167,8 @@ function typeScale(scale: TypeScaleId, upper: boolean, tracking: "tight" | "norm
     let [min, max] = step(name === "display" ? s.display : EXPONENT[name]);
     if (name === "display") {
       max = Math.min(max, DISPLAY_MAX_PX);
-      // ≤ 40 px on phones: a long Russian word of a heading («Стоматологическая», 17 letters) fits a 358 px column
-      // even in a wide display face (Cormorant at 46 px broke it inside, V3-18).
+      // ≤ 36 px on phones: a long Russian word of a heading («Стоматологическая», 17 letters) fits a 358 px column
+      // even in a wide display face (Cormorant at 46 px broke it inside; at 40 px still in the padded column of hero-full-bleed, V3-18).
       min = Math.min(min, DISPLAY_MOBILE_MAX_PX);
     }
     if (name === "3xl") min = Math.min(min, 40);
