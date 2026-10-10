@@ -40,7 +40,11 @@ export const V3_TEST_OPERATOR = {
   operatorName: "ИП Тестов Т. Т.",
   operatorContact: "operator@test.example",
   operatorAddress: "г. Тестовск, ул. Тестовая, д. 1 (тестовые данные замера)",
+  // A shop's offer also needs the seller's INN (SELLER_REQUISITES_REQUIRED): a made-up INN-12 with valid check digits.
+  operatorInn: "771234567859",
 };
+/** Publish blockers the owner clears with the operator's and the seller's data (setCompliance). */
+const OWNER_DATA_BLOCKER = /^(OPERATOR_[A-Z_]+|SELLER_REQUISITES_REQUIRED|INN_INVALID|OGRN_INVALID)$/;
 /** The reserved option of a v3 question (agents interview-v3 DELEGATE_OPTION_ID). */
 export const DELEGATE = "delegate";
 /** The owner's line when the interview waits for a free text and the brief has nothing more to say. */
@@ -290,13 +294,14 @@ export function newV3Result(brief) {
 }
 
 /**
- * The owner's step before publishing: the operator's data the system asks for (publishBlockers OPERATOR_*), filled
+ * The owner's step before publishing: the operator's data the system asks for (publishBlockers OPERATOR_*, a shop's
+ * SELLER_REQUISITES_REQUIRED), filled
  * through PUT /systems/:id/compliance as the cabinet's settings do. → {filled, revision, blockers}; never throws.
  */
 export async function fillOwnerOperator(client, systemId, say = () => {}) {
   try {
     const s = (await client.get(`/systems/${systemId}`)).body;
-    const need = (s.publishBlockers ?? []).filter((b) => /^OPERATOR_/.test(String(b)));
+    const need = (s.publishBlockers ?? []).filter((b) => OWNER_DATA_BLOCKER.test(String(b)));
     if (!need.length) return { filled: false, revision: null, blockers: [] };
     const res = await client.put(`/systems/${systemId}/compliance`, {
       expectedVersion: s.system.draftRevision,
