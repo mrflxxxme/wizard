@@ -80,6 +80,8 @@ export interface RuntimeAppOptions {
   db: postgres.Sql;
   registry: SystemRegistry;
   clock?: () => Date;
+  /** Count drafts in the public API rate limits too (tests with dev logins); default — published systems only. */
+  rateLimitDrafts?: boolean;
   connectors?: "outbox" | "live";
   /** Process configuration; default readEnv(process.env). */
   env?: Partial<RuntimeEnv>;
@@ -355,7 +357,7 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
   app.route("/_wizard", invitePageRoutes());
   app.all("/_wizard/*", () => notFoundPage());
   // V3-18: runtime.yaml#rate_limits of /api/data, /api/fn and /api/pay* (per user, anonymous — per client network).
-  app.use("/api/*", publicApiRateLimits(services.clock));
+  app.use("/api/*", publicApiRateLimits(services.clock, { drafts: o.rateLimitDrafts === true }));
   app.route("/api/data", dataRoutes());
   app.route("/api/auth", loginApiRoutes(auth));
   app.route("/api/auth", authRoutes());
