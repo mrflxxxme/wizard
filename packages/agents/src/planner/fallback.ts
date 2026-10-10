@@ -55,10 +55,30 @@ const NICHES: readonly (readonly [RegExp, string])[] = [
   [/юрист|юридич|адвокат|нотари/, "юридические услуги"],
   [/бухгалт/, "бухгалтерские услуги"],
   [/автосервис|шиномонтаж|автомойк/, "автосервис"],
+  // V3-40: a design studio and a house builder are not «ремонт и отделка» (their photos and words differ).
+  [/дизайн(ер\S*)? интерьер|дизайн-студи|студи\S* интерьер/, "дизайн интерьера"],
+  [
+    /каркасн|домокомплект|строительств\S* дом|дом(а|ов)? под ключ|коттедж|загородн\S* дом/,
+    "строительство домов",
+  ],
+  [/ремонт\S* (техник|телефон|смартфон|ноутбук|компьютер|бытов)|сервисн\S* центр/, "ремонт техники"],
+  [/кондиционер|сплит-систем|климатическ\S* техник|вентиляц/, "монтаж кондиционеров"],
   [/ремонт|отделк/, "ремонт и отделка"],
+  // Goods of the final set of v3 (10.10.2026: the tea shop became «фотостудия», the roastery «кафе»).
+  [/обжар|кофе\S* оптом|оптов\S* (поставк\S* )?кофе|зерн\S* кофе|кофе\S* зерн/, "обжарка кофе"],
+  [
+    /(^|[^а-я])ча(й|и|ев|ям|ями|ях|ю)(?![а-я])|травян|пасек|пасеч|пчел|(^|[^а-я])мед(а|ом|у)?(?![а-я])/,
+    "чай и мёд",
+  ],
+  [
+    /фермер|фермск|(^|[^а-я])ферм(а|ы|у|ой)?(?![а-я])|овощ|молочн\S* продук|сыровар|деревенск\S* продук/,
+    "фермерские продукты",
+  ],
+  [/керамик|керамич|гончар/, "керамическая мастерская"],
   [/кафе|ресторан|кофейн|бар\b/, "кафе"],
   [/пекарн|кондитер|торт/, "кондитерская"],
-  [/фотограф|фотостуди/, "фотостудия"],
+  // «Фотографии» of goods or of the mountains in a brief are not a photo studio: only the trade and the studio count.
+  [/фотограф(а|у|ом|ы|ов)?(?![а-я])|фотостуди|фотосесс/, "фотостудия"],
   [/переговорн|коворкинг/, "коворкинг"],
   [/библиотек/, "библиотека"],
   [/прокат|аренд/, "прокат"],
@@ -86,11 +106,16 @@ const lower = (s: string) => s.toLowerCase().replace(/ё/g, "е");
  */
 export const isKeywordNiche = (niche: string): boolean => NICHES.some(([, n]) => n === niche);
 
-/** Niche of the brief: by keywords, else the first words of its first sentence, else «малый бизнес». */
+/**
+ * Niche of the brief: by keywords phrase by phrase — a brief names its business first («Клининговая компания: CRM…
+ * бухгалтер выгружает…» is cleaning, not accounting; V3-40), the list order inside a phrase («Онлайн-школа йоги» is
+ * yoga) — else the first words of its first sentence, else «малый бизнес».
+ */
 export function fallbackNiche(brief: string): string {
-  const t = lower(brief);
-  const hit = NICHES.find(([re]) => re.test(t));
-  if (hit) return hit[1];
+  for (const phrase of lower(brief).split(/[.:;!?\n]+/)) {
+    const hit = NICHES.find(([re]) => re.test(phrase));
+    if (hit) return hit[1];
+  }
   const words = (brief.split(/[.!?\n]/)[0] ?? "")
     .split(/\s+/)
     .map((w) => w.replace(/[^\p{L}\p{N}-]/gu, ""))

@@ -103,7 +103,11 @@ export async function seedDraft(
   i: { systemKey: string; spec: AppSpec; migratorRole?: string; hints?: readonly SeedHint[] },
 ): Promise<{ users: number; rows: number }> {
   const schema = schemaName(i.systemKey, "draft");
-  const seed = generateSeed(i.spec, sha256(i.systemKey), i.hints?.length ? { hints: i.hints } : {});
+  // The draft's demo data: what a visitor reads behind a fixed filter is there (published articles, V3-40).
+  const seed = generateSeed(i.spec, sha256(i.systemKey), {
+    showcase: true,
+    ...(i.hints?.length ? { hints: i.hints } : {}),
+  });
   let rows = 0;
   let users = 0;
   await pg.begin(async (tx) => {

@@ -554,6 +554,9 @@ function boundProps(type: SectionType, c: SectionContext): Props | null {
         : null;
     const empty = (noun && fits(`${cap(noun)} скоро появятся`, 120)) || "В каталоге пока нет позиций";
     if (c.page.kind === "home") {
+      // A shop shows its goods on home already (the shop section): a catalog preview next to them repeats the
+      // showcase (the critic's L06 on the shops of the final measurement, V3-40); the catalog keeps its own page.
+      if (c.pages.some((p) => p.kind === "shop")) return null;
       // A preview of the first items with the way to the whole catalog: nothing while the catalog is empty.
       const page = c.pages.find((p) => p.kind === "catalog");
       const all = (noun && fits(`Все ${noun}`, LINE.label)) || "Весь каталог";

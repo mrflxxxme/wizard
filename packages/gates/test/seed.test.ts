@@ -300,3 +300,54 @@ describe("G1 catalog", () => {
     );
   });
 });
+
+// V3-40: the draft's demo data (seed_draft, the visual critic) — a visitor reads published articles only, and the
+// final measurement's blogs showed one card dated two days ahead.
+describe("generateSeed showcase (the draft's demo data)", () => {
+  const spec = {
+    app: { name: "Блог студии", description: "" },
+    roles: [
+      { name: "visitor", access: "public" },
+      { name: "owner", access: "login" },
+    ],
+    entities: [
+      {
+        name: "articles",
+        label: "Статья",
+        fields: [
+          { name: "title", label: "Заголовок", type: "string", required: true },
+          {
+            name: "status",
+            label: "Статус",
+            type: "enum",
+            enum: [
+              { value: "draft", label: "Черновик" },
+              { value: "published", label: "Опубликовано" },
+              { value: "archived", label: "В архиве" },
+            ],
+          },
+          { name: "published_at", label: "Опубликована", type: "datetime" },
+        ],
+      },
+      { name: "notes", label: "Заметка", fields: [{ name: "text", label: "Текст", type: "string" }] },
+    ],
+    permissions: [
+      { role: "visitor", entity: "articles", ops: ["read"], rowFilter: { status: "published" } },
+      { role: "owner", entity: "articles", ops: ["read", "create", "update", "delete"] },
+      { role: "owner", entity: "notes", ops: ["read"] },
+    ],
+  } as unknown as AppSpec;
+
+  test("three published articles a visitor sees, drafts stay; publication dates before $now; G1's seed unchanged", () => {
+    const gate = generateSeed(spec, "key-1", { now: NOW });
+    const demo = generateSeed(spec, "key-1", { now: NOW, showcase: true });
+    const articles = demo.rows.articles ?? [];
+    expect(articles.filter((r) => r.status === "published")).toHaveLength(3);
+    expect(articles.filter((r) => r.status !== "published").length).toBeGreaterThanOrEqual(3);
+    for (const r of articles) expect(Date.parse(String(r.published_at))).toBeLessThan(NOW.getTime());
+    // Without a fixed filter nothing changes; without showcase the gate's seed is the one it was.
+    expect(demo.rows.notes).toEqual(gate.rows.notes);
+    expect((gate.rows.articles ?? []).filter((r) => r.status === "published")).toHaveLength(1);
+    expect(Date.parse(String(gate.rows.articles?.[0]?.published_at))).toBeGreaterThan(NOW.getTime());
+  });
+});

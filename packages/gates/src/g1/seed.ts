@@ -287,6 +287,45 @@ export interface SeedOptions {
   now?: Date;
   /** QA hints (qa.yaml#seed.rules MAY); invalid ones are ignored, see validateSeedHint. */
   hints?: readonly SeedHint[];
+  /**
+   * The draft's demo data (seed_draft and the visual critic, V3-40), not a gate's seed: an entity a role reads through
+   * a fixed row filter (a visitor reads published articles) has at least SHOWCASE_ROWS rows matching it and as many
+   * that do not; publication dates lie in the past. Off — the seed of G1/G2 as it was.
+   */
+  showcase?: boolean;
+}
+
+/** Rows a visitor sees of an entity behind a fixed row filter in the draft's demo data (a blog shows three articles). */
+export const SHOWCASE_ROWS = 3;
+/** Publication dates of the demo data (`published_at`, `posted_on`, …): days before $now, never ahead of it. */
+const PAST_DATE_FIELD = /^(published|posted|publish|written|issued)(_at|_on|_date)?$|^publication_date$/;
+
+/** The first fixed row filter of an entity (only literal values: no $user.* or other $-reference), or null. */
+function fixedRowFilter(spec: AppSpec, entity: string): Record<string, unknown> | null {
+  for (const p of spec.permissions) {
+    if (p.entity !== entity || !p.rowFilter) continue;
+    const values = Object.values(p.rowFilter);
+    if (values.length && values.every((v) => !(typeof v === "string" && v.startsWith("$"))))
+      return p.rowFilter;
+  }
+  return null;
+}
+
+/** Makes a demo row miss the filter: its first enum or bool field of the filter gets another value. */
+function missFilter(e: Entity, row: Record<string, unknown>, filter: Record<string, unknown>): void {
+  for (const [field, want] of Object.entries(filter)) {
+    if (row[field] !== want) return;
+    const f = e.fields.find((x) => x.name === field);
+    if (f?.type === "bool" && typeof want === "boolean") {
+      row[field] = !want;
+      return;
+    }
+    const other = f?.type === "enum" ? f.enum?.find((o) => o.value !== want) : undefined;
+    if (other) {
+      row[field] = other.value;
+      return;
+    }
+  }
 }
 
 /** Rows per entity never exceed this, so a hint has at most as many values. */
@@ -446,7 +485,8 @@ export function generateSeed(spec: AppSpec, key: string, opts: SeedOptions = {})
   for (const e of spec.entities) {
     const rf = spec.permissions.filter((p) => p.entity === e.name && p.rowFilter).length;
     const enums = Math.max(0, ...e.fields.map((f) => (f.type === "enum" ? (f.enum?.length ?? 0) : 0)));
-    counts.set(e.name, Math.min(10, Math.max(3, enums, rf * 2)));
+    const showcase = opts.showcase && fixedRowFilter(spec, e.name) ? SHOWCASE_ROWS * 2 : 0;
+    counts.set(e.name, Math.min(SEED_HINT_MAX_VALUES, Math.max(3, enums, rf * 2, showcase)));
   }
   const byName = new Map(spec.entities.map((e) => [e.name, e]));
   for (const name of order) {
@@ -489,6 +529,17 @@ export function generateSeed(spec: AppSpec, key: string, opts: SeedOptions = {})
           const m = typeof want === "string" ? /^\$user\.([a-z_]+)$/.exec(want) : null;
           row[field] = m ? userAttr(owner.user, m[1] as string) : want;
         }
+      }
+      if (opts.showcase) {
+        // Every other row is what the filtered role sees (published), the rest is not (drafts stay drafts).
+        const fixed = owner ? null : fixedRowFilter(spec, name);
+        if (fixed && i % 2 === 0) Object.assign(row, fixed);
+        else if (fixed) missFilter(e, row, fixed);
+        for (const f of e.fields)
+          if ((f.type === "date" || f.type === "datetime") && !f.unique && PAST_DATE_FIELD.test(f.name)) {
+            const iso = new Date(now.getTime() - (i + 1) * DAY_MS).toISOString();
+            row[f.name] = f.type === "date" ? iso.slice(0, 10) : iso;
+          }
       }
       list.push(row);
     }
