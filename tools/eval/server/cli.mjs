@@ -179,6 +179,7 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
       ...(shots ? { screenshot: shots.screenshot } : {}),
       // V3-23: the founder's ЮKassa test shop (env of the eval step) and Chromium for the purchase on the preview.
       ...(v3 ? { kassa: kassaFromEnv(deps.env ?? process.env), launch: deps.launch ?? launchChromium } : {}),
+      ...(v3 && o.screenshots ? { kassaShots: o.screenshots } : {}),
     }).finally(() => shots?.close());
     const text = `${JSON.stringify(doc, null, 2)}\n`;
     if (o.out) writeFileSync(o.out, text);

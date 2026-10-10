@@ -109,6 +109,7 @@ export { closeExecutors } from "./exec/host.js";
 export {
   type LibraryPhoto,
   libraryPhoto,
+  libraryPhotoFile,
   libraryPhotoId,
   PHOTO_LIBRARY_INDEX_ID,
   PHOTO_LIBRARY_PREFIX,

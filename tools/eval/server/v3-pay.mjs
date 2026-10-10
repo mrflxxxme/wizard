@@ -8,6 +8,8 @@
 // the env of the eval step (secrets YOUKASSA_TEST_API_KEY + YOUKASSA_TEST_SHOP_ID, or the pair YOOKASSA_TEST_*), never
 // reach a line of the report, and a live key is refused before anything is sent.
 
+import { join } from "node:path";
+
 const WINDOW_VERSION = "wz-key-window/v1";
 const WINDOW_ALG = "ECDH-ES+HKDF-SHA256+A256GCM";
 /**
@@ -109,14 +111,96 @@ async function setField(page, name, value) {
   return true;
 }
 
+/** Card fields of the ЮKassa page by their usual marks (autocomplete, name, placeholder, aria-label), any frame. */
+export const CARD_FIELDS = {
+  number: [
+    'input[autocomplete="cc-number"]',
+    'input[name*="number" i]',
+    'input[name*="pan" i]',
+    'input[placeholder*="номер карты" i]',
+    'input[aria-label*="номер карты" i]',
+    'input[placeholder*="0000 0000" i]',
+  ],
+  exp: [
+    'input[autocomplete="cc-exp"]',
+    'input[name*="expir" i]',
+    'input[placeholder*="ММ/ГГ" i]',
+    'input[placeholder*="MM/YY" i]',
+    'input[aria-label*="срок" i]',
+  ],
+  month: ['input[autocomplete="cc-exp-month"]', 'input[name*="month" i]', 'input[placeholder="ММ" i]', 'input[placeholder="MM" i]'],
+  year: ['input[autocomplete="cc-exp-year"]', 'input[name*="year" i]', 'input[placeholder="ГГ" i]', 'input[placeholder="YY" i]'],
+  cvc: [
+    'input[autocomplete="cc-csc"]',
+    'input[name*="cvc" i]',
+    'input[name*="csc" i]',
+    'input[name*="cvv" i]',
+    'input[placeholder*="CVC" i]',
+    'input[placeholder*="CVV" i]',
+    'input[aria-label*="CVC" i]',
+  ],
+};
+/** The bank card among the payment methods (its wording changes between the page versions). */
+export const CARD_METHOD_RE = /Банковск\S* карт|Картой|Новая карта|Bank card/i;
+export const PAY_BUTTON_RE = /Заплатить|Оплатить|Pay/i;
+
+/** The first visible field of `selectors` in the page or any of its frames, waiting up to `ms`; null — none. */
+export async function findCardField(page, selectors, ms) {
+  const css = selectors.join(", ");
+  const until = Date.now() + ms;
+  for (;;) {
+    for (const frame of page.frames()) {
+      const f = frame.locator(css).first();
+      if (await f.isVisible().catch(() => false)) return f;
+    }
+    if (Date.now() >= until) return null;
+    await page.waitForTimeout(500);
+  }
+}
+
+/** What the ЮKassa page shows when a step fails: frames, inputs (marks only, never values) and buttons. */
+export async function kassaDiagnostics(page) {
+  const parts = [];
+  for (const [i, frame] of page.frames().entries()) {
+    let host = "";
+    try {
+      const u = new URL(frame.url());
+      host = `${u.host}${u.pathname}`.slice(0, 80);
+    } catch {}
+    const marks = await frame
+      .evaluate(() => {
+        const inputs = [...document.querySelectorAll("input, select, iframe")].slice(0, 12).map((el) => {
+          const a = (k) => (el.getAttribute(k) || "").slice(0, 24);
+          return `${el.tagName.toLowerCase()}[${[a("type"), a("name"), a("autocomplete"), a("placeholder"), a("aria-label")].filter(Boolean).join("|")}]`;
+        });
+        const buttons = [...document.querySelectorAll("button, [role=button], label")]
+          .map((b) => (b.textContent || "").trim().replace(/\s+/g, " ").slice(0, 30))
+          .filter(Boolean)
+          .slice(0, 8);
+        return `${inputs.join(" ")}${buttons.length ? ` кнопки: ${buttons.join(" / ")}` : ""}`;
+      })
+      .catch(() => "—");
+    parts.push(`фрейм ${i} ${host}: ${marks}`);
+  }
+  return parts.join(" ‖ ").slice(0, 1200);
+}
+
 /**
  * A visitor buys on the draft's preview and pays on the ЮKassa test page. → {status: «paid» | «failed», steps:[{step,
  * ok, note}], orderStatus}. `launch` gives a Playwright browser. Never throws.
  */
-export async function payShopOrder({ client, systemId, launch, say = () => {}, timeoutMs = 90_000 }) {
+export async function payShopOrder({
+  client,
+  systemId,
+  launch,
+  say = () => {},
+  timeoutMs = 90_000,
+  shotPath = null,
+}) {
   const steps = [];
   const step = (s, ok, note = "") => {
-    steps.push({ step: s, ok, ...(note ? { note: String(note).slice(0, 300) } : {}) });
+    // The ЮKassa page's diagnostics (frames, field marks, buttons) need more room than a plain reason.
+    steps.push({ step: s, ok, ...(note ? { note: String(note).slice(0, 1500) } : {}) });
     say(`оплата: ${s}${ok ? "" : ` — не прошло${note ? `: ${String(note).slice(0, 160)}` : ""}`}`);
     return ok;
   };
@@ -219,21 +303,36 @@ export async function payShopOrder({ client, systemId, launch, say = () => {}, t
       );
     }
     step("заказ оформлен, открылась страница оплаты ЮKassa", true);
-    // The test page: the bank card (a choice of methods may come first), the card's fields, «Заплатить».
-    const card = page.getByText(/Банковская карта/i).first();
-    if ((await card.count()) > 0) await card.click().catch(() => {});
-    const num = page.locator('input[autocomplete="cc-number"], input[name*="number" i]').first();
-    if (!(await num.waitFor({ state: "visible", timeout: 30_000 }).then(() => true, () => false)))
-      return await fail("поле номера карты на странице оплаты");
-    await num.fill(TEST_CARD.number);
-    const exp = page.locator('input[autocomplete="cc-exp"], input[name*="expir" i]').first();
-    if ((await exp.count()) > 0) await exp.fill(TEST_CARD.exp);
-    else {
-      await page.locator('input[autocomplete="cc-exp-month"]').first().fill(TEST_CARD.exp.slice(0, 2));
-      await page.locator('input[autocomplete="cc-exp-year"]').first().fill(TEST_CARD.exp.slice(2));
+    // The test page: the bank card (a choice of methods may come first), the card's fields (often in a frame of the
+    // card vault), «Заплатить». Any wording of the method and any frame; on failure — what the page had.
+    const kassaFail = async (s2) => {
+      const diag = await kassaDiagnostics(page);
+      if (shotPath) await page.screenshot({ path: shotPath, fullPage: true }).catch(() => {});
+      return await fail(s2, diag);
+    };
+    const num = await findCardField(page, CARD_FIELDS.number, 15_000);
+    if (!num) {
+      const method = page.getByText(CARD_METHOD_RE).first();
+      if ((await method.count()) > 0) await method.click().catch(() => {});
     }
-    await page.locator('input[autocomplete="cc-csc"], input[name*="cvc" i], input[name*="csc" i]').first().fill(TEST_CARD.cvc);
-    await page.getByRole("button", { name: /Заплатить|Оплатить/i }).first().click();
+    const cardNumber = num ?? (await findCardField(page, CARD_FIELDS.number, 30_000));
+    if (!cardNumber) return await kassaFail("поле номера карты на странице оплаты");
+    await cardNumber.fill(TEST_CARD.number);
+    const exp = await findCardField(page, CARD_FIELDS.exp, 3_000);
+    if (exp) await exp.fill(`${TEST_CARD.exp.slice(0, 2)}/${TEST_CARD.exp.slice(2)}`);
+    else {
+      const month = await findCardField(page, CARD_FIELDS.month, 3_000);
+      const year = await findCardField(page, CARD_FIELDS.year, 3_000);
+      if (!month || !year) return await kassaFail("поле срока действия карты");
+      await month.fill(TEST_CARD.exp.slice(0, 2));
+      await year.fill(TEST_CARD.exp.slice(2));
+    }
+    const cvc = await findCardField(page, CARD_FIELDS.cvc, 3_000);
+    if (!cvc) return await kassaFail("поле CVC карты");
+    await cvc.fill(TEST_CARD.cvc);
+    const pay = page.getByRole("button", { name: PAY_BUTTON_RE }).first();
+    if (!(await pay.isVisible().catch(() => false))) return await kassaFail("кнопка «Заплатить» на странице оплаты");
+    await pay.click();
     const backTo = (ms) =>
       page
         .waitForURL((u) => u.origin === origin && u.pathname.startsWith("/order/"), { timeout: ms })
@@ -250,7 +349,7 @@ export async function payShopOrder({ client, systemId, launch, say = () => {}, t
       }
       back = await backTo(timeoutMs);
     }
-    if (!back) return await fail("оплата тестовой картой и возврат на страницу заказа");
+    if (!back) return await kassaFail("оплата тестовой картой и возврат на страницу заказа");
     step("оплачено тестовой картой, посетитель вернулся на страницу заказа", true);
     const status = page.locator(sel("wz-order-status")).first();
     let text = "";
@@ -278,6 +377,13 @@ export async function shopPayment(ctx, client, systemId, say = () => {}) {
   if (keys.status === "no_payment") return { status: "skipped", note: "в системе нет онлайн-оплаты" };
   if (keys.status !== "filled") return { status: "failed", keys, steps: [] };
   if (!ctx.launch) return { status: "keys_only", keys, steps: [] };
-  const pay = await payShopOrder({ client, systemId, launch: ctx.launch, say });
+  const pay = await payShopOrder({
+    client,
+    systemId,
+    launch: ctx.launch,
+    say,
+    // A failed step on the ЮKassa page leaves its screenshot next to the systems' ones (the run's artifact).
+    shotPath: ctx.kassaShots ? join(ctx.kassaShots, `kassa-${systemId}.png`) : null,
+  });
   return { ...pay, keys };
 }

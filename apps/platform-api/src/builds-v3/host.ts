@@ -24,6 +24,7 @@ import type { ModuleRegistry } from "@wizard/agents/planner";
 import type { AppSpec } from "@wizard/appspec";
 import type { GateReport, GoalScenarioInput, SeedHint } from "@wizard/gates";
 import { createRegistry } from "@wizard/llm";
+import type { FileStorage } from "@wizard/runtime";
 import { Kysely } from "kysely";
 import { PostgresJSDialect } from "kysely-postgres-js";
 import type postgres from "postgres";
@@ -39,7 +40,7 @@ import { type BuildHost, type BuildParams, RunFailure } from "../runs/types.js";
 import { withKeyWindow } from "../secrets-v3/agent.js";
 import { loadBrief } from "../services/plans.js";
 import { type DurableRead, pgCheckpointStore, recentArchetypes } from "./checkpoints.js";
-import { platformCritic } from "./critic.js";
+import { criticLibraryPhotos, platformCritic } from "./critic.js";
 import { liveStats, withLiveProgress } from "./progress.js";
 import { platformTechreview } from "./techreview.js";
 import { templateGateHooks } from "./template-gate.js";
@@ -221,6 +222,8 @@ export async function buildByBrief(
     log?: (msg: string, err: unknown) => void;
     /** V3-18: the stock photos of the site (the photos host of plan builds); absent — no stock photos. */
     photos?: PhotoHost | null;
+    /** V3-40: the shared file storage (the photo library wz_photos/*) — the critic's browser shows the real photos. */
+    files?: FileStorage | null;
   },
 ): Promise<{ status: "succeeded"; summary_ru: string }> {
   // V3-12: the page composer on the pattern library (skeleton without a model; scenarios through host.route).
@@ -267,7 +270,11 @@ export async function buildByBrief(
     // V3-13: the visual critic in the process Chromium by default — with the platform's composer (its site model).
     // V3-14: the template gate with the process browser (without one the stage stays skipped); o.hooks override.
     hooks: {
-      ...(!o.composer && provider && withBrowser ? { critic: platformCritic(provider) } : {}),
+      // V3-40: the critic sees the site's real library photos (not the platform's stand-ins) when the shared storage is
+      // given — stand-ins read as «фейковые скриншоты» and pulled every score down.
+      ...(!o.composer && provider && withBrowser
+        ? { critic: platformCritic(provider, o.files ? { photo: criticLibraryPhotos(o.files) } : {}) }
+        : {}),
       ...templateGateHooks({
         pg: o.pg,
         runId: host.run.id,
