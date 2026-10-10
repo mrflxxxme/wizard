@@ -166,6 +166,25 @@ export const THREE_DS_CODE = [
   'input[type="password"]:not([autocomplete^="cc-"]):not([name*="cvc" i]):not([name*="cvv" i]):not([name*="csc" i])',
 ];
 const CONFIRM_RE = /Подтвердить|Отправить|Продолжить|Confirm|Submit/i;
+/**
+ * The way back from the ЮKassa success page (checkout/payments/v2/success): the test page stays there with
+ * «Вернуться на сайт» instead of going back by itself (the payment check of 11.10.2026: all three paid, none returned).
+ */
+export const RETURN_RE = /Вернуться на сайт|Вернуться в магазин|Вернуться к заказу|Return to (the )?(site|store|shop)/i;
+
+/** The first visible link or button of `re` in the page or any frame, waiting up to `ms`; null — none. */
+export async function findAction(page, re, ms) {
+  const until = Date.now() + ms;
+  for (;;) {
+    for (const frame of page.frames())
+      for (const role of ["link", "button"]) {
+        const a = frame.getByRole(role, { name: re }).first();
+        if (await a.isVisible().catch(() => false)) return a;
+      }
+    if (Date.now() >= until) return null;
+    await page.waitForTimeout(500);
+  }
+}
 
 /**
  * Types a card value like a person (a masked field may drop a bare fill); → whether it stuck: its digits, or as many
@@ -327,6 +346,15 @@ export async function payOnKassa(page, { origin, step, shotPath = null, timeoutM
       step("подтверждение 3-D Secure тестовым кодом", true);
       await page.waitForTimeout(2_000);
       await shot("-3ds");
+    }
+    back = await backTo(5_000);
+  }
+  if (!back) {
+    // The success page of the test shop: the payment went through, the visitor goes back by «Вернуться на сайт».
+    const ret = await findAction(page, RETURN_RE, 10_000);
+    if (ret) {
+      step("ЮKassa приняла оплату, посетитель нажал «Вернуться на сайт»", true);
+      await ret.click().catch(() => {});
     }
     back = await backTo(timeoutMs);
   }
