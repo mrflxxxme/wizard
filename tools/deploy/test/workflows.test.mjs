@@ -104,6 +104,7 @@ describe.skipIf(!hasYaml)("deploy workflows", () => {
     // V3-18: the goal scenarios of the eval briefs on the composed v3 pages (no model); every form variant — in e2e.
     expect(steps).toContain("v3-goals.browser.test.ts");
     expect(JSON.stringify(doc.jobs.e2e.steps)).toContain("v3-goals-variants.browser.test.ts");
+    expect(JSON.stringify(doc.jobs.e2e.steps)).toContain("tools/eval/test/v3-pay-kassa.test.ts");
     expect(JSON.stringify(doc.jobs.e2e.steps)).not.toContain("goals.browser.test.ts");
   });
 });
