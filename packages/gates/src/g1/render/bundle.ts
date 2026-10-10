@@ -149,10 +149,12 @@ export async function buildRenderBundle(
       define: { "process.env.NODE_ENV": '"production"' },
       tsconfigRaw: { compilerOptions: { jsx: "react-jsx", jsxImportSource: SDK } },
       legalComments: "none",
-      // Whitespace and syntax only: names stay readable in console errors; the sandbox ships the bundle in a
-      // ConfigMap (≤ 1 MiB; the forum: 1.16 MB → 0.71 MB, M2-19).
+      // The sandbox ships the bundle in a ConfigMap (≤ 1 MiB; the forum: 1.16 MB → 0.71 MB, M2-19). V3-18: names are
+      // minified too — the v3 pattern library (product pages, previews, srcset) took a shop's bundle to 0.93 MB, over
+      // the 900 KiB budget; the checks report render problems in their own words, not by the bundle's names.
       minifyWhitespace: true,
       minifySyntax: true,
+      minifyIdentifiers: true,
       sourcemap: false,
       charset: "utf8",
       logLevel: "silent",

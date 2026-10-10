@@ -396,6 +396,9 @@ describe("gates on the composed system (v3 allowances)", () => {
     const { files, spec, site } = await skeleton(ctx);
     const bundle = await buildRenderBundle(spec, files);
     expect(bundle.errors).toEqual([]);
+    // The sandbox ships it in one ConfigMap slot (apps/runtime sandbox/pod.ts CONFIGMAP_BUDGET = 900 KiB): a pattern
+    // library that grows keeps a margin for the bigger sites (a shop: about +15 %).
+    expect(Buffer.byteLength(bundle.code)).toBeLessThan(0.7 * 900 * 1024);
     const dir = mkdtempSync(join(tmpdir(), "wz-render-v3-"));
     writeFileSync(join(dir, "render.js"), bundle.code);
     const proc = new RenderProcess(dir, async () => ({
