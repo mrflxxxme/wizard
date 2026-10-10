@@ -132,6 +132,9 @@ export async function startGitHttp(root: string): Promise<GitHttp> {
         res.writeHead(status, headers);
         res.end(all.subarray(sep + 4));
       });
+      // git http-backend may exit before reading the body (it answers from the path alone): the write then fails with
+      // EPIPE, which is not an error of the exchange — the answer comes from «close» above (CI, 10.10.2026).
+      cgi.stdin.on("error", () => {});
       cgi.stdin.end(body);
     });
   });
