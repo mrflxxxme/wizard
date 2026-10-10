@@ -46,9 +46,27 @@ async function goalMetrics(t: GoalRun, period: "week" | "month") {
 
 /** The first number of a KPI's value («1 234», «62 %», «4,5»). */
 async function kpiNumber(t: GoalRun, selector: string): Promise<number | null> {
-  const text = await textOf(t, `${selector} dd`);
-  const m = /-?\d[\d\s]*(?:[.,]\d+)?/.exec(plain(text));
-  return m ? Number(m[0].replace(/\s/g, "").replace(",", ".")) : null;
+  return kpiValue(plain(await textOf(t, `${selector} dd`)));
+}
+
+/** Multipliers of the compact ru-RU notation the panel uses for large sums (ui-kit formatMoneyCompact). */
+const COMPACT: readonly [RegExp, number][] = [
+  [/^\s*тыс/i, 1e3],
+  [/^\s*млн/i, 1e6],
+  [/^\s*млрд/i, 1e9],
+];
+
+/**
+ * The number a KPI tile shows: «18 600 ₽» → 18600, «18,6 тыс. ₽» → 18600 (the compact notation of large sums — read
+ * as 18.6 before, a correct panel failed the goal, final measurement 10.10.2026), «62 %» → 62; null — no number.
+ */
+export function kpiValue(text: string): number | null {
+  const m = /-?\d[\d\s]*(?:[.,]\d+)?/.exec(text);
+  if (!m) return null;
+  const n = Number(m[0].replace(/\s/g, "").replace(",", "."));
+  const rest = text.slice(m.index + m[0].length);
+  const mult = COMPACT.find(([re]) => re.test(rest))?.[1] ?? 1;
+  return n * mult;
 }
 
 /** Rows of an entity created in the last `days` days before `now` (the panel's current period). */
