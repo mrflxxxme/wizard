@@ -134,6 +134,8 @@ export async function payShopOrder({ client, systemId, launch, say = () => {}, t
           // Field and delivery problems of the checkout are bold small paragraphs with an icon (cart/split.tsx Problem).
           const sel = '[role="alert"], [id$="-err"], [data-testid$="-error"], form p.font-bold:has(svg)';
           for (const el of document.querySelectorAll(sel)) {
+            // A hidden template (the mock page's «Оплата не прошла» waits with `hidden`) is not what the visitor sees.
+            if (el.closest("[hidden]") || el.getClientRects().length === 0) continue;
             const t = (el.textContent || "").trim();
             if (t && !out.includes(t)) out.push(t);
           }
@@ -208,7 +210,14 @@ export async function payShopOrder({ client, systemId, launch, say = () => {}, t
       .waitForURL((u) => /(^|\.)(yoomoney|yookassa)\.ru$/.test(u.hostname), { timeout: 60_000 })
       .then(() => true)
       .catch(() => false);
-    if (!toKassa) return await fail("переход на страницу оплаты ЮKassa");
+    if (!toKassa) {
+      // The draft's runtime had no keys of the shop (SECRET_MISSING) and opened its test page instead of ЮKassa.
+      const mock = /\/_wizard\/pay-mock$/.test(new URL(page.url()).pathname);
+      return await fail(
+        "переход на страницу оплаты ЮKassa",
+        mock ? "черновик открыл имитацию оплаты: ключи магазина не дошли до runtime" : "",
+      );
+    }
     step("заказ оформлен, открылась страница оплаты ЮKassa", true);
     // The test page: the bank card (a choice of methods may come first), the card's fields, «Заплатить».
     const card = page.getByText(/Банковская карта/i).first();

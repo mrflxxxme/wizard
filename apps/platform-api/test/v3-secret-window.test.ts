@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mockTransport } from "@wizard/agents/integrations";
 import type { RouteInput, Router, RouterOptions } from "@wizard/llm";
-import { directTransport, MemoryFileStorage } from "@wizard/runtime";
+import { dbSystemUuid, directTransport, MemoryFileStorage, storeSecrets } from "@wizard/runtime";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { CRM_HOST, crmOpenApi, crmSiteFetch } from "../../../packages/agents/test/integrations/fixtures.js";
 import { sealSecret } from "../../platform-web/src/screens/v3/keys/seal.js";
@@ -390,6 +390,19 @@ describe("request_secret and the window", () => {
     expect(hits.every((h) => h.host === CRM_HOST && h.keyOk)).toBe(true);
     expect(await contractStatus()).toBe("live");
     expect(store().get(systemId, "draft", "crm_key") === KEY).toBe(true);
+    // V3-23: the runtime (same data volume and WIZARD_SECRETS_KEY) reads the key by the system's schema_key.
+    const runtimeSecrets = storeSecrets({
+      file: api.deps.config.secretsFile,
+      keyMaterial: api.deps.config.secretsKey,
+      systemUuid: dbSystemUuid(api.deps.pg),
+    });
+    const [row] = await api.deps.pg<{ schema_key: string }[]>`
+      select schema_key from platform.systems where id = ${systemId}`;
+    const key = row?.schema_key ?? "";
+    expect((await runtimeSecrets(key, "draft").get("crm_key")) === KEY).toBe(true);
+    await expect(runtimeSecrets(key, "prod").get("crm_key")).rejects.toMatchObject({
+      code: "SECRET_MISSING",
+    });
     // One-time window: its key pair is gone; a replay of the same ciphertext and a new read are refused.
     const [w] = await api.deps
       .pg`select status, public_jwk, sealed_private from platform.secret_windows where id = ${windowId}`;
