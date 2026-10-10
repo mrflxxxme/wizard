@@ -197,6 +197,11 @@ export interface V3Host {
    */
   photos?: PhotoHost | null;
   /**
+   * V3-18: a read whose result the run must see the same after a worker restart (a durable step of the host's
+   * workflow); absent — called directly.
+   */
+  once?<T>(name: string, fn: () => Promise<T>): Promise<T>;
+  /**
    * V3-20: the brief's integrations on top of the compiled backend — the host reads the stored contracts and their
    * states and returns the spec and files with functions/integrations/<id>/** (@wizard/agents/integrations
    * integrationLayer + withIntegrationLayer); null or absent — no integrations layer.

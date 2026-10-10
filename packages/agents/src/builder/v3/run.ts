@@ -656,7 +656,9 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
       fingerprint: sha256({ plan: bp.plan, ext: p.extensions ?? [], design: designFp }),
       reuse: false,
       run: async () => {
-        photos = await stockPhotos();
+        // The stock answers differently on a replay (new copies, a timeout under load): durable, so a restarted
+        // worker takes the same skeleton path.
+        photos = host.once ? await host.once("v3_photos", stockPhotos) : await stockPhotos();
         await buildBackend();
         return {
           data: {

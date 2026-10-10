@@ -294,6 +294,7 @@ export async function buildByBrief(
       ),
     recentArchetypes: (niche) => once("v3_recent_archetypes", () => recentArchetypes(o.pg, systemId, niche)),
     ...(o.photos ? { photos: o.photos } : {}),
+    once,
     // V3-20: the brief's integrations (stored contracts: mock until the key check, then live) over the backend;
     // V3-21: window keys stay within their hosts, and the agent opens key windows for the keys still missing.
     integrations: withKeyWindow(integrationsBuildHook(o.pg, systemId), {

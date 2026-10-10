@@ -303,6 +303,7 @@ export function createApiClient(opts: ClientOptions = {}) {
         operatorContact: string;
         operatorAddress?: string;
         operatorInn?: string;
+        operatorOgrn?: string;
         /** Lawyer's template (agents/consent.ts ids); consentText — the owner's own text instead (M2-11). */
         consentTemplateId?: string;
         consentText?: string;

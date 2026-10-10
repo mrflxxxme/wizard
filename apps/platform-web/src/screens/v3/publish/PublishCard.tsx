@@ -45,6 +45,7 @@ interface Operator {
   contact: string;
   address: string;
   inn: string;
+  ogrn: string;
 }
 
 /** The operator's data typed by the owner, checked before the request (Russian text) or null when it is fine. */
@@ -53,6 +54,7 @@ export function operatorProblem(o: Operator, need: { address: boolean }): string
   if (!emailOk(o.contact.trim())) return T.operator.contactBad;
   if (need.address && !o.address.trim()) return T.operator.addressNeeded;
   if (o.inn.trim() && !innShapeOk(o.inn.trim())) return T.operator.innBad;
+  if (o.ogrn.trim() && !/^[0-9]{13}([0-9]{2})?$/.test(o.ogrn.trim())) return T.operator.ogrnBad;
   return null;
 }
 
@@ -62,16 +64,18 @@ function OperatorForm({
   draftRevision,
   address,
   inn,
+  ogrn = false,
   onSaved,
 }: {
   systemId: string;
   draftRevision: number;
   address: boolean;
   inn: boolean;
+  ogrn?: boolean;
   onSaved(): void;
 }): ReactNode {
   const { api } = usePlatform();
-  const [o, setO] = useState<Operator>({ name: "", contact: "", address: "", inn: "" });
+  const [o, setO] = useState<Operator>({ name: "", contact: "", address: "", inn: "", ogrn: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -90,6 +94,7 @@ function OperatorForm({
           contact: cur.contact || str(c.operatorContact),
           address: cur.address || str(c.operatorAddress),
           inn: cur.inn || str(c.operatorInn),
+          ogrn: cur.ogrn || str(c.operatorOgrn),
         }));
     });
     return () => {
@@ -111,6 +116,7 @@ function OperatorForm({
         operatorContact: o.contact.trim(),
         ...(o.address.trim() ? { operatorAddress: o.address.trim() } : {}),
         ...(o.inn.trim() ? { operatorInn: o.inn.trim() } : {}),
+        ...(o.ogrn.trim() ? { operatorOgrn: o.ogrn.trim() } : {}),
       });
       setSaved(true);
       onSaved();
@@ -153,6 +159,7 @@ function OperatorForm({
       {field("contact", T.operator.contact, { type: "email", inputMode: "email", autoComplete: "email" })}
       {field("address", T.operator.address, { maxLength: 300, autoComplete: "street-address" })}
       {inn && field("inn", T.operator.inn, { inputMode: "numeric", maxLength: 12 })}
+      {ogrn && field("ogrn", T.operator.ogrn, { inputMode: "numeric", maxLength: 15 })}
       <div className={s.row}>
         <ActionButton
           type="submit"
@@ -353,6 +360,7 @@ export function V3PublishCard({
           draftRevision={sys.draftRevision}
           address={m.address}
           inn={m.inn}
+          ogrn={m.ogrn}
           onSaved={onChanged}
         />
       )}

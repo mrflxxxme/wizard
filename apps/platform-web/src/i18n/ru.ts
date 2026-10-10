@@ -524,6 +524,7 @@ export const ru = {
     operatorContact: "Почта для обращений по ПДн",
     operatorAddress: "Адрес оператора",
     operatorInn: "ИНН оператора",
+    operatorOgrn: "ОГРН или ОГРНИП (для магазина)",
     save: "Сохранить",
     saved: "Сохранено",
     revisions: "Версии",

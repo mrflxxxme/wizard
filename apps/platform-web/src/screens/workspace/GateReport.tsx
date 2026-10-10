@@ -197,6 +197,9 @@ export const SETTINGS_BLOCKERS: ReadonlySet<string> = new Set([
   "OPERATOR_CONTACT_REQUIRED",
   "OPERATOR_ADDRESS_REQUIRED",
   "INN_INVALID",
+  // V3-18: the shop's seller requisites (ЗоЗПП ст. 26.1) are the operator's data of the same form.
+  "SELLER_REQUISITES_REQUIRED",
+  "OGRN_INVALID",
 ]);
 /** Blocker codes fixed on S-billing: the card (identification, D9) and the plan (F4 phone login, prod limit). */
 export const BILLING_BLOCKERS: ReadonlySet<string> = new Set([
