@@ -90,7 +90,7 @@ describe("V3-40 the critic's demo rows", () => {
     const { id, key } = await addSystem();
     await saveBriefVersion(api.deps.db, { systemId: id, brief: CERAMICS_SHOP, author: "agent" });
     const photos = [
-      { slot: "hero", file: "lib-hero-1" },
+      { slot: "top", file: "lib-hero-1" },
       { slot: "gallery-1", file: "lib-mugs-1" },
       { slot: "gallery-2", file: "lib-bowls-2" },
     ];
@@ -100,11 +100,10 @@ describe("V3-40 the critic's demo rows", () => {
     const hints = await draftSeedHints(api.deps.db, id, shop);
     const image = hints.filter((h) => h.values.every((v) => String(v).startsWith("/_wizard/photos/")));
     expect(image.length).toBeGreaterThan(0);
-    // The work photos first, the first screen last.
-    expect(image[0]?.values.slice(0, 3)).toEqual([
+    // The work photos, never the first screen's, never twice (no library here: only the plan's).
+    expect(image.flatMap((h) => h.values)).toEqual([
       "/_wizard/photos/lib-mugs-1/960",
       "/_wizard/photos/lib-bowls-2/960",
-      "/_wizard/photos/lib-hero-1/960",
     ]);
     await migrateDraft(api.deps.pg, { systemKey: key, spec: shop, prevSpec: null });
     await seedDraft(api.deps.pg, { systemKey: key, spec: shop, hints });
@@ -113,14 +112,18 @@ describe("V3-40 the critic's demo rows", () => {
       `select "${h.field}"::text as v from "${schemaName(key, "draft")}"."${h.entity}"`,
     );
     expect(stored.length).toBeGreaterThan(0);
-    for (const r of stored) expect(r.v).toMatch(/^\/_wizard\/photos\/lib-[a-z]+-\d\/960$/);
+    const shown = stored.map((r) => r.v).filter((v): v is string => v !== null);
+    expect(shown.length).toBeGreaterThan(0);
+    expect(new Set(shown).size).toBe(shown.length);
+    for (const v of shown) expect(v).toMatch(/^\/_wizard\/photos\/lib-(mugs|bowls)-\d\/960$/);
     // The card shows it as its picture as is (same origin, the runtime's library route).
-    expect(productPhoto(stored[0]?.v)).toBe(stored[0]?.v);
+    expect(productPhoto(shown[0])).toBe(shown[0]);
     const rows = await draftCriticRows(api.deps.db, id, shop);
-    expect((rows[h.entity] ?? []).map((r) => r[h.field])).toEqual(stored.map((r) => r.v));
+    // The critic's rows are the draft's (a row without a photo: no value there, NULL in the table).
+    expect((rows[h.entity] ?? []).map((r) => r[h.field] ?? null)).toEqual(stored.map((r) => r.v));
   });
 
-  test("photo hints: only image fields a public role reads, never the site's own photo places; no photos — none", () => {
+  test("photo hints: public image fields only, never the site's own places, never the first screen's photo or a repeat", () => {
     const spec = {
       roles: [
         { name: "visitor", access: "public" },
@@ -137,10 +140,45 @@ describe("V3-40 the critic's demo rows", () => {
         { role: "owner", entity: "staff_doc", ops: ["read", "create"] },
       ],
     } as unknown as AppSpec;
-    expect(photoSeedHints(spec, [{ slot: "hero", file: "a1" }])).toEqual([
-      { entity: "product", field: "photo", values: Array(10).fill("/_wizard/photos/a1/960") },
+    expect(photoSeedHints(spec, [{ slot: "about", file: "a1" }])).toEqual([
+      { entity: "product", field: "photo", values: ["/_wizard/photos/a1/960"] },
     ]);
+    // The first screen's photo is never a card's; nothing else — no hints.
+    expect(photoSeedHints(spec, [{ slot: "top", file: "a1" }])).toEqual([]);
     expect(photoSeedHints(spec, [])).toEqual([]);
-    expect(photoSeedHints(spec, [{ slot: "hero", file: "../etc" }])).toEqual([]);
+    expect(photoSeedHints(spec, [{ slot: "about", file: "../etc" }])).toEqual([]);
+    // More of the niche from the library: entries under the subjects of the plan's photos, details first, no repeats,
+    // other niches and portraits aside.
+    const entry = (query: string, file: string, orientation = "landscape") => ({ query, file, orientation });
+    const library = {
+      version: 1,
+      entries: [
+        entry("farm fresh produce", "top-1"),
+        entry("farm fresh produce", "f-hero-2"),
+        entry("fresh vegetables basket", "f-veg-1"),
+        entry("fresh vegetables basket", "f-veg-2"),
+        entry("fresh vegetables basket", "f-veg-3", "portrait"),
+        entry("dental clinic", "d-1"),
+      ],
+    } as unknown as Parameters<typeof photoSeedHints>[2];
+    const hints = photoSeedHints(
+      spec,
+      [
+        { slot: "top", file: "top-1" },
+        { slot: "about", file: "f-veg-1" },
+      ],
+      library,
+    );
+    expect(hints).toEqual([
+      {
+        entity: "product",
+        field: "photo",
+        values: [
+          "/_wizard/photos/f-veg-1/960",
+          "/_wizard/photos/f-veg-2/960",
+          "/_wizard/photos/f-hero-2/960",
+        ],
+      },
+    ]);
   });
 });

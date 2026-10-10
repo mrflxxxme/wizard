@@ -8,8 +8,11 @@ import {
   createPageComposer,
   erroredBlockers,
   failedBlockers,
+  type LibraryIndex,
   type PageComposer,
   type PhotoHost,
+  parseLibraryIndex,
+  querySubject,
   runBuildV3,
   type ScenarioCheckInput,
   type ScenarioCheckResult,
@@ -31,7 +34,7 @@ import {
 } from "@wizard/gates";
 import { createRegistry } from "@wizard/llm";
 import { createLogger } from "@wizard/pii/log";
-import type { FileStorage } from "@wizard/runtime";
+import { type FileStorage, readLibraryIndex } from "@wizard/runtime";
 import { Kysely, sql } from "kysely";
 import { PostgresJSDialect } from "kysely-postgres-js";
 import type postgres from "postgres";
@@ -101,7 +104,12 @@ export async function isV3Build(
  * V3-40: and the photos of the goods — the image fields a visitor reads take the library photos the photos stage
  * picked for the niche (photoSeedHints): a demo shop shows its goods with pictures, not empty cards.
  */
-export async function draftSeedHints(db: Db, systemId: string, spec: AppSpec): Promise<SeedHint[]> {
+export async function draftSeedHints(
+  db: Db,
+  systemId: string,
+  spec: AppSpec,
+  storage?: FileStorage | null,
+): Promise<SeedHint[]> {
   let out: SeedHint[] = [];
   try {
     const brief = await getLatestBrief(db, systemId);
@@ -113,7 +121,8 @@ export async function draftSeedHints(db: Db, systemId: string, spec: AppSpec): P
         from platform.system_build_checkpoints c
        where c.system_id = ${systemId} and c.key = 'photos'`.execute(db);
     const photos = r.rows[0]?.photos;
-    out = [...out, ...photoSeedHints(spec, Array.isArray(photos) ? photos : [])];
+    const library = storage ? parseLibraryIndex(await readLibraryIndex(storage).catch(() => null)) : null;
+    out = [...out, ...photoSeedHints(spec, Array.isArray(photos) ? photos : [], library)];
   } catch {}
   return out;
 }
@@ -121,26 +130,55 @@ export async function draftSeedHints(db: Db, systemId: string, spec: AppSpec): P
 /** @wizard/modules SITE_PHOTO.entity: one row per place the owner replaced — never a demo row with a photo. */
 const SITE_PHOTO_ENTITY = "site_photo";
 
-/** Places whose photos show the work itself (the gallery and features first, the first screen last). */
-const PHOTO_SLOT_ORDER = ["gallery", "features", "about", "hero"];
+/** Places whose photos show the work itself, in this order; the first screen («top», «top-2») is never a card's. */
+const PHOTO_SLOT_ORDER = ["gallery", "features", "about"];
+const TOP_SLOT = /^top(-\d+)?$/;
 
 /**
- * V3-40: image hints of the demo rows — every image field of an entity a public role reads gets the library photos of
- * the plan's places (/_wizard/photos/<file>/960, the runtime serves them in the draft and the critic's browser loads
- * them), the work photos first, cycled over the rows. No photos or no such field — none.
+ * V3-40: image hints of the demo rows — every image field of an entity a public role reads (goods, catalog projects,
+ * article covers) gets library photos of the niche (/_wizard/photos/<file>/960: the runtime serves them in the draft and
+ * the critic's browser loads them). Never twice and never the first screen's: the plan's work photos first, then the
+ * other photos of the library under the same niche subjects as the plan's (`library`: its index), each entity its own
+ * share — the farm shop of 11.10 showed three goods with one photo and a blog with the hero's. No photos — none.
  */
-export function photoSeedHints(spec: AppSpec, photos: readonly unknown[]): SeedHint[] {
-  const files = [...photos]
-    .filter((p): p is { slot: string; file: string } => {
-      const x = p as { slot?: unknown; file?: unknown };
-      return typeof x?.file === "string" && typeof x?.slot === "string";
-    })
+export function photoSeedHints(
+  spec: AppSpec,
+  photos: readonly unknown[],
+  library?: LibraryIndex | null,
+): SeedHint[] {
+  const plan = photos.filter((p): p is { slot: string; file: string } => {
+    const x = p as { slot?: unknown; file?: unknown };
+    return typeof x?.file === "string" && typeof x?.slot === "string";
+  });
+  const top = new Set(plan.filter((p) => TOP_SLOT.test(p.slot)).map((p) => p.file));
+  const own = plan
+    .filter((p) => !TOP_SLOT.test(p.slot))
     .sort((a, b) => rank(a.slot) - rank(b.slot))
-    .map((p) => `/_wizard/photos/${p.file}/960`)
-    .filter((src, i, all) => LIBRARY_PHOTO_HINT.test(src) && all.indexOf(src) === i);
+    .map((p) => p.file);
+  // More of the same niche: the library's photos under the subjects the plan's photos were picked for, details first.
+  const entries = library?.entries ?? [];
+  const planFiles = new Set(plan.map((p) => p.file));
+  const subjects = new Map<string, number>();
+  for (const e of entries)
+    if (planFiles.has(e.file)) {
+      const s = querySubject(e.query);
+      if (s) subjects.set(s.subject, s.section === "detail" ? 0 : s.section === "about" ? 1 : 2);
+    }
+  const more = entries
+    .map((e) => ({ e, order: subjects.get(querySubject(e.query)?.subject ?? "") }))
+    .filter(
+      (x): x is { e: (typeof entries)[number]; order: number } =>
+        x.order !== undefined && x.e.orientation !== "portrait",
+    )
+    .sort((a, b) => a.order - b.order)
+    .map((x) => x.e.file);
+  const files = [...own, ...more]
+    .filter((f, i, all) => !top.has(f) && all.indexOf(f) === i)
+    .map((f) => `/_wizard/photos/${f}/960`)
+    .filter((src) => LIBRARY_PHOTO_HINT.test(src));
   if (!files.length) return [];
   const publicRoles = new Set(spec.roles.filter((r) => r.access === "public").map((r) => r.name));
-  const out: SeedHint[] = [];
+  const fields: { entity: string; field: string }[] = [];
   for (const e of spec.entities) {
     // The owner's replacements of the site's own photos (landing «Фото сайта») keep the plan's photos in their places.
     if (e.name === SITE_PHOTO_ENTITY) continue;
@@ -148,20 +186,23 @@ export function photoSeedHints(spec: AppSpec, photos: readonly unknown[]): SeedH
       (p) => p.entity === e.name && publicRoles.has(p.role) && p.ops.includes("read"),
     );
     if (!readable) continue;
-    for (const f of e.fields)
-      if (f.type === "image")
-        out.push({
-          entity: e.name,
-          field: f.name,
-          values: Array.from({ length: SEED_HINT_MAX_VALUES }, (_, i) => files[i % files.length] as string),
-        });
+    for (const f of e.fields) if (f.type === "image") fields.push({ entity: e.name, field: f.name });
+  }
+  // Each field its own photos while they last; rows past them keep no photo rather than a repeat.
+  const out: SeedHint[] = [];
+  let next = 0;
+  for (const f of fields) {
+    const values = files.slice(next, next + SEED_HINT_MAX_VALUES);
+    if (!values.length) break;
+    next += values.length;
+    out.push({ ...f, values });
   }
   return out;
 }
 
 function rank(slot: string): number {
-  const i = PHOTO_SLOT_ORDER.findIndex((s) => slot === s || slot.startsWith(`${s}`));
-  return i === -1 ? PHOTO_SLOT_ORDER.length - 1 : i;
+  const i = PHOTO_SLOT_ORDER.findIndex((s) => slot === s || slot.startsWith(`${s}-`));
+  return i === -1 ? PHOTO_SLOT_ORDER.length : i;
 }
 
 /**
@@ -169,14 +210,19 @@ function rank(slot: string): number {
  * key and the seed hints of its brief, as onG0Passed seeds the draft (agents/executors.ts → seedDraft): the critic sees
  * the filled catalog, shop and blog the visitor sees, not empty lists. {} — no such system.
  */
-export async function draftCriticRows(db: Db, systemId: string, spec: AppSpec): Promise<CriticDemoRows> {
+export async function draftCriticRows(
+  db: Db,
+  systemId: string,
+  spec: AppSpec,
+  storage?: FileStorage | null,
+): Promise<CriticDemoRows> {
   const sys = await db
     .selectFrom("platform.systems")
     .select("schema_key")
     .where("id", "=", systemId)
     .executeTakeFirst();
   if (!sys) return {};
-  return draftDemoRows(spec, sys.schema_key, await draftSeedHints(db, systemId, spec));
+  return draftDemoRows(spec, sys.schema_key, await draftSeedHints(db, systemId, spec, storage));
 }
 
 /**
@@ -340,7 +386,7 @@ export async function buildByBrief(
   // not entities); a failed read is tried again by the next inspection.
   let demo: Promise<CriticDemoRows> | undefined;
   const demoRows = (spec: AppSpec): Promise<CriticDemoRows> => {
-    demo ??= draftCriticRows(o.db, systemId, spec).catch((e: unknown) => {
+    demo ??= draftCriticRows(o.db, systemId, spec, o.files).catch((e: unknown) => {
       demo = undefined;
       throw e;
     });
