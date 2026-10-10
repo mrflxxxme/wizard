@@ -191,6 +191,7 @@ describe("V3-18: the driver acts as the owner before publishing (the operator of
           operatorName: "ИП Тестов Т. Т.",
           operatorContact: "operator@test.example",
           operatorAddress: V3_TEST_OPERATOR.operatorAddress,
+          operatorInn: V3_TEST_OPERATOR.operatorInn,
         },
       },
     ]);
@@ -198,6 +199,13 @@ describe("V3-18: the driver acts as the owner before publishing (the operator of
     expect(V3_TEST_OPERATOR.operatorContact).toMatch(/^[^\s@]+@[^\s@]+\.[a-z]+$/);
     expect(V3_TEST_OPERATOR.operatorAddress).toMatch(/тестов/i);
     expect(said.join("\n")).toContain("ревизия 8");
+    // A shop asks for the seller's requisites (the offer): the same step, with an INN that passes the checksum.
+    const shop = fakeClient(["SELLER_REQUISITES_REQUIRED"]);
+    expect((await fillOwnerOperator(shop.client, "s1")).blockers).toEqual(["SELLER_REQUISITES_REQUIRED"]);
+    expect(shop.puts).toHaveLength(1);
+    const d = [...V3_TEST_OPERATOR.operatorInn].map(Number);
+    const check = (w: number[]) => (w.reduce((sum, k, i) => sum + k * (d[i] as number), 0) % 11) % 10;
+    expect([check([7, 2, 4, 10, 3, 5, 9, 4, 6, 8]), check([3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8])]).toEqual([d[10], d[11]]);
     const none = fakeClient(["FOUNDER_REVIEW_PENDING"]);
     expect(await fillOwnerOperator(none.client, "s1")).toEqual({ filled: false, revision: null, blockers: [] });
     expect(none.puts).toEqual([]);
