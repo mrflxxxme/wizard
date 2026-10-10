@@ -249,6 +249,7 @@ export function v3CollectSql({ fingerprints = false } = {}) {
   SELECT k.system_id, k.key, k.checkpoint #>> '{data,status}' AS status,
          k.checkpoint #> '{data,notes}' AS notes, k.checkpoint #> '{data,blockers}' AS blockers,
          k.checkpoint #> '{data,redesign}' AS redesign, k.checkpoint #> '{data,template}' AS template,
+         k.checkpoint #> '{data,review}' AS review,
          (k.checkpoint ->> 'costMilli')::bigint AS cost_milli, (k.checkpoint ->> 'durationMs')::bigint AS duration_ms
     FROM platform.system_build_checkpoints k
     JOIN platform.systems s ON s.id = k.system_id
@@ -284,6 +285,26 @@ export function v3CollectSql({ fingerprints = false } = {}) {
     `SELECT 'v3t1forbidden=' || count(*)::text FROM platform.llm_calls c
    WHERE c.org_id = :'org_id' AND c.tier = 'T1' AND c.call_type IN (${forbidden});`,
   ];
+}
+
+
+/** The critic's diagnostics of the checkpoint (V3-40: why the score is what it is), bounded for the report. */
+export function criticReview(r) {
+  const str = (v, n) => (typeof v === "string" ? v.slice(0, n) : "");
+  const cycles = Array.isArray(r.cycles) ? r.cycles.slice(0, 3) : [];
+  return {
+    stop: str(r.stop, 20) || null,
+    fixes: Array.isArray(r.fixes) ? r.fixes.filter((x) => typeof x === "string").slice(0, 6).map((x) => x.slice(0, 160)) : [],
+    cycles: cycles.map((c) => ({
+      n: Number(c?.n) || 0,
+      score: Number.isFinite(Number(c?.score)) ? Number(c.score) : null,
+      axes: c?.axes && typeof c.axes === "object" ? Object.fromEntries(Object.entries(c.axes).map(([k, v]) => [k, Number(v)])) : {},
+      polish: str(c?.polish, 20) || null,
+      top: (Array.isArray(c?.top) ? c.top : [])
+        .slice(0, 8)
+        .map((f) => ({ severity: str(f?.severity, 4), sign: str(f?.sign, 160), where: str(f?.where, 120) })),
+    })),
+  };
 }
 
 /**
@@ -402,6 +423,7 @@ function parseV3Collect(value) {
             },
           }
         : {}),
+      ...(h.review && typeof h.review === "object" ? { review: criticReview(h.review) } : {}),
       costRub: Number.isFinite(Number(h.cost_milli)) ? Math.round(Number(h.cost_milli) * 5) / 1000 : 0,
       durationMs: Number(h.duration_ms) || 0,
     };

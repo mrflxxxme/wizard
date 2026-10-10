@@ -14,9 +14,10 @@ import {
 } from "@wizard/ui-kit/v3/design";
 import type { PatternMeta } from "@wizard/ui-kit/v3/patterns";
 import { z } from "zod";
-import { slotShape } from "../compose/content.js";
+import { actionLink, slotShape } from "../compose/content.js";
 import { copyIssues } from "../compose/lint.js";
 import type { SectionPhotos, SiteModel, SitePage, SiteSection } from "../compose/site.js";
+import { choosePattern } from "../compose/skeleton.js";
 
 const route = z.string().trim().min(1).max(200);
 const section = z.string().trim().min(1).max(60);
@@ -333,6 +334,52 @@ function drop(st: CriticState, op: Extract<EditOp, { op: "drop_section" }>, env:
     summary_ru: `${op.route}: убрал секцию ${s.id}`,
     touched: "page",
     route: op.route,
+  };
+}
+
+/**
+ * Not a model operation: the deterministic phase's way out for a signature section (free code) the browser checks keep
+ * flagging (contrast, overflow) — the plan's rule «фирменная секция не прошла — ставится паттерн». The section gives
+ * its place to a call to action of the library with its title (as the composer's fallback does); without the site's
+ * main action or a fitting pattern it goes away. Its file is no longer referenced, so the layer deletes it.
+ */
+export function signatureFallback(st: CriticState, route: string, section: string, env: EditEnv): EditResult {
+  const page = findPage(st.site, route);
+  const at = page ? page.sections.findIndex((x) => x.id === section) : -1;
+  const s = page?.sections[at];
+  if (!page || !s) return fail(`нет секции ${section} на странице ${route}`);
+  if (s.type !== "signature") return fail("секция не фирменная");
+  const primary = st.site.primary;
+  const props = primary ? { title: s.title ?? "", action: actionLink(primary, route) } : null;
+  const prev = env.library.find((p) => p.id === page.sections[at - 1]?.pattern);
+  const p = props?.title.trim()
+    ? choosePattern(env.library, {
+        type: "cta",
+        needs: null,
+        props,
+        archetype: st.site.archetype,
+        seed: st.site.seed,
+        used: st.site.pages.flatMap((x) => x.sections.map((y) => y.pattern)),
+        ...(prev ? { prevLayout: prev.layout } : {}),
+      })
+    : null;
+  const sections = [...page.sections];
+  if (p && props && !page.sections.some((x) => x.id === "signature-fallback"))
+    sections.splice(at, 1, {
+      id: "signature-fallback",
+      type: "cta",
+      pattern: p.id,
+      props: p.slots.parse(props) as Record<string, unknown>,
+    });
+  else sections.splice(at, 1);
+  return {
+    ok: true,
+    state: { ...st, site: withPage(st.site, { ...page, sections }) },
+    summary_ru: p
+      ? `${route}: фирменная секция ${s.id} → паттерн «${p.title}»`
+      : `${route}: убрал фирменную секцию ${s.id}`,
+    touched: "page",
+    route,
   };
 }
 

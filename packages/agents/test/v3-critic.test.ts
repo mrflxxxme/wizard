@@ -20,7 +20,8 @@ import {
   readSite,
   runCritic,
 } from "../src/builder/index.js";
-import { siteFacts } from "../src/builder/v3/compose/index.js";
+import { siteFacts, siteFiles } from "../src/builder/v3/compose/index.js";
+import { signatureFallback } from "../src/builder/v3/critic/ops.js";
 import {
   criticContext,
   critique,
@@ -284,6 +285,66 @@ describe("V3-13 critic", () => {
     expect(r.notes[1]).toMatch(/^Поправил 2 места/);
   });
 
+  test("a signature section the checks keep flagging gives its place to a pattern (no model); its file is deleted", async () => {
+    const file = "ui/sections/patient-path.tsx";
+    const source =
+      'export default function PatientPath() {\n  return <section id="patient-path">Путь пациента</section>;\n}\n';
+    const sig = {
+      id: "patient-path",
+      type: "signature" as const,
+      pattern: "signature",
+      props: {},
+      file,
+      title: "Путь пациента",
+    };
+    const site = {
+      ...ctx.site,
+      pages: ctx.site.pages.map((p) =>
+        p.route === "/"
+          ? { ...p, sections: p.sections.flatMap((x) => (x.id === "services" ? [x, sig] : [x])) }
+          : p,
+      ),
+    };
+    const files = new Map(ctx.files);
+    files.set(file, source);
+    for (const [k, v] of siteFiles(
+      site,
+      siteFacts(ctx).copy.site,
+      ctx.design,
+      files,
+      new Map([[file, source]]),
+    ))
+      v === null ? files.delete(k) : files.set(k, v);
+    const r = await runCritic(
+      { ...ctx, files, route: noModel },
+      { inspect: fakeInspector([whenPattern("signature", "C08")]), verify: null, maxCycles: 0 },
+    );
+    expect(r.fixes).toEqual([
+      expect.stringMatching(/^\/: фирменная секция patient-path → паттерн «.+» \(C08\)$/),
+    ]);
+    expect(r.after.penalty).toBe(0);
+    const home2 = siteOf(r)?.pages.find((p) => p.route === "/");
+    expect(home2?.sections.map((x) => x.id)).toEqual([
+      "header",
+      "hero",
+      "services",
+      "signature-fallback",
+      "form",
+      "footer",
+    ]);
+    expect(home2?.sections.find((x) => x.id === "signature-fallback")?.type).toBe("cta");
+    expect(r.files.get(file)).toBeNull();
+    // Without the site's main action there is no call to action to put: the section goes away.
+    const bare = signatureFallback(
+      { site: { ...site, primary: null }, design: ctx.design },
+      "/",
+      "patient-path",
+      env,
+    );
+    expect(bare.ok && bare.summary_ru).toBe("/: убрал фирменную секцию patient-path");
+    expect(signatureFallback({ site, design: ctx.design }, "/", "services", env).ok).toBe(false);
+  });
+
   test("cycles on recorded answers: T0 vision model, closed edits applied and re-checked, pass on cycle 2, ≤ 40 ₽", async () => {
     const fx = fixtureRoute(
       critiqueLines(prompt, [
@@ -401,6 +462,28 @@ describe("V3-13 critic", () => {
     expect(r.files.size).toBe(0);
   });
 
+  test("the founder's floor: under 30 an unchanged score does not stop the loop; at 30 and above it does", async () => {
+    const P1reorder = { ...F.reorder, severity: "P1" };
+    const low = fixtureRoute(
+      critiqueLines(prompt, [critique(1, [F.swap]), critique(1, [P1reorder]), critique(2, [])]),
+    );
+    const r = await runCritic(
+      { ...ctx, route: low.route },
+      { inspect: fakeInspector([]), verify: null, registry },
+    );
+    expect(r.cycles.map((c) => c.score)).toEqual([19, 19, 50]);
+    expect(low.calls).toHaveLength(3);
+    const high = fixtureRoute(
+      critiqueLines(prompt, [critique(2, [F.swap]), critique(2, [P1reorder]), critique(3, [])]),
+    );
+    const h = await runCritic(
+      { ...ctx, route: high.route },
+      { inspect: fakeInspector([]), verify: null, registry },
+    );
+    expect(h.cycles.map((c) => c.score)).toEqual([44, 44]);
+    expect(h.stop).toBe("no_gain");
+  });
+
   test("at most 3 cycles, each paid by its own call", async () => {
     const fx = fixtureRoute(
       critiqueLines(prompt, [
@@ -467,6 +550,15 @@ describe("V3-13 critic", () => {
     expect(out.spentRub).toBe(0);
     expect(out.blockers).toBeUndefined();
     expect(out.note).toMatch(/циклов 2, оценка 44→75/);
+    // The operator's diagnostics (V3-40): the axes, the verdict and the main findings of each cycle, by severity.
+    const review = out.review as {
+      stop: string;
+      cycles: { score: number; axes: object; top: { severity: string; where: string }[] }[];
+    };
+    expect(review.stop).toBe("pass");
+    expect(review.cycles.map((c) => c.score)).toEqual([44, 75]);
+    expect(review.cycles[0]?.axes).toEqual(expect.objectContaining({ first_screen: expect.any(Number) }));
+    expect(review.cycles[0]?.top).toEqual([{ severity: "P1", sign: F.swap.sign, where: F.swap.where }]);
     const none = await hook({ ...ctx, files: new Map(), route: noModel });
     expect(none.status).toBe("skipped");
     const broken = await createCriticHook({

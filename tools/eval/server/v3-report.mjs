@@ -73,13 +73,37 @@ const avg = (xs) => {
 };
 const mark = (ok) => (ok === null ? "—" : ok ? "✅" : "❌");
 
+/** Russian names of the critic's axes (agents critic/rubric.ts AXIS_RUBRIC). */
+const AXIS_RU = {
+  specificity: "конкретность",
+  first_screen: "первый экран",
+  typography: "типографика",
+  color: "цвет",
+  composition: "композиция",
+  content: "содержание",
+};
+
+/** The critic's last cycle in words: the axes 0–4, the verdict and the main findings (V3-40 diagnostics). */
+export function criticReviewLines(review) {
+  const last = review?.cycles?.at(-1);
+  if (!last) return [];
+  const axes = Object.entries(last.axes ?? {})
+    .map(([k, v]) => `${AXIS_RU[k] ?? k} ${v}`)
+    .join(", ");
+  const out = [`оси последнего круга (0–4): ${axes || "—"}; проработка: ${last.polish === "production" ? "готово" : "черновик"}`];
+  for (const f of last.top ?? []) out.push(`${f.severity} ${f.sign} (${f.where})`);
+  return out;
+}
+
 /** «оценка 62→78» and «циклов 2» of the critic's note (V3-13 createCriticHook) → {score, cycles}. */
 export function criticOf(note) {
   const t = String(note ?? "");
   const cycles = /циклов (\d+)/.exec(t);
   const scores = /оценка ([\d.→]+)/.exec(t);
   const list = scores ? scores[1].split("→").map(Number).filter(Number.isFinite) : [];
-  return { cycles: cycles ? Number(cycles[1]) : null, score: list.length ? list.at(-1) : null, scores: list };
+  // A cycle that scored lower rolled its batch back: the site kept is the one the previous cycle scored.
+  const kept = list.length > 1 && list.at(-1) < list.at(-2) ? list.at(-2) : (list.at(-1) ?? null);
+  return { cycles: cycles ? Number(cycles[1]) : null, score: list.length ? list.at(-1) : null, scores: list, kept };
 }
 
 /** Stage times and the preview from run_events of the database (when the driver read no stream), as the driver does. */
@@ -140,6 +164,7 @@ export function evaluateV3(doc, db = {}) {
       status: stageMetric("critic")?.status ?? hooks.critic?.status ?? null,
       note: stageMetric("critic")?.note ?? null,
       notes: hooks.critic?.notes ?? [],
+      review: hooks.critic?.review ?? null,
     };
     const skeletonTemplate = hooks.skeleton?.template ?? null;
     const template = {
@@ -403,6 +428,7 @@ export function renderV3Report(doc, db = {}, meta = {}) {
         `- Критик: ${x.critic.status === "skipped" ? "пропущен (нет браузера или бюджета этапа)" : `оценка ${x.critic.scores.length ? x.critic.scores.join(" → ") : "—"}, циклов ${x.critic.cycles ?? "—"}`}${x.critic.note && x.critic.status !== "done" ? ` (${x.critic.note})` : ""}.`,
       );
       for (const n of x.critic.notes.slice(0, 3)) L.push(`  - ${n}`);
+      for (const line of criticReviewLines(x.critic.review)) L.push(`  - ${line}`);
     }
     if (x.template.status === "skipped" && x.template.similarity === null)
       L.push("- Гейт шаблонности: пропущен (нет браузера для снимков сайта).");

@@ -78,10 +78,13 @@ const run = (runId: string, startedAt: string, results: R[]) => ({
   stopped: null,
   results,
 });
-const dbOf = (ids: number[], rub = 250, fingerprints = true) => ({
+const dbOf = (ids: number[], rub = 250, fingerprints = true, critic = "оценка 28→40") => ({
   costs: Object.fromEntries(ids.map((i) => [sid(i), { rub, credits: 50, calls: 40 }])),
   gaps: {},
-  metrics: {},
+  // The critic's stage note (createCriticHook): the score of the site kept is the design floor's fact.
+  metrics: Object.fromEntries(
+    ids.map((i) => [sid(i), { stages: { critic: { status: "done", note: `циклов 2, ${critic}, стоп pass` } } }]),
+  ),
   v3: {
     calls: {},
     hooks: {},
@@ -260,6 +263,17 @@ describe("the report of the final measurement (§6)", () => {
     });
     expect(failed.criteria.functional).toBe(false);
     expect(failed.failed).toEqual(["v3-05-ceramics-shop"]);
+    // The founder's design floor: a site the critic scores under 30 fails it; a cycle that scored lower was rolled
+    // back, so the site kept is the one scored before it.
+    const low = evaluateV3Final({ doc: doc(base), db: dbOf(all12, 250, true, "оценка 16→16"), journal });
+    expect(low.criteria.design).toBe(false);
+    expect(low.lowDesign).toHaveLength(12);
+    expect(renderV3Final({ doc: doc(base), db: dbOf(all12, 250, true, "оценка 16→16"), journal }).text).toContain(
+      "| 1 | Дизайн | оценка критика каждой системы ≥ 30 из 100 (пол основателя) | от 16 до 16; ниже 30:",
+    );
+    const kept = evaluateV3Final({ doc: doc(base), db: dbOf(all12, 250, true, "оценка 34→22"), journal });
+    expect(kept.criteria.design).toBe(true);
+    expect(kept.scored[0]?.critic.kept).toBe(34);
     expect(failed.verdict).toBe("failed");
     expect(
       evaluateV3Final({ doc: doc(base.map((r, i) => (i === 0 ? { ...r, fromBriefMinutes: 31 } : r))), db: dbOf(all12) })

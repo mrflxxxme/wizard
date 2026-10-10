@@ -23,7 +23,14 @@ import type { V3BuildContext } from "../contract.js";
 import type { V3HookResult, V3StageHook } from "../harness/types.js";
 import { V3BudgetError } from "../harness/wallet.js";
 import { CRITIC_VIEWPORTS } from "./checks.js";
-import { applyEdit, type CriticState, type EditEnv, type EditOp, variantsFor } from "./ops.js";
+import {
+  applyEdit,
+  type CriticState,
+  type EditEnv,
+  type EditOp,
+  signatureFallback,
+  variantsFor,
+} from "./ops.js";
 import { CRITIC_CALL_TYPE, type CritiqueHistory, critiqueMessages, critiqueTool } from "./prompt.js";
 import {
   CHECK_RUBRIC,
@@ -51,6 +58,11 @@ export const CRITIC_LIMITS = {
   maxEdits: 6,
   /** Sections the deterministic phase tries to fix by another variant. */
   maxFixes: 4,
+  /**
+   * The founder's floor of the score (10.10.2026: a built site never below 30): under it an unchanged score does not
+   * stop the loop — the next cycle tries the other findings while cycles and budget last.
+   */
+  floor: 30,
 } as const;
 
 export interface CriticOptions {
@@ -81,6 +93,8 @@ export interface CriticCycle {
   axes: Critique["axes"];
   polish: Critique["polish"];
   findings: number;
+  /** The main findings (by severity, at most 8): the operator's view of why the score is what it is. */
+  top: { severity: string; sign: string; where: string }[];
   applied: string[];
   rejected: { edit: string; reason_ru: string }[];
   costRub: number;
@@ -391,6 +405,26 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
       break;
     }
   }
+  // A signature section (free code) has no variants: one the checks still flag for contrast or overflow gives its
+  // place to a pattern (the plan's rule), kept only when the checks get better.
+  const signatureBroken = problemDigest(problems).filter(
+    (d) =>
+      (d.code === "C08" || d.code === "L11") &&
+      d.section &&
+      sectionOf(state, d.route, d.section)?.type === "signature",
+  );
+  for (const t of signatureBroken) {
+    if (!canInspect()) break;
+    const id = t.section as string;
+    if (sectionOf(state, t.route, id)?.type !== "signature") continue;
+    const r = signatureFallback(state, t.route, id, env);
+    if (!r.ok) continue;
+    const tr = await trial(r.state, [t.route], { g0: false, shots: false });
+    if (!tr.ok || problemPenalty(tr.problems) >= problemPenalty(problems)) continue;
+    state = r.state;
+    problems = tr.problems;
+    report.fixes.push(`${r.summary_ru} (${t.code})`);
+  }
   const plainContrast = problemDigest(problems).filter(
     (d) => d.code === "C08" && !d.message_ru.includes("на фото"),
   );
@@ -520,6 +554,10 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
       axes: critique.axes,
       polish: critique.polish,
       findings: critique.findings.length,
+      top: [...critique.findings]
+        .sort((a, b) => SEV_ORDER(a.severity) - SEV_ORDER(b.severity))
+        .slice(0, 8)
+        .map((f) => ({ severity: f.severity, sign: f.sign.slice(0, 160), where: f.where })),
       applied: [],
       rejected: [],
       costRub: round2(spent() - spentBefore),
@@ -534,7 +572,7 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
       report.stop = "no_gain";
       break;
     }
-    if (prev && score === prev.score) {
+    if (prev && score === prev.score && (score >= CRITIC_LIMITS.floor || n >= maxCycles)) {
       report.stop = "no_gain";
       break;
     }
@@ -654,6 +692,11 @@ export function createCriticHook(o: CriticOptions): V3StageHook {
       files: r.files,
       notes: r.notes,
       ...(r.design ? { design: r.design } : {}),
+      review: {
+        stop: r.stop,
+        fixes: r.fixes,
+        cycles: r.cycles.map((c) => ({ n: c.n, score: c.score, axes: c.axes, polish: c.polish, top: c.top })),
+      },
       // Model calls went through ctx.route: the harness wallet has them.
       spentRub: 0,
       note: [
