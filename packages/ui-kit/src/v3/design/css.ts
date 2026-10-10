@@ -4,6 +4,7 @@
 // systems on one page (three directions, V3-09) — each scope sets its own --ds-* values. Default Tailwind colours,
 // fonts, sizes, radii, shadows and animations are cleared: pages use the client's tokens only (stack v3, V3-12).
 import { FONTS_BASE, fontFaceCss } from "../../tokens/fonts.js";
+import { fontAdvance } from "./fonts.js";
 import { COLOR_ROLES, type ColorRole, type PaletteScheme, type SchemeName } from "./palette.js";
 import { type DesignSystemV3, fluid, TYPE_STEPS, type TypeStep } from "./system.js";
 
@@ -49,12 +50,16 @@ const anim = (name: string, ms: number, easing = "var(--ds-ease-out)") =>
 export function designSystemVars(ds: DesignSystemV3): Record<string, string | number> {
   const t = ds.type.steps;
   const m = ds.motion;
+  const advance = fontAdvance(ds.fonts.display.family, ds.fonts.display.weight);
   const vars: Record<string, string | number> = {
     "font-synthesis": "none",
     "--ds-font-display": ds.fonts.display.stack,
     "--ds-font-text": ds.fonts.text.stack,
     "--ds-font-display-weight": ds.fonts.display.weight,
     "--ds-heading-case": ds.type.upper ? "uppercase" : "none",
+    // Em per letter of the display face over long words (fonts.ts FONT_ADVANCE), read by FIT_WORDS_CSS.
+    "--ds-display-advance": advance.lower,
+    "--ds-display-advance-caps": advance.caps,
   };
   for (const s of TYPE_STEPS) {
     vars[`--ds-text-${s}`] = t[s].size;
@@ -177,10 +182,33 @@ export const DESIGN_THEME_CSS: string = (() => {
   return `@theme inline {\n${lines.map((l) => `  ${l}`).join("\n")}\n}`;
 })();
 
+/** Longest word the fit rules size for: data-fit-words takes 1…FIT_WORDS_MAX (headless fitWords caps at it). */
+export const FIT_WORDS_MAX = 30;
+/** Smallest size the fit rules give a display line: the smallest text of the scale (system.ts SMALL_MIN_PX). */
+const FIT_WORDS_FLOOR = "0.8125rem";
+
+/**
+ * Display words that fit a phone (pilot 10.10.2026: «Турфирма из Петрозаводс|ка» in a brand header). Below lg an
+ * element with data-fit-words="<letters of its longest word>" inside a size container (`@container`) gets
+ * min(its inherited size, the size at which that word fits 100cqi in the display face) — --ds-display-advance(-caps)
+ * plus room for tracking — never below FIT_WORDS_FLOOR. data-fit-caps: the line is set in capitals; data-fit-inset:
+ * the container is wider than the line by the gutter on both sides ("gutter"), and a logo ("gutter-logo"). A word too
+ * long even then is hyphenated by the pattern's `hyphens-auto`, never cut silently. Only var() references: the same
+ * for every design system, like the theme.
+ */
+export const FIT_WORDS_CSS: string = [
+  "[data-fit-words]{--fit-advance:calc(var(--ds-display-advance) + 0.01)}",
+  "[data-fit-words][data-fit-caps]{--fit-advance:calc(var(--ds-display-advance-caps) + 0.03)}",
+  "[data-fit-words][data-fit-inset]{--fit-room:calc(100cqi - 2 * var(--ds-gutter))}",
+  "[data-fit-words][data-fit-inset=gutter-logo]{--fit-room:calc(100cqi - 2 * var(--ds-gutter) - 3rem)}",
+  ...Array.from({ length: FIT_WORDS_MAX }, (_, i) => `[data-fit-words="${i + 1}"]{--fit-chars:${i + 1}}`),
+  `@media (width < 64rem){[data-fit-words]{font-size:min(1em, max(${FIT_WORDS_FLOOR}, var(--fit-room, 100cqi) / (var(--fit-chars, ${FIT_WORDS_MAX}) * var(--fit-advance))))}}`,
+].join("\n");
+
 /**
  * CSS of a design system: variables of the starting scheme on :root (or `scope`), the other scheme under
  * [data-scheme=light|dark] and for data-scheme=auto by prefers-color-scheme, reduced motion (opacity only, content
- * visible), keyframes and the Tailwind theme.
+ * visible), keyframes, the fit rules of display words and the Tailwind theme.
  */
 export function designSystemCss(ds: DesignSystemV3, opts: DesignCssOptions = {}): string {
   const root = opts.scope ?? ":root";
@@ -204,6 +232,7 @@ export function designSystemCss(ds: DesignSystemV3, opts: DesignCssOptions = {})
     `@media (prefers-color-scheme: ${other}){${on("auto")}{${colors(other)}}}`,
     `@media (prefers-reduced-motion: reduce){${root}{${reduced}}}`,
     KEYFRAMES,
+    opts.theme === false ? "" : FIT_WORDS_CSS,
     opts.theme === false ? "" : DESIGN_THEME_CSS,
   ]
     .filter(Boolean)

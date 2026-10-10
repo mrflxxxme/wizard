@@ -1,8 +1,9 @@
 // Header «centered»: the brand in the middle of the top row (a practical note on the left, the action on the right),
 // the navigation centred in its own row under a rule. Below lg: brand and «Меню». Composition after HyperUI «Headers»
 // (MIT, © Mark Mead), rewritten on the design system tokens.
+import { fitWords } from "@wizard/ui-kit/v3/headless";
 import { AnimatePresence, domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
-import { useEffect, useId, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useRef, useState } from "react";
 
 type Link = { label: string; href: string };
 type Image = { src: string; alt: string };
@@ -36,6 +37,29 @@ function useMenu() {
   return { open, id, toggle, flip: () => setOpen((v) => !v), close: () => setOpen(false) };
 }
 
+/**
+ * The brand by words (pilot 10.10.2026): below lg each word is one unit, wrapped only between words, and the design
+ * CSS (data-fit-words) sizes the line so its longest word fits the container; a word too long even then is hyphenated,
+ * never cut silently. From lg on it is set as before.
+ */
+function BrandName({ name }: { name: string }) {
+  const fit = fitWords(name);
+  return (
+    <span
+      data-fit-words={fit.chars}
+      lang="ru"
+      className="block wrap-normal hyphens-auto lg:wrap-break-word lg:hyphens-manual"
+    >
+      {fit.words.map((w) => (
+        <Fragment key={w.at}>
+          {w.at > 0 ? " " : null}
+          <span className="max-lg:inline-block">{w.text}</span>
+        </Fragment>
+      ))}
+    </span>
+  );
+}
+
 export default function HeaderCentered({ brand, nav, action, note }: HeaderCenteredProps) {
   const menu = useMenu();
   const reduce = useReducedMotion();
@@ -50,7 +74,9 @@ export default function HeaderCentered({ brand, nav, action, note }: HeaderCente
             className="inline-flex min-h-11 min-w-0 items-center gap-3 font-display text-h2 font-bold text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring lg:justify-self-center"
           >
             {brand.logo ? <img src={brand.logo.src} alt={brand.logo.alt} className="h-10 w-auto" /> : null}
-            <span className="min-w-0 wrap-break-word">{brand.name}</span>
+            <span className="min-w-0 max-lg:flex-1 max-lg:@container">
+              <BrandName name={brand.name} />
+            </span>
           </a>
           <div className="flex items-center justify-self-end gap-3">
             {action ? (

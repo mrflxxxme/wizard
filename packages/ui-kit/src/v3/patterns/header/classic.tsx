@@ -1,8 +1,9 @@
 // Header «classic»: brand on the left, navigation in one row, the main action on the right. Below lg the navigation
 // folds behind «Меню» into a panel under the bar; Esc closes it and returns focus. Composition after HyperUI «Headers»
 // (MIT, © Mark Mead), rewritten on the design system tokens.
+import { fitWords } from "@wizard/ui-kit/v3/headless";
 import { AnimatePresence, domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
-import { useEffect, useId, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useRef, useState } from "react";
 
 type Link = { label: string; href: string };
 type Image = { src: string; alt: string };
@@ -37,6 +38,29 @@ function useMenu() {
   return { open, id, toggle, flip: () => setOpen((v) => !v), close: () => setOpen(false) };
 }
 
+/**
+ * The brand by words (pilot 10.10.2026): below lg each word is one unit, wrapped only between words, and the design
+ * CSS (data-fit-words) sizes the line so its longest word fits the container; a word too long even then is hyphenated,
+ * never cut silently. From lg on it is set as before.
+ */
+function BrandName({ name }: { name: string }) {
+  const fit = fitWords(name);
+  return (
+    <span
+      data-fit-words={fit.chars}
+      lang="ru"
+      className="block wrap-normal hyphens-auto lg:wrap-break-word lg:hyphens-manual"
+    >
+      {fit.words.map((w) => (
+        <Fragment key={w.at}>
+          {w.at > 0 ? " " : null}
+          <span className="max-lg:inline-block">{w.text}</span>
+        </Fragment>
+      ))}
+    </span>
+  );
+}
+
 export default function HeaderClassic({ brand, nav, action }: HeaderClassicProps) {
   const menu = useMenu();
   const reduce = useReducedMotion();
@@ -47,10 +71,12 @@ export default function HeaderClassic({ brand, nav, action }: HeaderClassicProps
         <div className="mx-auto flex w-full max-w-page items-center gap-8 px-gutter py-3">
           <a
             href={brand.href ?? "/"}
-            className="inline-flex min-h-11 min-w-0 items-center gap-3 font-display text-h3 font-bold text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            className="inline-flex min-h-11 min-w-0 items-center gap-3 font-display text-h3 font-bold text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-lg:flex-1"
           >
             {brand.logo ? <img src={brand.logo.src} alt={brand.logo.alt} className="h-9 w-auto" /> : null}
-            <span className="min-w-0 wrap-break-word">{brand.name}</span>
+            <span className="min-w-0 max-lg:flex-1 max-lg:@container">
+              <BrandName name={brand.name} />
+            </span>
           </a>
           <nav aria-label="Основное меню" className="ml-auto hidden lg:block">
             <ul className="flex items-center gap-6">

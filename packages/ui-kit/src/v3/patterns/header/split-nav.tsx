@@ -1,7 +1,8 @@
 // Header «split navigation»: the menu is split in two around a centred brand, the action closes the right half —
 // a symmetric composition for places and studios. Below lg: brand and «Меню». Own composition.
+import { fitWords } from "@wizard/ui-kit/v3/headless";
 import { AnimatePresence, domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
-import { useEffect, useId, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useRef, useState } from "react";
 
 type Link = { label: string; href: string };
 type Image = { src: string; alt: string };
@@ -34,6 +35,30 @@ function useMenu() {
   return { open, id, toggle, flip: () => setOpen((v) => !v), close: () => setOpen(false) };
 }
 
+/**
+ * The brand by words (pilot 10.10.2026): below lg each word is one unit, wrapped only between words, and the design
+ * CSS (data-fit-words, in capitals) sizes the line so its longest word fits the container; a word too long even then
+ * is hyphenated, never cut silently. The tracking is set here, in em of the fitted size. From lg on it is set as before.
+ */
+function BrandName({ name }: { name: string }) {
+  const fit = fitWords(name);
+  return (
+    <span
+      data-fit-words={fit.chars}
+      data-fit-caps=""
+      lang="ru"
+      className="block tracking-wide wrap-normal hyphens-auto lg:wrap-break-word lg:hyphens-manual"
+    >
+      {fit.words.map((w) => (
+        <Fragment key={w.at}>
+          {w.at > 0 ? " " : null}
+          <span className="max-lg:inline-block">{w.text}</span>
+        </Fragment>
+      ))}
+    </span>
+  );
+}
+
 export default function HeaderSplitNav({ brand, nav, action }: HeaderSplitNavProps) {
   const menu = useMenu();
   const reduce = useReducedMotion();
@@ -56,10 +81,12 @@ export default function HeaderSplitNav({ brand, nav, action }: HeaderSplitNavPro
           </nav>
           <a
             href={brand.href ?? "/"}
-            className="inline-flex min-h-11 min-w-0 items-center gap-3 font-display text-h3 font-bold tracking-wide text-foreground uppercase focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring lg:justify-self-center"
+            className="inline-flex min-h-11 min-w-0 items-center gap-3 font-display text-h3 font-bold text-foreground uppercase focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-lg:flex-1 lg:justify-self-center"
           >
             {brand.logo ? <img src={brand.logo.src} alt={brand.logo.alt} className="h-10 w-auto" /> : null}
-            <span className="min-w-0 wrap-break-word">{brand.name}</span>
+            <span className="min-w-0 max-lg:flex-1 max-lg:@container">
+              <BrandName name={brand.name} />
+            </span>
           </a>
           <div className="ml-auto flex items-center gap-7 lg:ml-0 lg:justify-self-end">
             <nav aria-label="Ещё разделы" className="hidden lg:block">
