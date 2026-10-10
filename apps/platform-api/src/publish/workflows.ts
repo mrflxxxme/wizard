@@ -383,6 +383,15 @@ async function founderReviewGate(
   const status = await h.step("founder_review", "Проверяю одобрение модератора", async () => {
     const now = await requestFounderReview(h.db, sys.id, revision);
     if (now === "pending") {
+      // A measurement's system (orgs.kind = eval, tools/eval) is marked: its first publication is the measurement's
+      // «ready» signal, nothing for the founder to approve (10.10.2026).
+      const org = await h.db
+        .selectFrom("platform.orgs")
+        .select("kind")
+        .where("id", "=", sys.org_id)
+        .executeTakeFirst()
+        .catch(() => undefined);
+      const evalMark = org?.kind === "eval" ? " Замер: тестовая система, одобрять не нужно." : "";
       // One alert per revision (db.yaml#ops_alerts key founder_review:<system>:<revision>), whichever run asks first.
       await alertOnce(
         h.db,
@@ -391,7 +400,7 @@ async function founderReviewGate(
         {
           level: "warn",
           event: "founder_review_requested",
-          text: `Wizard: ревизия ${revision} системы ${sys.id} (org ${sys.org_id}) ждёт ревью перед prod — ${FOUNDER_REVIEW_REASON_RU[reason]}.${egressHostsNote(spec, prodSpec)} Одобрить: pnpm --filter @wizard/platform-api moderation approve ${sys.id} ${revision}`,
+          text: `Wizard: ревизия ${revision} системы ${sys.id} (org ${sys.org_id}) ждёт ревью перед prod — ${FOUNDER_REVIEW_REASON_RU[reason]}.${evalMark}${egressHostsNote(spec, prodSpec)} Одобрить: pnpm --filter @wizard/platform-api moderation approve ${sys.id} ${revision}`,
           fields: { systemId: sys.id, orgId: sys.org_id, revision, reason },
         },
       );

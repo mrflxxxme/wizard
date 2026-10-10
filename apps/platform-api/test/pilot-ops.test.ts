@@ -197,6 +197,7 @@ describe("founder review before prod (orgs.require_founder_review under WIZARD_F
     const alert = fx.alerts.find((a) => a.event === "founder_review_requested");
     expect(alert?.text).toContain(`moderation approve ${sys.id} ${sys.revision}`);
     expect(alert?.text).toContain("первая публикация системы");
+    expect(alert?.text).not.toContain("Замер");
     // Prod is untouched, the blocker shows and a second attempt is refused before any run.
     const get = await fx.api.req("GET", `/systems/${sys.id}`);
     expect(get.body.system.prodRevision).toBeNull();
@@ -226,6 +227,21 @@ describe("founder review before prod (orgs.require_founder_review under WIZARD_F
     const [n] = await fx.api.deps.pg`
       select count(*)::int as n from platform.founder_reviews where system_id = ${sys.id}`;
     expect(n?.n).toBe(1);
+  }, 120_000);
+
+  test("a measurement's system (orgs.kind = eval): the alert says there is nothing to approve", async () => {
+    const [was] = await fx.api.deps.pg<
+      { kind: string }[]
+    >`select kind from platform.orgs where id = ${orgId}`;
+    await fx.api.deps.pg`update platform.orgs set kind = 'eval' where id = ${orgId}`;
+    try {
+      const sys = await builtSystem(fx.api, orgId);
+      await publish(fx.api, sys.id, sys.revision);
+      const alert = fx.alerts.find((a) => a.event === "founder_review_requested" && a.text.includes(sys.id));
+      expect(alert?.text).toContain("Замер: тестовая система, одобрять не нужно.");
+    } finally {
+      await fx.api.deps.pg`update platform.orgs set kind = ${was?.kind ?? "customer"} where id = ${orgId}`;
+    }
   }, 120_000);
 
   test("rejected review: the publication fails with the rejection text", async () => {
