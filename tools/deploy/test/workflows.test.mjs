@@ -335,10 +335,11 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     expect(report.with.name).toBe(
       `${gh("inputs.command == 'v3-probe' && 'v3-probe' || inputs.threshold")}-eval-${gh("inputs.env")}-${gh("github.run_id")}`,
     );
-    // d76 and v3 (v3, v3-final) screenshots: Chromium of the workspace's Playwright, only for those measurements.
+    // d76 and v3 (v3, v3-final) screenshots: Chromium of the workspace's Playwright, only for those measurements and
+    // the payment check of v3-probe (V3-40), which buys in it.
     const chromium = job.steps.find((s) => s.name === "Chromium for the screenshots");
     expect(chromium.if).toBe(
-      "inputs.command == 'eval' && (inputs.threshold == 'd76' || startsWith(inputs.threshold, 'v3'))",
+      "(inputs.command == 'eval' && (inputs.threshold == 'd76' || startsWith(inputs.threshold, 'v3'))) || (inputs.command == 'v3-probe' && inputs.pay_systems != '')",
     );
     expect(chromium.run).toContain("playwright install --with-deps --only-shell chromium");
     expect(report.uses).toBe("actions/upload-artifact@v4");
@@ -406,6 +407,30 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     }
     expect(authorize({ COMMAND: "deploy", CONFIRM: "PROD", PROBE_SHAPE: "critic" }).out).toContain(
       "probe_shape — только для v3-probe",
+    );
+    // V3-40 the payment check: up to three system ids, v3-probe only, not with the shape probe; the test shop's keys
+    // reach the pilot step only for eval and this check.
+    expect(inputs.pay_systems).toMatchObject({ type: "string", default: "" });
+    expect(pr.doc.jobs.pilot.with.pay_systems).toBe(gh("inputs.pay_systems"));
+    expect(reusable.jobs.pilot.env.PAY_SYSTEMS).toBe(gh("inputs.pay_systems"));
+    expect(reusable.jobs.authorize.steps[0].env.PAY_SYSTEMS).toBe(gh("inputs.pay_systems"));
+    expect(run).toContain('--shape "$PROBE_SHAPE" --pay "$PAY_SYSTEMS"');
+    const ids = ["cd76a3c8-b8d0-4fa7-95de-c61108e9e11f", "0c07ecad-db25-4a53-8a25-1cad47f688c8"];
+    expect(authorize({ ...ok, PAY_SYSTEMS: ids.join(",") }).code).toBe(0);
+    for (const v of [`${ids[0]};curl x`, [...ids, ...ids].join(","), "abc"]) {
+      const r = authorize({ ...ok, PAY_SYSTEMS: v });
+      expect(r.code, v).toBe(1);
+      expect(r.out, v).toContain("pay_systems — до трёх id систем через запятую");
+    }
+    expect(authorize({ ...ok, PAY_SYSTEMS: ids[0], PROBE_SHAPE: "critic" }).out).toContain("разные пробы");
+    expect(authorize({ COMMAND: "deploy", CONFIRM: "PROD", PAY_SYSTEMS: ids[0] }).out).toContain(
+      "pay_systems — только для v3-probe",
+    );
+    const pilotStep = reusable.jobs.pilot.steps.find((s) => s.name === `Pilot (${gh("inputs.command")})`);
+    expect(pilotStep.env.YOUKASSA_TEST_API_KEY).toBe(
+      gh(
+        "(inputs.command == 'eval' || (inputs.command == 'v3-probe' && inputs.pay_systems != '')) && secrets.YOUKASSA_TEST_API_KEY || ''",
+      ),
     );
   });
 
