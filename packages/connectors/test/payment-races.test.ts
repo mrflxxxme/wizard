@@ -110,6 +110,18 @@ describe("H: the notice and the return check meet on one payment", () => {
   });
 });
 
+describe("money after the record stopped waiting for it", () => {
+  test("a payment that succeeds after the order was cancelled by its deadline goes to the owner's check, not paid", async () => {
+    const { ctx, db } = setup(loadSpec("forum"));
+    const { id, event } = await pendingTicket(ctx, db);
+    await db.patch("ticket", id, { status: "canceled" });
+    expect(await applyPaymentSucceeded(ctx, event)).toBe("needs_review");
+    expect((await db.get("ticket", id))?.status).toBe("canceled");
+    const [row] = await db.list("payment");
+    expect(row?.status).toBe("needs_review");
+  });
+});
+
 describe("G: a declined card keeps the order payable until its deadline", () => {
   test("before pay_until: still payable, the reason in the note; after it: canceled", async () => {
     const spec = retrySpec();

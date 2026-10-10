@@ -200,7 +200,7 @@ function Item({ m, row, level, path }: { m: ShopCatalogModel; row: Row; level: 1
             <a
               href={href}
               data-testid="wz-product-link"
-              className="text-foreground underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              className="inline-flex min-h-11 items-center text-foreground underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
               {it.name}
             </a>

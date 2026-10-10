@@ -697,7 +697,11 @@ export async function applyPaymentSucceeded(
       kop(payment.amount.value) === kop(row.amount) &&
       row[b.paymentEntity.refField] === record.id &&
       kop(record[b.amountField]) === kop(row.amount);
-    if (!matches || !record) {
+    // V3-18: money for a record that is no longer waiting for it (the order was cancelled by its deadline and its goods
+    // went back to the stock) is not taken as paid — the owner checks it (a refund or a new order).
+    const waiting =
+      record !== null && (record[statusOf(b)] === b.payableStatus || record[statusOf(b)] === b.paidStatus);
+    if (!matches || !record || !waiting) {
       await ctx.db.patch(b.paymentEntity.name, row.id, { status: "needs_review" });
       ctx.log.log({ action: "payment.succeeded", mode: ctx.mode, status: "needs_review", durationMs: 0 });
       await ownerEvent(ctx, "payment_needs_review", "Оплата требует проверки", {
@@ -711,7 +715,9 @@ export async function applyPaymentSucceeded(
           ctx,
           b,
           record,
-          "Оплата требует проверки: сумма или заказ не совпали с платежом ЮKassa",
+          waiting
+            ? "Оплата требует проверки: сумма или заказ не совпали с платежом ЮKassa"
+            : "Оплата пришла после отмены заказа — проверьте платёж: верните деньги или оформите заказ заново",
         );
       return "needs_review";
     }

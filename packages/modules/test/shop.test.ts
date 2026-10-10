@@ -851,7 +851,8 @@ describe("runtime: orders, the stock, the payment by the buyer's secret", () => 
     await run(Date.now() + 2000);
     const moves = (await rows(shop, "stock_move")).filter((m) => m.product === product);
     expect(moves.map((m) => [m.kind, Number(m.qty)])).toEqual([["adjust", 3]]);
-    // A payment started at ЮKassa (pending): the time to pay passes, the order waits for the payment.
+    // A payment started at ЮKassa and abandoned (pending for the whole time to pay): the order is cancelled, its goods
+    // go back — only a payment started in the last minutes before the deadline keeps it a little longer.
     const token = secret();
     const r = await order(shop, {
       lines: [{ product, qty: 1 }],
@@ -871,11 +872,10 @@ describe("runtime: orders, the stock, the payment by the buyer's secret", () => 
     const until = Date.parse(String((await rows(shop, "shop_order")).find((x) => x.id === id)?.pay_until));
     await run(until + 60_000);
     await run(until + 120_000);
-    const kept = (await rows(shop, "shop_order")).find((x) => x.id === id);
-    expect(kept?.status).toBe("awaiting_payment");
-    expect(Date.parse(String(kept?.pay_until))).toBeGreaterThan(until);
-    // The order's own sale is journaled once, the manual edit stays the only adjustment.
+    const gone = (await rows(shop, "shop_order")).find((x) => x.id === id);
+    expect(gone?.status).toBe("canceled");
+    // The order's sale and its return are journaled once each, the manual edit stays the only adjustment.
     const after = (await rows(shop, "stock_move")).filter((m) => m.product === product);
-    expect(after.map((m) => m.kind).sort()).toEqual(["adjust", "sale"]);
+    expect(after.map((m) => m.kind).sort()).toEqual(["adjust", "return", "sale"]);
   }, 90_000);
 });

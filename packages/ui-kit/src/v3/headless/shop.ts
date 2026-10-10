@@ -342,7 +342,15 @@ export function useProduct(entity: string = SHOP_DEFAULTS.product, o: UseProduct
   const { pathname } = useLocation();
   const raw = o.id ?? slugFromPath(pathname, o.path ?? SHOP_DEFAULTS.productPath);
   const id = raw && UUID_RE.test(raw) ? raw : null;
-  const rec = ds.useRecord<Rec>(entity, id ?? NO_ROW);
+  // A list filtered by the id (like the entries of content): no product, or one the role may not read (off sale) — an
+  // empty page, not a 404 request on every preview and wrong address.
+  const list = ds.useList<Rec>(entity, { filter: { id: id ?? NO_ROW }, pageSize: 1 });
+  const rec = {
+    data: list.data?.items[0] ?? null,
+    isLoading: list.isLoading,
+    error: list.error,
+    refetch: list.refetch,
+  };
   const cart = useCart();
   const [added, setAdded] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);

@@ -169,7 +169,7 @@ export const V3_CHECKS_SCRIPT = String.raw`
           ...contrast(root).map((p) => "контраст: " + p),
           ...names(root).map((p) => "доступность: " + p),
           // An entry page (article-*, V3-24) is the heading of its page like a first screen: one h1.
-          ...headings(root, id.startsWith("hero-") || id.startsWith("article-")).map((p) => "заголовки: " + p),
+          ...headings(root, id.startsWith("hero-") || id.startsWith("article-") || id.startsWith("product-")).map((p) => "заголовки: " + p),
           ...(opts.touch ? touch(root).map((p) => "касание: " + p) : []),
         ];
         if (problems.length) result[id] = problems;
