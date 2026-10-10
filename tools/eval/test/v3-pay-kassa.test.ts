@@ -39,7 +39,7 @@ function keysOnly(el, max, show) {
   el.addEventListener("blur", render);
 }`;
 
-const KASSA = (threeDs: boolean, brokenYear: boolean) => `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>ЮKassa</title></head>
+const KASSA = (threeDs: boolean, brokenYear: boolean, success = false) => `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>ЮKassa</title></head>
 <body>
 <h1>Test</h1><p>3 000 ₽</p><button type="button">Детали платежа</button>
 <div><b>Это тестовый платёж</b><p>Можно заплатить тестовой картой или кошельком — ваши деньги при этом не спишутся. Оплата придёт в ваш тестовый магазин.</p></div>
@@ -74,7 +74,7 @@ f.addEventListener("submit", (e) => {
     && /^[0-9]{2}$/.test(q("expiry-year").dataset.v) && Number(q("expiry-year").dataset.v) >= 27 && q("security-code").dataset.v.length === 3;
   const err = document.getElementById("err");
   if (!ok) { err.hidden = false; q("expiry-year").setAttribute("aria-invalid", "true"); return; }
-  location.href = ${threeDs ? '"/3ds"' : '"/order/1"'};
+  location.href = ${threeDs ? '"/3ds"' : success ? '"/success"' : '"/order/1"'};
 });
 </script></body></html>`;
 
@@ -83,6 +83,10 @@ const THREE_DS = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><ti
 <form id="f"><input type="text" name="code" inputmode="numeric"><button type="submit">Подтвердить</button></form>
 <script>document.getElementById("f").addEventListener("submit", (e) => { e.preventDefault();
   if (document.querySelector('[name="code"]').value.length >= 3) location.href = "/order/1"; });</script></body></html>`;
+
+/** The test shop's success page: the payment went through, back to the shop only by its link (real page, 11.10.2026). */
+const SUCCESS = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>ЮKassa</title></head><body>
+<h1>Платёж прошёл</h1><button type="button">Детали платежа</button><a href="/order/1">Вернуться на сайт</a></body></html>`;
 
 const ORDER = `<!doctype html><html lang="ru"><head><meta charset="utf-8"></head><body>
 <h1>Заказ № 1</h1><p data-testid="wz-order-status">Оплачен</p></body></html>`;
@@ -97,12 +101,18 @@ beforeAll(async () => {
     const u = new URL(req.url ?? "/", "http://x");
     const html =
       u.pathname === "/kassa"
-        ? KASSA(u.searchParams.get("3ds") === "1", u.searchParams.get("year") === "broken")
+        ? KASSA(
+            u.searchParams.get("3ds") === "1",
+            u.searchParams.get("year") === "broken",
+            u.searchParams.get("success") === "1",
+          )
         : u.pathname === "/3ds"
           ? THREE_DS
-          : u.pathname.startsWith("/order/")
-            ? ORDER
-            : "";
+          : u.pathname === "/success"
+            ? SUCCESS
+            : u.pathname.startsWith("/order/")
+              ? ORDER
+              : "";
     res.writeHead(html ? 200 : 404, { "content-type": "text/html; charset=utf-8" });
     res.end(html);
   });
@@ -162,6 +172,17 @@ describe.skipIf(!hasChromium)("payOnKassa on a double of the ЮKassa test page (
     ]);
     for (const suffix of ["-form", "-paid"]) expect(existsSync(shots.replace(/\.png$/, `${suffix}.png`))).toBe(true);
   }, 60_000);
+
+  test("the success page of the test shop stays put: «Вернуться на сайт» takes the visitor to the order", async () => {
+    const { r, steps, url } = await run("success=1");
+    expect(r, JSON.stringify(steps)).toEqual({ ok: true });
+    expect(url).toBe(`${origin}/order/1`);
+    expect(steps.map((s) => s.step)).toEqual([
+      "выбран способ оплаты «Новая карта»",
+      "данные тестовой карты введены, нажата «Заплатить»",
+      "ЮKassa приняла оплату, посетитель нажал «Вернуться на сайт»",
+    ]);
+  }, 90_000);
 
   test("a 3-D Secure page: the code goes to its own field, never to the CVC, then the order page", async () => {
     const { r, steps, url } = await run("3ds=1");

@@ -6,6 +6,12 @@ import { ownerMail } from "./booking.js";
 import { ownerRole, plain, textOf } from "./shared.js";
 
 const KPI = '[data-testid^="wz-stats-kpi-"]';
+/**
+ * How long the panel may take to show its numbers: it counts every metric of the plan for a week and a month on open,
+ * and a big plan (v3-10 of the final measurement: 21 modules) took longer than the 5 s this program waited — the tiles
+ * were there, the check looked before they rendered (V3-40).
+ */
+export const PANEL_READY_MS = 20_000;
 const DAY = 86_400_000;
 
 type Metric = { id: string; value: number | null; previous: number | null; base?: number | null };
@@ -86,11 +92,15 @@ const metricPerGoal: GoalProgram = async (t) => {
   const now = Date.now();
   const route = panelPage(t);
   await t.open(route);
-  await t.page
-    .locator(KPI)
-    .first()
-    .waitFor({ state: "visible", timeout: 5_000 })
-    .catch(() => {});
+  if (data.metrics.length > 0) {
+    await t.page
+      .locator(KPI)
+      .first()
+      .waitFor({ state: "visible", timeout: PANEL_READY_MS })
+      .catch(() => {});
+    if ((await t.page.locator(KPI).count()) === 0)
+      t.fail(`панель цели не показала ни одного показателя за ${PANEL_READY_MS / 1000} с`);
+  }
 
   t.step("По каждой цели плана есть метрика, числа совпадают с данными");
   if (data.metrics.length === 0) {
@@ -314,7 +324,7 @@ const hintsLeadToActions: GoalProgram = async (t) => {
   await t.page
     .locator(HINTS_ROOT)
     .first()
-    .waitFor({ state: "visible", timeout: 5_000 })
+    .waitFor({ state: "visible", timeout: PANEL_READY_MS })
     .catch(() => {});
   if ((await t.page.locator(HINTS_ROOT).count()) === 0) t.fail("на панели нет блока «Что улучшить»");
 
