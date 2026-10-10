@@ -101,8 +101,12 @@ describe("eval briefs without a model: the skeleton keeps the goal scenarios' DO
           for (const hook of ['data-wz-component="ShopOrder"', "wz-order-status", "wz-order-pay"])
             expect(src, `${pattern}: ${hook}`).toContain(hook);
       }
-      if (shop)
+      if (shop) {
         expect(site.pages.map((p) => p.kind)).toEqual(expect.arrayContaining(["shop", "cart", "order"]));
+        // V3-40: the goods show on home once — no catalog preview next to the shop's (the critic's L06).
+        const home = site.pages.find((p) => p.route === "/");
+        expect(home?.sections.map((x) => x.type) ?? []).not.toContain("catalog");
+      }
       // The public front has the actions the forms bind (a site of a CRM too: its request form), or the shop's goods.
       expect(
         front.actions.some(

@@ -15,7 +15,7 @@
 //   node tools/eval/server/cli.mjs cleanup --session-file s.json [--base URL] > revoke.sql (logout + revoke SQL)
 // V3-40: --threshold v3-final — the final measurement (12 briefs v3-*, screenshots at 390 and 1440 px, collect with the
 // site fingerprints); its report by the exit criteria of the plan §6 from the run(s) and the blind comparison:
-//   node tools/eval/server/cli.mjs final --results run.json[,retry.json] [--collect c.out[,retry.out]]
+//   node tools/eval/server/cli.mjs final --results run.json[,retry.json] [--collect c.out[,retry.out]] [--pay v3-pay.json]
 //        [--blind blind-summary.json] [--spend docs/progress/v3-spend.json] [--shots-base v3-final-<date>]
 //        [--date yyyy-mm-dd] [--out docs/progress/v3-final-<date>.md]
 //        (a results file of pilot.mjs carries its collect as `db`; exit 0 — every criterion met, 1 — not met or pending)
@@ -28,6 +28,7 @@ import { platformClient } from "./client.mjs";
 import { D76_MAX_COST_RUB, DEFAULTS, isV3Threshold, runEval, THRESHOLDS } from "./driver.mjs";
 import { photosAnnotation, renderReport } from "./report.mjs";
 import { launchChromium, previewScreenshots, V3_FINAL_VIEWPORTS } from "./screenshots.mjs";
+import { applyPayProbe } from "./pay-probe.mjs";
 import { runV3Eval } from "./v3.mjs";
 import { kassaFromEnv } from "./v3-pay.mjs";
 import { mergeRuns, renderV3Final } from "./v3-final.mjs";
@@ -228,6 +229,12 @@ async function finalReport(o, { out, log, metric = null, now = () => new Date() 
     return { doc, db };
   });
   const { doc, db, attempts } = mergeRuns(runs);
+  // V3-40: the payment check of the same shops after a fix of the measurement's own automation (v3-probe --pay).
+  for (const file of list(o.pay)) {
+    const probe = readJson(file);
+    if (probe.kind !== "wizard-v3-pay-probe") throw new Error("--pay: итог пробы оплаты v3-pay-….json");
+    doc.results = applyPayProbe(doc.results, probe.results, { runid: probe.runid, g2: doc.g2 ?? "publish" });
+  }
   let journal = null;
   try {
     journal = readJournal(o.spend || undefined);

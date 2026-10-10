@@ -167,6 +167,11 @@ describe("payShopOrder", () => {
     expect(await findCardField(page, CARD_FIELDS.cvc, 0)).toBeNull();
     expect(CARD_METHOD_RE.test("Банковской картой")).toBe(true);
     expect(CARD_METHOD_RE.test("Картой")).toBe(true);
+    expect(CARD_METHOD_RE.test(" Новая карта ")).toBe(true);
+    // The test page's note above the methods is not a method (it took the click on 10.10.2026).
+    expect(CARD_METHOD_RE.test("Можно заплатить тестовой картой или кошельком — ваши деньги при этом не спишутся.")).toBe(
+      false,
+    );
     expect(await kassaDiagnostics(page)).toBe(
       "фрейм 0 yoomoney.ru/checkout/payments/v2/contract: input[hidden] кнопки: Картой / SberPay ‖ фрейм 1 yoomoney.ru/checkout/card-frame: input[tel|cardNumber|cc-number]",
     );

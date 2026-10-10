@@ -27,6 +27,7 @@ import {
   styleTerms,
 } from "../src/builder/index.js";
 import { DEFAULT_REGISTRY } from "../src/planner/catalog.js";
+import { fallbackNiche } from "../src/planner/fallback.js";
 
 const basePlan = (niche: string, photoStyle: string, sections?: SystemPlan["landing"]): SystemPlan => ({
   version: 1,
@@ -107,6 +108,36 @@ describe("queries by niche and style (no model)", () => {
     expect(stockQuery(basePlan("что-то совсем особенное", "спокойные тона"), "hero", "landscape").text).toBe(
       "small business calm",
     );
+  });
+
+  // V3-40, final measurement 10.10.2026: the tea shop's «фотографиями гор» made it a photo studio, the roastery a
+  // cafe, the cleaning CRM accounting — the niche (the plan, its first screen and its photos) by the brief's phrases.
+  test("the niche of a brief phrase by phrase, its photos by the niche", () => {
+    const cases: [string, string, string][] = [
+      [
+        "Алтайские травяные чаи и мёд: интернет-магазин. Хотим тёплый сайт с фотографиями гор и пасеки.",
+        "чай и мёд",
+        "herbal tea honey",
+      ],
+      ["Оптовая обжарка кофе: CRM кофеен, заказы по графику", "обжарка кофе", "coffee roastery"],
+      ["Фермерская лавка: предзаказ продуктов на выходные", "фермерские продукты", "farm fresh produce"],
+      ["Студия интерьеров: сайт с портфолио и блогом", "дизайн интерьера", "interior design living room"],
+      ["Каркасные дома: каталог проектов и заявка на смету", "строительство домов", "wooden frame house"],
+      [
+        "Сервис кондиционеров: CRM заявок. Обслуживаем магазины и офисы",
+        "монтаж кондиционеров",
+        "air conditioner installation",
+      ],
+      ["Клининговая компания: CRM. Бухгалтер выгружает акты", "клининг", "clean bright home"],
+      ["Онлайн-школа йоги: подписка на видеоуроки", "студия йоги", "yoga studio"],
+      ["Ветеринарная клиника: запись к врачу", "услуги для животных", "veterinary clinic"],
+      ["Свадебный фотограф: портфолио и запись на съёмку", "фотостудия", "photo studio"],
+      ["Интернет-магазин свечей ручной работы с фотографиями товаров", "магазин", "small shop interior"],
+    ];
+    for (const [brief, niche, hero] of cases) {
+      expect(fallbackNiche(brief), brief).toBe(niche);
+      expect(stockQuery(basePlan(niche, ""), "hero", "landscape").text, niche).toBe(hero);
+    }
   });
 });
 

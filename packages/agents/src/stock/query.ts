@@ -24,7 +24,7 @@ export const NICHE_TERMS: readonly NicheTerms[] = [
     detail: "dental care",
   },
   {
-    match: /ветеринар|зоо|груминг|собак|кошк|питомц/,
+    match: /ветеринар|зоо|груминг|собак|кошк|питомц|животн/,
     hero: "veterinary clinic",
     about: "vet with dog",
     detail: "pet grooming",
@@ -106,7 +106,8 @@ export const NICHE_TERMS: readonly NicheTerms[] = [
     detail: "paint brushes",
   },
   {
-    match: /фотограф|фотосесс|видеосъем|видеограф/,
+    // «Фотографии» of goods or of the place in a brief are not this niche: the trade and the studio only (V3-40).
+    match: /фотограф(а|у|ом|ы|ов)?(?![а-я])|фотостуди|фотосесс|видеосъем|видеограф/,
     hero: "photo studio",
     about: "photographer at work",
     detail: "camera lens",
@@ -116,6 +117,27 @@ export const NICHE_TERMS: readonly NicheTerms[] = [
     hero: "event celebration",
     about: "event planner",
     detail: "festive table decor",
+  },
+  // V3-40: goods of the final set of v3 — a roastery is not a cafe, tea and honey and a farm are not a boutique.
+  {
+    match: /обжар|кофе\S* оптом|оптов\S* (поставк\S* )?кофе|зерн\S* кофе|кофе\S* зерн/,
+    hero: "coffee roastery",
+    about: "coffee roaster at work",
+    detail: "roasted coffee beans",
+  },
+  {
+    match:
+      /(^|[^а-я])ча(й|и|ев|ям|ями|ях|ю)(?![а-я])|травян|пасек|пасеч|пчел|(^|[^а-я])мед(а|ом|у)?(?![а-я])/,
+    hero: "herbal tea honey",
+    about: "beekeeper at apiary",
+    detail: "loose leaf herbal tea",
+  },
+  {
+    match:
+      /фермер|фермск|(^|[^а-я])ферм(а|ы|у|ой)?(?![а-я])|овощ|молочн\S* продук|сыровар|деревенск\S* продук/,
+    hero: "farm fresh produce",
+    about: "farmer harvest vegetables",
+    detail: "fresh vegetables basket",
   },
   {
     match: /кофейн|кофе|кафе|(^|[\s,])бар([\s,.]|$)/,
@@ -143,7 +165,25 @@ export const NICHE_TERMS: readonly NicheTerms[] = [
     detail: "cleaning supplies",
   },
   {
-    match: /ремонт квартир|отделк|строит|дизайн интерьер|ремонт под ключ|плитк|сантехник|электрик/,
+    match: /дизайн\S* интерьер|дизайн-студи|студи\S* интерьер/,
+    hero: "interior design living room",
+    about: "interior designer at work",
+    detail: "interior design details",
+  },
+  {
+    match: /каркасн|домокомплект|строительств\S* дом|дом(а|ов)? под ключ|коттедж|загородн\S* дом/,
+    hero: "wooden frame house",
+    about: "house construction workers",
+    detail: "timber frame construction",
+  },
+  {
+    match: /кондиционер|сплит-систем|климатическ\S* техник|вентиляц/,
+    hero: "air conditioner installation",
+    about: "hvac technician at work",
+    detail: "air conditioner unit",
+  },
+  {
+    match: /ремонт квартир|отделк|строит|ремонт под ключ|плитк|сантехник|электрик/,
     hero: "renovated apartment interior",
     about: "renovation worker",
     detail: "interior details",
@@ -161,7 +201,7 @@ export const NICHE_TERMS: readonly NicheTerms[] = [
     detail: "car repair tools",
   },
   {
-    match: /ремонт (техники|телефон|ноутбук|компьютер)|сервисн.*центр|электрони/,
+    match: /ремонт\S* (техник|телефон|смартфон|ноутбук|компьютер|бытов)|сервисн.*центр|электрони/,
     hero: "electronics repair",
     about: "technician at work",
     detail: "circuit board",
@@ -209,9 +249,16 @@ export const NICHE_TERMS: readonly NicheTerms[] = [
     detail: "equipment close up",
   },
   {
-    match: /магазин|бутик|одежд|товар/,
+    match: /бутик|одежд/,
     hero: "boutique store",
     about: "shop assistant",
+    detail: "clothing rack",
+  },
+  // A shop of goods the dictionary does not know: a shop, not a clothing boutique (V3-40).
+  {
+    match: /магазин|товар|лавк/,
+    hero: "small shop interior",
+    about: "shop owner at counter",
     detail: "products on shelves",
   },
 ];

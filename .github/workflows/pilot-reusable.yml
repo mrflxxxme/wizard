@@ -13,6 +13,8 @@
 # threshold v3 is checkpoint 1 of v3; `v3-probe` (v3-probe.yml) is the probe of the v3 model routes in the worker pod —
 # paid too (≤ 30 ₽), pre-registered the same way; its report goes to the same artifact folder. With probe_shape it is
 # the shape probe (the production request shapes of critic_visual / techreview per model, tools/eval/server/probe-shape.mjs).
+# With pay_systems it is the payment check of shops already built (V3-40, tools/eval/server/pay-probe.mjs): the purchase
+# on each draft paid with the test card on the founder's ЮKassa test shop — no build, no model calls.
 name: pilot-reusable
 
 on:
@@ -91,6 +93,10 @@ on:
         description: "v3-probe (V3-18): the shape probe of these groups (critic | techreview, comma-separated); empty — the route probe"
         type: string
         default: ""
+      pay_systems:
+        description: "v3-probe (V3-40): the payment check of these shops of one measurement (system ids, comma-separated, ≤ 3); empty — no"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -123,6 +129,7 @@ jobs:
           BUILD_PIPELINE: ${{ inputs.build_pipeline }}
           STOCK_MODE: ${{ inputs.stock_mode }}
           PROBE_SHAPE: ${{ inputs.probe_shape }}
+          PAY_SYSTEMS: ${{ inputs.pay_systems }}
         run: |
           if [ "$ACTOR" != "$OWNER" ] || [ "$TRIGGERING_ACTOR" != "$OWNER" ]; then
             echo "::error title=pilot::Пилот запускает только владелец репозитория ($OWNER)."; exit 1
@@ -155,6 +162,12 @@ jobs:
           if [ -n "$PROBE_SHAPE" ]; then
             [ "$COMMAND" = "v3-probe" ] || { echo "::error title=pilot::probe_shape — только для v3-probe."; exit 1; }
             printf '%s' "$PROBE_SHAPE" | grep -Eq '^(critic|techreview)(,(critic|techreview))?$' || { echo "::error title=pilot::probe_shape — critic, techreview или critic,techreview."; exit 1; }
+          fi
+          if [ -n "$PAY_SYSTEMS" ]; then
+            [ "$COMMAND" = "v3-probe" ] || { echo "::error title=pilot::pay_systems — только для v3-probe."; exit 1; }
+            [ -z "$PROBE_SHAPE" ] || { echo "::error title=pilot::pay_systems и probe_shape — разные пробы, по одной за запуск."; exit 1; }
+            u='[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+            printf '%s' "$PAY_SYSTEMS" | grep -Eq "^$u(,$u){0,2}$" || { echo "::error title=pilot::pay_systems — до трёх id систем через запятую."; exit 1; }
           fi
           case "$BUILD_PIPELINE" in ""|v3|modules|legacy) ;; *) echo "::error title=pilot::build_pipeline — v3, modules, legacy или пусто."; exit 1 ;; esac
           case "$STOCK_MODE" in ""|off|live|library) ;; *) echo "::error title=pilot::stock_mode — off, live, library или пусто."; exit 1 ;; esac
@@ -191,6 +204,7 @@ jobs:
     environment: ${{ inputs.env }}
     # eval: 10 briefs two at a time, each bounded by the driver's timeouts — 5.5 hours at most; v3-probe: 8 calls; its
     # shape probe: up to 30 variants of one attempt each, stopped by its own clock at 70 minutes.
+    # The payment check (v3-probe pay_systems) fits the probe's 30 minutes: three purchases of a few minutes each.
     timeout-minutes: ${{ inputs.command == 'check' && 5 || inputs.command == 'eval' && 330 || inputs.command == 'v3-probe' && inputs.probe_shape != '' && 90 || inputs.command == 'v3-probe' && 30 || 90 }}
     # B2-43: the files bucket of the systems, its endpoint and region for the stock-library job (stock_mode=library only).
     outputs:
@@ -217,6 +231,8 @@ jobs:
       EVAL_FOUNDER_OK: ${{ inputs.founder_ok }}
       # V3-18: the groups of the shape probe (empty — the route probe).
       PROBE_SHAPE: ${{ inputs.probe_shape }}
+      # V3-40: the shops of the payment check (empty — no).
+      PAY_SYSTEMS: ${{ inputs.pay_systems }}
       # Founder inputs (docs/ops/deploy.md «Что нужно от основателя»): secrets…
       TWC_TOKEN: ${{ secrets.TWC_TOKEN }}
       WIZARD_STATE_PASSPHRASE: ${{ secrets.WIZARD_STATE_PASSPHRASE }}
@@ -340,11 +356,11 @@ jobs:
           kubectl version --client=true
           ssh -V
       # eval d76 and v3: screenshots of each system at 390 and 1280 px (v3-final: 1440) — Chromium of the workspace's
-      # Playwright (packages/e2e).
+      # Playwright (packages/e2e); the payment check (v3-probe pay_systems) buys in the same Chromium.
       - uses: pnpm/action-setup@v4
-        if: inputs.command == 'eval' && (inputs.threshold == 'd76' || startsWith(inputs.threshold, 'v3'))
+        if: (inputs.command == 'eval' && (inputs.threshold == 'd76' || startsWith(inputs.threshold, 'v3'))) || (inputs.command == 'v3-probe' && inputs.pay_systems != '')
       - name: Chromium for the screenshots
-        if: inputs.command == 'eval' && (inputs.threshold == 'd76' || startsWith(inputs.threshold, 'v3'))
+        if: (inputs.command == 'eval' && (inputs.threshold == 'd76' || startsWith(inputs.threshold, 'v3'))) || (inputs.command == 'v3-probe' && inputs.pay_systems != '')
         run: |
           pnpm install --frozen-lockfile --filter @wizard/e2e
           pnpm --filter @wizard/e2e exec playwright install --with-deps --only-shell chromium
@@ -353,9 +369,10 @@ jobs:
         env:
           # Only eval uses it: the issue comment with the live progress of the measurement.
           GITHUB_TOKEN: ${{ inputs.command == 'eval' && github.token || '' }}
-          # V3-23: the founder's ЮKassa test shop — only eval (the shop's payment on the draft, test_ keys only).
-          YOUKASSA_TEST_API_KEY: ${{ inputs.command == 'eval' && secrets.YOUKASSA_TEST_API_KEY || '' }}
-          YOUKASSA_TEST_SHOP_ID: ${{ inputs.command == 'eval' && secrets.YOUKASSA_TEST_SHOP_ID || '' }}
+          # V3-23: the founder's ЮKassa test shop — only eval and the payment check (the shop's payment on the draft,
+          # test_ keys only).
+          YOUKASSA_TEST_API_KEY: ${{ (inputs.command == 'eval' || (inputs.command == 'v3-probe' && inputs.pay_systems != '')) && secrets.YOUKASSA_TEST_API_KEY || '' }}
+          YOUKASSA_TEST_SHOP_ID: ${{ (inputs.command == 'eval' || (inputs.command == 'v3-probe' && inputs.pay_systems != '')) && secrets.YOUKASSA_TEST_SHOP_ID || '' }}
         run: |
           for v in "$YOUKASSA_TEST_API_KEY" "$YOUKASSA_TEST_SHOP_ID"; do if [ -n "$v" ]; then echo "::add-mask::$v"; fi; done
           case "$COMMAND" in
@@ -363,7 +380,7 @@ jobs:
             destroy) node tools/deploy/pilot.mjs destroy --env "$DEPLOY_ENV" ;;
             diagnose) node tools/deploy/pilot.mjs diagnose --env "$DEPLOY_ENV" ;;
             eval) node tools/deploy/pilot.mjs eval --env "$DEPLOY_ENV" --briefs "$EVAL_BRIEFS" --threshold "$EVAL_THRESHOLD" --wave "$EVAL_WAVE" --purpose "$EVAL_PURPOSE" --hypothesis "$EVAL_HYPOTHESIS" --expect-rub "$EVAL_EXPECT_RUB" --cap-rub "$EVAL_CAP_RUB" --founder-ok "$EVAL_FOUNDER_OK" ;;
-            v3-probe) node tools/deploy/pilot.mjs v3-probe --env "$DEPLOY_ENV" --wave "$EVAL_WAVE" --purpose "$EVAL_PURPOSE" --hypothesis "$EVAL_HYPOTHESIS" --expect-rub "$EVAL_EXPECT_RUB" --cap-rub "$EVAL_CAP_RUB" --founder-ok "$EVAL_FOUNDER_OK" --shape "$PROBE_SHAPE" ;;
+            v3-probe) node tools/deploy/pilot.mjs v3-probe --env "$DEPLOY_ENV" --wave "$EVAL_WAVE" --purpose "$EVAL_PURPOSE" --hypothesis "$EVAL_HYPOTHESIS" --expect-rub "$EVAL_EXPECT_RUB" --cap-rub "$EVAL_CAP_RUB" --founder-ok "$EVAL_FOUNDER_OK" --shape "$PROBE_SHAPE" --pay "$PAY_SYSTEMS" ;;
             reboot) node tools/deploy/pilot.mjs reboot --env "$DEPLOY_ENV" ;;
             *) node tools/deploy/pilot.mjs "$COMMAND" --env "$DEPLOY_ENV" --tag "$SHA" ;;
           esac

@@ -141,6 +141,12 @@ Workflow **v3-probe** (Actions → v3-probe → Run workflow):
 - `tools/eval/server/probe-shape-prompts.json` — промпты и инструменты. Их строит код `@wizard/agents` в `tools/eval/test/probe-shape-fixture.ts`. Тест `tools/eval/test/v3-probe.test.ts` держит файл равным коду; после правки промптов файл обновляет `WIZARD_UPDATE_PROBE_SHAPE=1 pnpm exec vitest run tools/eval/test/v3-probe.test.ts`.
 - `tools/eval/server/probe-shape-images.json` — снимки выдуманного сайта. Их делает `node tools/eval/server/probe-shape-images.mjs` (Chromium из `packages/e2e`) тем же уменьшением на canvas, что и критик платформы.
 
+### Проба оплаты магазинов (V3-40)
+
+Тот же workflow **v3-probe**, в поле `pay_systems` — id до трёх магазинов одного замера через запятую (из отчёта замера). Проба не собирает систем и не вызывает моделей: на превью черновика посетитель кладёт товар в корзину, оформляет заказ и платит тестовой картой в тестовом магазине ЮKassa основателя, затем ждёт статус «Оплачен» (`tools/eval/server/pay-probe.mjs`, путь покупки — `v3-pay.mjs`, как в замере). Нужна после правки автоматизации страницы ЮKassa в самом замере: те же системы проверяются заново без пересборки. Журнал трат — как у пробы: волна `A`, `expect_rub` 0, `cap_rub` 1.
+
+Системы должны быть из одной учётки замера (`orgs.kind = eval`): для пробы создаётся сессия её владельца (в базе — только хэши), после пробы — выход по API и отзыв сессии в базе. Итог — аннотации `Оплата · <система>`, отчёт `v3-pay-<дата>-<runid>.md` и `.json`, снимок страницы ЮKassa при сбое — в артефакте `v3-probe-eval-prod-<run>`. В отчёт финального замера оплата пробы попадает так: `node tools/eval/server/cli.mjs final --results … --pay v3-pay-<дата>-<runid>.json` (готовность магазина пересчитывается по правилу замера).
+
 ## Ступень 4 — чекпоинт 1 (4 брифа)
 
 Workflow **eval-pilot** (Actions → eval-pilot → Run workflow):

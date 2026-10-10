@@ -91,12 +91,13 @@ function roleSpec(spec: AppSpec): RoleSpec {
 export type CriticDemoRows = Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>;
 
 /**
- * The demo rows the draft of a system holds — generateSeed(spec, sha256(systemKey), {hints}) as seed_draft makes them
- * (agents/draft.ts seedDraft): the critic's browser lists the same records with the same names the visitor sees.
+ * The demo rows the draft of a system holds — generateSeed(spec, sha256(systemKey), {hints, showcase}) as seed_draft
+ * makes them (agents/draft.ts seedDraft): the critic's browser lists the same records with the same names the visitor
+ * sees.
  */
 export function draftDemoRows(spec: AppSpec, systemKey: string, hints: readonly SeedHint[]): CriticDemoRows {
   const key = createHash("sha256").update(systemKey).digest("hex");
-  return generateSeed(spec, key, hints.length ? { hints } : {}).rows;
+  return generateSeed(spec, key, { showcase: true, ...(hints.length ? { hints } : {}) }).rows;
 }
 
 export interface CriticInspectorOptions {

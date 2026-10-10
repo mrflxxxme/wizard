@@ -124,8 +124,11 @@ export const CARD_FIELDS = {
   exp: [
     'input[autocomplete="cc-exp"]',
     'input[name*="expir" i]',
+    'input[name*="expdate" i]',
     'input[placeholder*="ММ/ГГ" i]',
     'input[placeholder*="MM/YY" i]',
+    'input[placeholder*="ММ / ГГ" i]',
+    'input[placeholder*="MM / YY" i]',
     'input[aria-label*="срок" i]',
   ],
   month: ['input[autocomplete="cc-exp-month"]', 'input[name*="month" i]', 'input[placeholder="ММ" i]', 'input[placeholder="MM" i]'],
@@ -138,13 +141,18 @@ export const CARD_FIELDS = {
     'input[placeholder*="CVC" i]',
     'input[placeholder*="CVV" i]',
     'input[aria-label*="CVC" i]',
+    'input[aria-label*="CVV" i]',
   ],
 };
 /** The user agent of a desktop Chrome of `version` (Playwright's browser.version(), e.g. «141.0.7390.37»). */
 export const desktopUserAgent = (version) =>
   `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${String(version).split(".")[0]}.0.0.0 Safari/537.36`;
-/** The bank card among the payment methods (its wording changes between the page versions). */
-export const CARD_METHOD_RE = /Банковск\S* карт|Картой|Новая карта|Bank card/i;
+/**
+ * The bank card among the payment methods (its wording changes between the page versions): the whole label of the
+ * method, never a phrase inside a longer text — the test page's note «Можно заплатить тестовой картой…» stands above
+ * the methods and took the click instead of «Новая карта» (final measurement 10.10.2026).
+ */
+export const CARD_METHOD_RE = /^\s*(Новая карта|Банковская карта|Банковской картой|Картой|Bank card|New card)\s*$/i;
 export const PAY_BUTTON_RE = /Заплатить|Оплатить|Pay/i;
 
 /** The first visible field of `selectors` in the page or any of its frames, waiting up to `ms`; null — none. */
@@ -324,7 +332,11 @@ export async function payShopOrder({
     const num = await findCardField(page, CARD_FIELDS.number, 15_000);
     if (!num) {
       const method = page.getByText(CARD_METHOD_RE).first();
-      if ((await method.count()) > 0) await method.click().catch(() => {});
+      if (await method.waitFor({ state: "visible", timeout: 10_000 }).then(() => true, () => false)) {
+        const label = ((await method.innerText().catch(() => "")) || "").trim();
+        await method.click().catch(() => {});
+        step(`выбран способ оплаты «${label || "карта"}»`, true);
+      }
     }
     const cardNumber = num ?? (await findCardField(page, CARD_FIELDS.number, 30_000));
     if (!cardNumber) return await kassaFail("поле номера карты на странице оплаты");
