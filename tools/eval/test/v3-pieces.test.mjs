@@ -288,8 +288,11 @@ describe("the report against D77_v3 (10)–(11)", () => {
       cycles: 2,
       score: 74,
       scores: [61, 74],
+      kept: 74,
     });
-    expect(criticOf(null)).toEqual({ cycles: null, score: null, scores: [] });
+    // A lower last score rolled its batch back: the site kept is the one scored before it.
+    expect(criticOf("циклов 2, оценка 34→22, стоп no_gain").kept).toBe(34);
+    expect(criticOf(null)).toEqual({ cycles: null, score: null, scores: [], kept: null });
     const mk = (id, minutes, preview, rub) => ({
       ...newV3Result({ id, title: id, class: "site" }),
       systemId: `sys-${id}`,

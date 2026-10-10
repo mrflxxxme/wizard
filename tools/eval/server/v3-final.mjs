@@ -107,7 +107,11 @@ export function evaluateV3Final({ doc, db = {}, journal = null, extraRub = 0, bl
   const metricOk = diversity?.status === "done" ? diversity.passed : null;
   const complaintsOk = blind ? blind.passed.template : null;
   const diverse = all([metricOk, complaintsOk]);
-  const criteria = { functional, blind: blindOk, diversity: diverse, time, money, devBudget };
+  // The founder's floor of the design (10.10.2026): the critic's score of every built site ≥ 30.
+  const scored = e.items.filter((x) => x.critic?.kept !== null && x.critic?.kept !== undefined);
+  const lowDesign = scored.filter((x) => x.critic.kept < DESIGN_FLOOR);
+  const design = scored.length === 0 ? null : lowDesign.length === 0;
+  const criteria = { functional, design, blind: blindOk, diversity: diverse, time, money, devBudget };
   const values = Object.values(criteria);
   return {
     e,
@@ -121,12 +125,18 @@ export function evaluateV3Final({ doc, db = {}, journal = null, extraRub = 0, bl
     criteria,
     metricOk,
     complaintsOk,
+    scored,
+    lowDesign,
     verdict: values.some((v) => v === false) ? "failed" : values.some((v) => v === null) ? "pending" : "passed",
   };
 }
 
+/** The founder's floor of the critic's score (0–100) of a built site (10.10.2026). */
+export const DESIGN_FLOOR = 30;
+
 const CRITERIA_RU = {
   functional: "функционально",
+  design: "дизайн (оценка критика)",
   blind: "слепое сравнение",
   diversity: "разнообразие",
   time: "время",
@@ -182,6 +192,7 @@ export function renderV3Final(input, meta = {}) {
   L.push("| № | Критерий (§6) | Цель | Факт | Итог |", "|---|---|---|---|---|");
   L.push(
     `| 1 | Функционально | 12 брифов, по 3 на класс; сценарии брифа проходят, техревью без блокеров | готовы ${e.ready} из ${e.total} (${classLine}); сценарии прошли у ${f.scenariosOk}, техревью без блокеров у ${f.techOk}${f.setOk ? "" : "; набор неполный"} | ${mark(f.criteria.functional)} |`,
+    `| 1 | Дизайн | оценка критика каждой системы ≥ ${DESIGN_FLOOR} из 100 (пол основателя) | ${f.scored.length ? `от ${Math.min(...f.scored.map((x) => x.critic.kept))} до ${Math.max(...f.scored.map((x) => x.critic.kept))}; ниже ${DESIGN_FLOOR}: ${f.lowDesign.length ? f.lowDesign.map((x) => `${x.id} (${x.critic.kept})`).join(", ") : "нет"}` : "оценок нет"} | ${mark(f.criteria.design)} |`,
     `| 2 | Слепое сравнение | Wizard ≥ ${pct(BLIND_TARGETS.wizardShare)} пар; основатель и 3–5 оценщиков | ${blind ? `${blind.wc.wizardWins} из ${blind.wc.voted} пар (${blind.wc.share === null ? "—" : pct(blind.wc.share)}), оценщиков ${blind.ratersCount}` : "ожидает оценщиков"} | ${mark(f.criteria.blind)} |`,
     `| 3 | Разнообразие | сходство сайтов внутри ниши ниже порога гейта шаблонности; ни одного «один шаблон» | ${cell(`${divFact}; ${complaints}`)} | ${mark(f.criteria.diversity)} |`,
     `| 4 | Время | медиана ≤ ${V3_TARGETS.medianMin} мин, максимум ≤ ${V3_TARGETS.capMin} мин (от брифа до конца сборки) | медиана ${e.medianMinutes ?? "—"} мин, максимум ${e.maxMinutes ?? "—"} мин | ${mark(f.criteria.time)} |`,
@@ -194,13 +205,13 @@ export function renderV3Final(input, meta = {}) {
   // 1. Per class.
   L.push("## Функционально: брифы по классам", "");
   L.push(
-    "| Класс | Бриф | Итог | От брифа, мин | ₽ | Сценарии ✓/всего | Техревью |",
-    "|---|---|---|---|---|---|---|",
+    "| Класс | Бриф | Итог | От брифа, мин | ₽ | Сценарии ✓/всего | Техревью | Критик |",
+    "|---|---|---|---|---|---|---|---|",
   );
   for (const c of V3_CLASSES)
     for (const x of f.byClass[c])
       L.push(
-        `| ${CLASS_RU[c]} | ${cell(x.id)} | ${x.ready ? "✅" : "❌"} ${cell(STATUS_RU[x.status] ?? x.status)} | ${x.fromBriefMinutes ?? x.minutes ?? "—"} | ${x.systemId ? `${Math.round(x.costRub)}${x.costExact ? "" : "≈"}` : "—"} | ${x.scenarios ? `${x.scenarios.passed}/${x.scenarios.total}` : "—"} | ${cell(x.techreview.verdict)} |`,
+        `| ${CLASS_RU[c]} | ${cell(x.id)} | ${x.ready ? "✅" : "❌"} ${cell(STATUS_RU[x.status] ?? x.status)} | ${x.fromBriefMinutes ?? x.minutes ?? "—"} | ${x.systemId ? `${Math.round(x.costRub)}${x.costExact ? "" : "≈"}` : "—"} | ${x.scenarios ? `${x.scenarios.passed}/${x.scenarios.total}` : "—"} | ${cell(x.techreview.verdict)} | ${x.critic?.kept ?? "—"} |`,
       );
   L.push("");
   if (f.failed.length)

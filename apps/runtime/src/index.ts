@@ -352,6 +352,8 @@ export {
   WorkerdExecutor,
   type WorkerdExecutorOptions,
 } from "./sandbox/workerd-executor.js";
+/** V3-23: connector secrets from the platform's encrypted secret file (key window keys) by schema_key → system id. */
+export { dbSystemUuid, type SystemUuidLookup, storeSecrets } from "./secrets-store.js";
 /** Node server on 127.0.0.1:4100. */
 export { type StartOptions, startRuntime } from "./server.js";
 export { type LoadedSystem, type LoadSystemInput, SystemCache, SystemLoadError } from "./system.js";

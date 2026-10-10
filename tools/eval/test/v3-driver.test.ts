@@ -42,7 +42,8 @@ import {
   seedSql,
 } from "../server/seed.mjs";
 import { fillOwnerOperator, ownerGates, runV3Eval, V3_DEFAULTS, V3_TEST_OPERATOR, v3EvalOptions } from "../server/v3.mjs";
-import { checkpointName, renderV3Report } from "../server/v3-report.mjs";
+import { criticReview } from "../server/seed.mjs";
+import { checkpointName, criticReviewLines, renderV3Report } from "../server/v3-report.mjs";
 
 const hasPsql = spawnSync("psql", ["--version"]).status === 0;
 
@@ -405,5 +406,31 @@ describe("v3EvalOptions", () => {
     expect(v3EvalOptions({ briefs: [] }).maxTurns).toBe(V3_DEFAULTS.maxTurns);
     expect(V3_DEFAULTS.maxTurns).toBeGreaterThan(V3_DEFAULTS.restAfter + 2);
     expect(v3EvalOptions({ briefs: [], maxTurns: 5 }).maxTurns).toBe(5);
+  });
+});
+
+describe("V3-40 critic diagnostics in the report", () => {
+  test("the checkpoint's review is bounded; the report names the axes and the main findings of the last cycle", () => {
+    const review = criticReview({
+      stop: "no_gain",
+      fixes: ["/: фирменная секция path → паттерн «Призыв» (C08)"],
+      cycles: [
+        { n: 1, score: 28, axes: { specificity: 2, first_screen: 3 }, polish: "draft", top: [] },
+        {
+          n: 2,
+          score: 34,
+          axes: { specificity: 2, first_screen: 3, typography: 3, color: 2, composition: 2, content: 3 },
+          polish: "draft",
+          top: [{ severity: "P1", sign: "x".repeat(400), where: "/@390#hero" }],
+        },
+      ],
+    });
+    expect(review.cycles[1]?.top[0]?.sign).toHaveLength(160);
+    const lines = criticReviewLines(review);
+    expect(lines[0]).toBe(
+      "оси последнего круга (0–4): конкретность 2, первый экран 3, типографика 3, цвет 2, композиция 2, содержание 3; проработка: черновик",
+    );
+    expect(lines[1]).toMatch(/^P1 x{160} \(\/@390#hero\)$/);
+    expect(criticReviewLines(null)).toEqual([]);
   });
 });

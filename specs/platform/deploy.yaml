@@ -15,7 +15,7 @@ local:                             # M0 (M0-01, M0-15, M0-17)
     systems: "http://<slug>--<env>.localhost:4100, env ∈ {draft, prod}"
     note: "Chromium резолвит *.localhost в 127.0.0.1 сам; Node-клиенты в тестах MUST ходить на 127.0.0.1:4100 с заголовком Host"
   artifacts: "Исходники ревизий: .data/artifacts/blobs/<sha256[0:2]>/<sha256> (platform.files.storage_key). Собранные бандлы: .data/artifacts/<systemId>/<revision>/… (runtime.yaml#system_loading.artifact_layout; systemId = systems.schema_key)"
-  secrets: ".env (не коммитится; .env.example — с пустыми значениями); M0 секреты коннекторов — переменные WIZARD_SECRET_<SCHEMAKEY>_<NAME>; с M1 — .data/secrets.enc (AES-256-GCM, ключ WIZARD_SECRETS_KEY) через platform.secrets_refs"
+  secrets: ".env (не коммитится; .env.example — с пустыми значениями); M0 секреты коннекторов — переменные WIZARD_SECRET_<SCHEMAKEY>_<NAME>; с M1 — .data/secrets.enc (AES-256-GCM, ключ WIZARD_SECRETS_KEY) через platform.secrets_refs; V3-23: runtime читает ключи своей системы из того же файла на общем томе (путь <systems.id>/<env>/<name>, только пути коннекторов, никогда platform/…), переменные WIZARD_SECRET_* — запасной путь"
   bundles_never_contain_env: "MUST (L3-13): .env, .data/** и любые файлы вне ui/** и functions/** ревизии не попадают в бандлы систем: сборка идёт в каталоге-копии ревизии, резолвер отклоняет пути вне ui/**, functions/** и импорты кроме @wizard/sdk, @wizard/ui-kit; loaders только ts/tsx; define/process.env не пробрасываются (security/isolation.yaml#static_checks_G0). Тест: import k from '../../../.env?raw' → G0 blocker, в dist нет ни одной строки из .env"
   env_vars:   # канонический список (L1-18); .env.example синхронизируется с ним
     db: [WIZARD_DB_URL]

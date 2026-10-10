@@ -9,6 +9,7 @@ import postgres from "postgres";
 import { unhandledRejections } from "./metrics.js";
 import { DbRegistry, FileRegistry } from "./registry.js";
 import { sandboxFromEnv, sandboxIdleFromEnv } from "./sandbox/from-env.js";
+import { dbSystemUuid, storeSecrets } from "./secrets-store.js";
 import { startRuntime } from "./server.js";
 
 const root = resolve(process.env.WIZARD_ROOT ?? join(import.meta.dirname, "..", "..", ".."));
@@ -59,6 +60,17 @@ const { close, metricsPort } = await startRuntime({
   // Test-mode mail and Telegram messages land in .data/outbox/<system>/ (connectors/*.yaml#test_mode.draft).
   outboxDir: join(root, ".data", "outbox"),
   connectors: process.env.WIZARD_CONNECTORS === "live" ? "live" : "outbox",
+  // V3-23: the key window's keys (platform-api's encrypted secret file on the shared data volume, WIZARD_SECRETS_KEY)
+  // reach the system's connectors; without the key the M0 env variables (and the local drafts' dev QR key) stay.
+  ...(process.env.WIZARD_SECRETS_KEY
+    ? {
+        secrets: storeSecrets({
+          file: process.env.WIZARD_SECRETS_FILE ?? join(root, ".data", "secrets.enc"),
+          keyMaterial: process.env.WIZARD_SECRETS_KEY,
+          systemUuid: dbSystemUuid(db),
+        }),
+      }
+    : {}),
   port,
   hostname,
   internalPort,

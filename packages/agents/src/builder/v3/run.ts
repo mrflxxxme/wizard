@@ -1045,6 +1045,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
               ...(out.redesign ? { redesign: out.redesign } : {}),
               ...(out.design ? { design: out.design } : {}),
               ...(out.extensions?.length ? { extensions: out.extensions } : {}),
+              ...(out.review ? { review: out.review } : {}),
             },
             ...(out.note ? { note: out.note } : {}),
             extraMilli: Math.round(((out.spentRub ?? 0) / rpc) * 1000),

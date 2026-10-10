@@ -152,6 +152,8 @@ export {
   outboxMessage,
   requireTestMode,
 } from "./runtime.js";
+/** The runtime's read side of the platform's encrypted secret file: key window keys of a system reach its connectors. */
+export { fileSecretReader, readSecretFileEntry, secretFileKey } from "./secret-file.js";
 /** secret://name refs and M0 readers (.env WIZARD_SECRET_<SYSTEMID>_<NAME>, cached ≤ 5 min). */
 export {
   cachedSecretReader,

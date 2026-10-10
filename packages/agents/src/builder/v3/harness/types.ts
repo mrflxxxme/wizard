@@ -128,6 +128,11 @@ export interface V3HookResult {
    * rejected one goes to «Запросы на развитие» with its reason.
    */
   extensions?: ExtensionOp[];
+  /**
+   * The operator's diagnostics of the hook (the critic: the axes, the verdict and the main findings of each cycle),
+   * kept in the stage's checkpoint for the measurements; never shown to the client.
+   */
+  review?: Record<string, unknown>;
   note?: string;
 }
 
