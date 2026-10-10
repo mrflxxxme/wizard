@@ -94,7 +94,13 @@ export const NICHE_TERMS: readonly NicheTerms[] = [
     detail: "musical instrument",
   },
   {
-    match: /рисован|живопис|художеств|арт-студ|керамик|гончар/,
+    match: /керами[кч]|гончар|глин[ая]|фарфор/,
+    hero: "handmade ceramics",
+    about: "potter at work",
+    detail: "ceramic mugs",
+  },
+  {
+    match: /рисован|живопис|художеств|арт-студ/,
     hero: "art studio",
     about: "art class",
     detail: "paint brushes",
@@ -177,6 +183,12 @@ export const NICHE_TERMS: readonly NicheTerms[] = [
     hero: "modern apartment",
     about: "real estate agent",
     detail: "house keys",
+  },
+  {
+    match: /сплав|поход|рафтинг|байдар|каяк|снегоход|актив\S* (тур|отдых)|карели/,
+    hero: "kayaking river forest",
+    about: "hiking group nature",
+    detail: "camping tent lake",
   },
   {
     match: /туризм|(^|[\s,])тур([\s,.]|$)|туры|путешеств|отел|гостиниц|хостел|глэмпинг/,
