@@ -133,6 +133,17 @@ describe("queries by niche and style (no model)", () => {
       ["Ветеринарная клиника: запись к врачу", "услуги для животных", "veterinary clinic"],
       ["Свадебный фотограф: портфолио и запись на съёмку", "фотостудия", "photo studio"],
       ["Интернет-магазин свечей ручной работы с фотографиями товаров", "магазин", "small shop interior"],
+      // V3-40 (final run 20261011-6261d8): a phrase of the generic «товар» first no longer wins over what is sold.
+      [
+        "Покупатель выбирает товары и платит картой. Семейная пасека: травяные сборы и мёд с Алтая.",
+        "чай и мёд",
+        "herbal tea honey",
+      ],
+      [
+        "Интернет-магазин предзаказа: покупатель кладёт товары в корзину. Молоко, творог и сыры нашей фермы.",
+        "фермерские продукты",
+        "farm fresh produce",
+      ],
     ];
     for (const [brief, niche, hero] of cases) {
       expect(fallbackNiche(brief), brief).toBe(niche);
