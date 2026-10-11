@@ -3878,7 +3878,7 @@ tasks:
     owner: qa
     parallel_group: v3-a
     estimate_days: 1
-    status: in_progress
+    status: done
     claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "4 брифа на пилоте: сборка, сценарии, техревью, время и ₽ по каждому; снимки 390/1280; расход ≤ 2 000 ₽ вместе с V3-19; отчёт в docs/progress/v3-a*"
@@ -3960,7 +3960,7 @@ tasks:
     owner: platform
     parallel_group: v3-b
     estimate_days: 5
-    status: in_progress
+    status: done
     claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "Посетитель кладёт товары в корзину, оформляет заказ, платит через ЮKassa (тестовый магазин), выбирает СДЭК или самовывоз; остатки списываются; чек по 54-ФЗ через ЮKassa (сценарии в браузере)"
@@ -4017,7 +4017,7 @@ tasks:
     owner: agents
     parallel_group: v3-c
     estimate_days: 4
-    status: in_progress
+    status: done
     claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "Проверка совместимости (JS/TS, lockfile, сборка и тесты ≤ 10 мин в песочнице) с отчётом «что сможем / не сможем»"
@@ -4074,8 +4074,8 @@ tasks:
     owner: qa
     parallel_group: v3-d
     estimate_days: 2
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "12 брифов собраны на пилоте; сценарии брифа проходят; техревью без блокеров; повтор — только упавших брифов"
       - "Слепое сравнение с конкурентом: основатель и 3–5 оценщиков, Wizard ≥ 70 % пар; сходство скриншотов внутри ниши ниже порога"
