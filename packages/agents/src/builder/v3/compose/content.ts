@@ -90,6 +90,9 @@ export function primaryAction(
           route: "/",
           anchor: "form",
         };
+  // V3-40: a site with a shop sells first — its booking (a master class, a delivery slot) is the second action.
+  const shop = pages.find((p) => p.kind === "shop");
+  if (shop) return { kind: "shop", label: SHOP_ACTION, route: shop.route };
   const booking = pages.find((p) => p.kind === "booking");
   if (booking)
     return {
@@ -98,8 +101,6 @@ export function primaryAction(
       route: booking.route,
       ...(bookingForm ? { anchor: "form" } : {}),
     };
-  const shop = pages.find((p) => p.kind === "shop");
-  if (shop) return { kind: "shop", label: SHOP_ACTION, route: shop.route };
   const catalog = pages.find((p) => p.kind === "catalog");
   if (catalog) return { kind: "catalog", label: "Открыть каталог", route: catalog.route };
   if (facts.phone) return { kind: "phone", label: "Позвонить", href: telHref(facts.phone) };
@@ -113,12 +114,19 @@ export function primaryAction(
 /** The label of the way to the shop's goods (V3-23). */
 const SHOP_ACTION = "Перейти в магазин";
 
-/** A second action for the first screen: the shop or the catalog when the main one is a form, else none. */
+/**
+ * A second action for the first screen: the shop or the catalog when the main one is a form; the booking page when the
+ * main one is the shop (V3-40); else none.
+ */
 export function secondaryAction(
   primary: SiteAction | null,
   pages: readonly PlannedPage[],
 ): SiteAction | null {
-  if (!primary || primary.kind === "catalog" || primary.kind === "shop") return null;
+  if (primary?.kind === "shop") {
+    const booking = pages.find((p) => p.kind === "booking");
+    return booking ? { kind: "booking", label: "Записаться", route: booking.route } : null;
+  }
+  if (!primary || primary.kind === "catalog") return null;
   const shop = pages.find((p) => p.kind === "shop");
   if (shop) return { kind: "shop", label: SHOP_ACTION, route: shop.route };
   const catalog = pages.find((p) => p.kind === "catalog");
@@ -1076,10 +1084,15 @@ function actionRules(site: SiteModel, patternOf: (id: string) => PatternMeta | u
   const pages = site.pages.map((page) => {
     const own = page.sections.find(isForm);
     const hero = page.sections.find((s) => s.type === "hero");
-    const heroHref = own ? `#${own.id}` : formHref(main.route, main.id, page.route);
+    // A shop's first screen leads to its goods (V3-40); a page with its own form still leads to that form.
+    const heroHref = own
+      ? `#${own.id}`
+      : p?.kind === "shop"
+        ? null
+        : formHref(main.route, main.id, page.route);
     const sections = page.sections.map((s) => {
       let next = s;
-      if (s === hero) next = heroTo(s, heroHref);
+      if (s === hero) next = heroHref ? heroTo(s, heroHref) : s;
       else if (s.type === "catalog" && itemTarget) next = itemsTo(s, itemTarget, patternOf);
       else if (isForm(s)) next = sentTitle(s);
       return next;

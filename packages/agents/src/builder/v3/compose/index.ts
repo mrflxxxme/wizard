@@ -43,6 +43,7 @@ export {
   primaryAction,
   SENT_TITLES,
   type SiteAction,
+  secondaryAction,
   sectionProps,
   seoOf,
   siteRules,
