@@ -73,6 +73,9 @@ async function open(
   });
   await page.goto(servers.get(fixture)?.url ?? "");
   await page.waitForFunction((n) => document.querySelectorAll("[data-preview]").length === n, count);
+  // fonts.ready resolves at once while no face has started loading: every declared face is loaded first, so a width
+  // check never measures the fallback font (CI 11.10.2026: «Стоматологическая» cut in every hero of calm_medical).
+  await page.evaluate(() => Promise.all([...document.fonts].map((f) => f.load().catch(() => null))));
   await page.evaluate(() => document.fonts.ready);
   // Lazy photos below the fold load too: every image is checked (loaded, alt), not only the first screen.
   await page.evaluate(() =>
