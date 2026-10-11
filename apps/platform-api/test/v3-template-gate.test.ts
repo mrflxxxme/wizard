@@ -36,6 +36,7 @@ import { OutboxMailer } from "../src/auth/mailer.js";
 import { saveBriefVersion } from "../src/briefs/store.js";
 import { startV3Build } from "../src/builds-v3/start.js";
 import {
+  closePatterns,
   patternLookup,
   saveTemplateFingerprint,
   structureCapture,
@@ -263,17 +264,39 @@ describe("template_gate hook", () => {
     expect(next.redesign?.avoid[0]).toBe("calm_medical");
   });
 
-  test("the owner pinned the direction: a note, the style stays", async () => {
+  // V3-40: in the v3 flow the owner always picks one of three directions — the gate must still act on a pinned style.
+  test("the owner pinned the direction: the style stays, the skeleton is laid out without the close site's patterns", async () => {
     const niche = `ниша ${randomUUID().slice(0, 8)}`;
     const org = await addOrg();
     const old = await addSystem("Недавний", org);
     const me = await addSystem("Выбор владельца", org);
     await remember(old, niche, "swiss", siteOf(1));
-    const out = await templateGateHook({ pg: api.deps.pg, runId: null, capture: structureCapture })(
-      ctxOf(me, { site: siteOf(1), niche, archetype: "editorial", pinned: true }),
-    );
-    expect(out.redesign).toBeUndefined();
-    expect(out.notes?.[0]).toMatch(/стиль вы выбрали сами/);
+    const hook = templateGateHook({ pg: api.deps.pg, runId: null, capture: structureCapture });
+    const ctx = ctxOf(me, { site: siteOf(1), niche, archetype: "editorial", pinned: true });
+    const out = await hook(ctx);
+    const used = [...new Set(siteOf(1).pages.flatMap((p) => p.sections.map((x) => x.pattern)))].sort();
+    expect(out.redesign?.avoid).toEqual([]);
+    expect([...(out.redesign?.patterns ?? [])].sort()).toEqual(used);
+    expect(out.note).toMatch(/стиль владельца, другие варианты секций/);
+    // Laid out again and still close: a note, the style stays.
+    const again = await hook(ctx);
+    expect(again.redesign).toBeUndefined();
+    expect(again.notes?.[0]).toMatch(/После пересборки на других вариантах секций/);
+  });
+
+  test("a pinned style next to a site of signature sections only: nothing to avoid — a note, the style stays", () => {
+    const memory = [
+      {
+        id: "s1",
+        archetype: "swiss",
+        fingerprint: {
+          version: 1 as const,
+          pages: [{ route: "/", sections: [{ type: "signature", layout: "signature", variant: "" }] }],
+        },
+      },
+    ];
+    expect(closePatterns([{ id: "s1" }], memory)).toEqual([]);
+    expect(closePatterns([{ id: "missing" }], memory)).toEqual([]);
   });
 
   test("a different site of the niche passes with its similarity; an empty memory passes; no site — skipped", async () => {

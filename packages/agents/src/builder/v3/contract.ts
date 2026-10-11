@@ -33,6 +33,11 @@ export interface V3BuildContext {
   route: RouteFn;
   /** Rubles left for model calls of this step; the composer stops before it is spent. */
   budgetRub: number;
+  /**
+   * V3-40: library patterns the skeleton leaves out where another variant of the section fits — the patterns of the
+   * recent site the template check found too close when the owner pinned the style (the style stays, the layout moves).
+   */
+  avoidPatterns?: readonly string[];
   signal?: AbortSignal;
 }
 

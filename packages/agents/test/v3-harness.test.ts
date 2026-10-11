@@ -769,6 +769,38 @@ describe("harness v3: the template check right after the skeleton (V3-14)", () =
     expect(sys.files[DESIGN_CSS_FILE]).toBe(designCss(original));
   });
 
+  // V3-40: in the v3 flow the owner always picks a direction, so the pinned case is the usual one.
+  test("a pinned style next to a close site: the style stays, the skeleton is laid out again without its patterns", async () => {
+    const sys = newSys({
+      ...clinicBrief(),
+      design: { archetype: "calm_medical", pinned: true, references: [] },
+    });
+    const seen: (readonly string[] | undefined)[] = [];
+    const hook: V3StageHook = async (ctx) => {
+      seen.push(ctx.avoidPatterns);
+      if (seen.length > 1)
+        return { status: "done", note: "шаблонность 72 % после пересборки на других вариантах" };
+      return {
+        status: "done",
+        redesign: { avoid: [], patterns: ["hero-split", "footer-columns"] },
+        note: "шаблонность 79 %: стиль владельца, другие варианты секций",
+      };
+    };
+    const { out, composer } = await build(sys, { hooks: { template_gate: hook } });
+    const r = ok(out);
+    expect(skeletons(composer)).toBe(2);
+    // The second skeleton and every later stage see the patterns to leave out.
+    expect(seen).toEqual([undefined, ["hero-split", "footer-columns"], ["hero-split", "footer-columns"]]);
+    const d = sys.checkpoints.get("design")?.data as DesignData;
+    expect(d.archetype).toBe("calm_medical");
+    expect(d.redesignedFrom).toBeUndefined();
+    expect(sys.files[DESIGN_CSS_FILE]).toBe(designCss(original));
+    expect(r.summary_ru).toContain(
+      "оставил выбранный вами стиль и собрал страницы на других вариантах секций",
+    );
+    expect(r.stages.skeleton?.note).toBe("шаблонность 72 % после пересборки на других вариантах");
+  });
+
   test("token edits of the critic reach ctx.design of the later hooks, the backend and ui/design.css", async () => {
     const sys = newSys();
     const tuned: DesignSystemV3 = { ...original, radius: { ...original.radius, md: original.radius.md + 6 } };

@@ -6,7 +6,7 @@
 import { type AppSpec, systemBriefSchema } from "@wizard/appspec";
 import { PATTERNS } from "@wizard/ui-kit/v3/patterns";
 import { describe, expect, test } from "vitest";
-import { briefPlan, type SiteModel } from "../src/builder/index.js";
+import { briefPlan, createPageComposer, readSite, type SiteModel } from "../src/builder/index.js";
 import { clientCabinet } from "../src/builder/v3/compose/account.js";
 import {
   briefCopy,
@@ -567,6 +567,30 @@ describe("texts of the skeleton from the brief (no model)", () => {
       request: `${request} Мастерская называется «Глина и печь».`,
     });
     expect(named).toMatchObject({ title: "Керамическая мастерская «Глина и печь»", site: "Глина и печь" });
+  });
+});
+
+describe("V3-40: the skeleton laid out again without the patterns of a close site (a pinned style)", () => {
+  test("most patterns of the first layout give way; every section stays; the style stays", async () => {
+    const first = await briefSite("v3-05-ceramics-shop", EVAL_BRIEFS["v3-05-ceramics-shop"] as never);
+    const patternsOf = (site: SiteModel) =>
+      site.pages.flatMap((p) => p.sections.map((x) => x.pattern)).filter((id) => id !== "signature");
+    const used = [...new Set(patternsOf(first.site))];
+    const out = await createPageComposer().skeleton({
+      ...first.ctx,
+      files: new Map(first.ctx.files),
+      avoidPatterns: used,
+    });
+    const files = new Map(first.ctx.files);
+    for (const [p, v] of out.files) v === null ? files.delete(p) : files.set(p, v);
+    const again = readSite(files) as SiteModel;
+    const sections = (site: SiteModel) =>
+      site.pages.flatMap((p) => p.sections.map((x) => `${p.route}#${x.type}`));
+    expect(sections(again)).toEqual(sections(first.site));
+    expect(again.archetype).toBe(first.site.archetype);
+    const kept = new Set(patternsOf(again).filter((id) => used.includes(id)));
+    // A pattern stays only where no other variant of the section takes its content.
+    expect(kept.size).toBeLessThan(used.length / 2);
   });
 });
 

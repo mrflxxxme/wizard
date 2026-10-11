@@ -78,6 +78,8 @@ export function choosePattern(
     prevLayout?: string;
     /** The section has a place for the owner's photo but no stock one: a variant that can show a photo first. */
     photo?: boolean;
+    /** V3-40: patterns of a close recent site — left out while another variant takes the content. */
+    avoid?: ReadonlySet<string>;
   },
 ): PatternMeta | null {
   const fits = library.filter(
@@ -96,6 +98,9 @@ export function choosePattern(
     const can = shown.filter((p) => slotShape(p).keys.has("image"));
     if (can.length) shown = can;
   }
+  // V3-40: the variants a close recent site used give way while another one shows the same content.
+  const other = q.avoid?.size ? shown.filter((p) => !q.avoid?.has(p.id)) : shown;
+  if (other.length) shown = other;
   const fresh = shown.filter((p) => p.layout !== q.prevLayout);
   const pool = fresh.length ? fresh : shown;
   // Other types stay in the list: patternFor's selection counts the layout families of every pattern already used.
@@ -123,6 +128,7 @@ export interface SkeletonResult {
 /** Composes the site model of a build context (deterministic: the same context gives the same site). */
 export function composeSite(ctx: V3BuildContext, lib: ComposeLibrary = {}): SkeletonResult {
   const library = lib.patterns ?? PATTERNS;
+  const avoid = new Set(ctx.avoidPatterns ?? []);
   const facts = siteFacts(ctx);
   // V3-18: «Источники фото» only on a site that shows stock photos.
   const planned = plannedPages(ctx.spec, ctx.publicFront).filter(
@@ -167,7 +173,7 @@ export function composeSite(ctx: V3BuildContext, lib: ComposeLibrary = {}): Skel
       const c = context(facts, page, planned, null, null, binding, [], leadForm);
       const props = sectionProps(type, c);
       if (!props) continue;
-      const p = choosePattern(library, { type, needs: binding.needs, props, archetype, seed, used });
+      const p = choosePattern(library, { type, needs: binding.needs, props, archetype, seed, used, avoid });
       if (!p) {
         missing.push({ route: page.route, type, needs: binding.needs });
         continue;
@@ -212,6 +218,7 @@ export function composeSite(ctx: V3BuildContext, lib: ComposeLibrary = {}): Skel
         archetype,
         seed,
         used,
+        avoid,
         ...(layouts.length ? { prevLayout: layouts[layouts.length - 1] } : {}),
         ...(places?.image && props.image === undefined ? { photo: true } : {}),
       });
@@ -238,7 +245,7 @@ export function composeSite(ctx: V3BuildContext, lib: ComposeLibrary = {}): Skel
   const first = planned[0] as PlannedPage;
   const pick = (type: "header" | "footer") => {
     const props = chrome(type, first);
-    return props ? choosePattern(library, { type, needs: null, props, archetype, seed, used }) : null;
+    return props ? choosePattern(library, { type, needs: null, props, archetype, seed, used, avoid }) : null;
   };
   const header = pick("header");
   if (header) used.push(header.id);

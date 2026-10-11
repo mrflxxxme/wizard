@@ -114,9 +114,10 @@ export interface V3HookResult {
   /**
    * template_gate: too close to past sites of the niche. Right after the skeleton the art director picks again without
    * these archetypes and the skeleton is recomposed (once per run; never over a direction the owner pinned); at the
-   * late stage, after the scenarios, it is only a note.
+   * late stage, after the scenarios, it is only a note. `patterns` (V3-40): over a direction the owner pinned, the
+   * skeleton is recomposed in the same style without these library patterns where another variant fits.
    */
-  redesign?: { avoid: string[] };
+  redesign?: { avoid: string[]; patterns?: string[] };
   /**
    * Token edits of the design system (the critic): the harness takes them as ctx.design of the later stages, compiles
    * the backend (cabinets) with them and writes their ui/design.css over the earlier layers.

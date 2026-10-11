@@ -378,6 +378,22 @@ const AVOID_MAX = 3;
  * redesign and after the scenarios) — a Russian note instead. The system is ctx.systemId; its own earlier
  * fingerprint is never in its memory.
  */
+/** Library pattern ids of the close recent sites (their fingerprints' section tokens; signature sections are code). */
+export function closePatterns(
+  matches: readonly { id: string }[],
+  memory: readonly TemplateMemoryItem[],
+): string[] {
+  const out = new Set<string>();
+  for (const m of matches) {
+    const fp = memory.find((x) => x.id === m.id)?.fingerprint;
+    for (const page of fp?.pages ?? [])
+      for (const t of page.sections)
+        if (t.type !== "signature" && t.variant && patternById(`${t.type}-${t.variant}`))
+          out.add(`${t.type}-${t.variant}`);
+  }
+  return [...out];
+}
+
 export function templateGateHook(o: TemplateGateOptions): V3StageHook {
   let redesigned = false;
   return async (ctx): Promise<V3HookResult> => {
@@ -412,7 +428,28 @@ export function templateGateHook(o: TemplateGateOptions): V3StageHook {
         status: "done",
         note: memory.length ? `сходство с недавними сайтами ${pct} %${mode}` : "память ниши пуста",
       };
-    if (ctx.brief.design.pinned)
+    const pinned = ctx.brief.design.pinned === true;
+    if (redesigned)
+      return {
+        status: "done",
+        notes: [
+          pinned
+            ? `После пересборки на других вариантах секций сайт всё ещё похож на недавний сайт в этой нише (сходство ${pct} %) — его можно сделать своеобразнее правками.`
+            : `После смены стиля сайт всё ещё похож на недавний сайт в этой нише (сходство ${pct} %) — его можно сделать своеобразнее правками.`,
+        ],
+        note: `шаблонность ${pct} %${mode} ${pinned ? "после пересборки на других вариантах" : "после смены стиля"}`,
+      };
+    redesigned = true;
+    if (pinned) {
+      // V3-40: the owner chose the style himself — it stays; the skeleton is laid out again without the patterns of the
+      // close sites (in the v3 flow the owner always picks one of three directions, so this is the usual case).
+      const patterns = closePatterns(verdict.matches, memory);
+      if (patterns.length)
+        return {
+          status: "done",
+          redesign: { avoid: [], patterns },
+          note: `шаблонность ${pct} %${mode}: стиль владельца, другие варианты секций`,
+        };
       return {
         status: "done",
         notes: [
@@ -420,15 +457,7 @@ export function templateGateHook(o: TemplateGateOptions): V3StageHook {
         ],
         note: `шаблонность ${pct} %${mode}: стиль выбран владельцем`,
       };
-    if (redesigned)
-      return {
-        status: "done",
-        notes: [
-          `После смены стиля сайт всё ещё похож на недавний сайт в этой нише (сходство ${pct} %) — его можно сделать своеобразнее правками.`,
-        ],
-        note: `шаблонность ${pct} %${mode} после смены стиля`,
-      };
-    redesigned = true;
+    }
     const avoid = [...new Set([ctx.design.archetype, ...verdict.matches.map((m) => m.archetype)])].slice(
       0,
       AVOID_MAX,
