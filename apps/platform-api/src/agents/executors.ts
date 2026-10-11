@@ -621,7 +621,7 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
       });
       if (created) {
         // V3-18: a system with a brief seeds its preview with the names of the offer the brief lists.
-        const hints = await draftSeedHints(db(), a.systemId, a.spec);
+        const hints = await draftSeedHints(db(), a.systemId, a.spec, sharedFiles());
         await seedDraft(o.pg, { systemKey: a.systemKey, spec: a.spec, migratorRole, hints });
       }
       // platform.deployments.spec_hash of this revision: the runtime compares it with manifest.specHash.

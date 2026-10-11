@@ -23,6 +23,7 @@ import type { V3BuildContext } from "../contract.js";
 import type { V3HookResult, V3StageHook } from "../harness/types.js";
 import { V3BudgetError } from "../harness/wallet.js";
 import { CRITIC_VIEWPORTS } from "./checks.js";
+import { editKey, impliedEdit } from "./implied.js";
 import {
   applyEdit,
   type CriticState,
@@ -580,11 +581,17 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
       report.stop = "pass";
       break;
     }
-    const edits = critique.findings
-      .filter((f) => f.edit)
+    // A finding without an edit gets the one its catalog sign implies (V3-40); one edit per section, the most severe.
+    const seen = new Set<string>();
+    const edits = [...critique.findings]
       .sort((a, b) => SEV_ORDER(a.severity) - SEV_ORDER(b.severity))
-      .slice(0, maxEdits)
-      .map((f) => f.edit as EditOp);
+      .map((f) => f.edit ?? impliedEdit(f, state, library, seed))
+      .filter((op): op is EditOp => {
+        if (!op || seen.has(editKey(op))) return false;
+        seen.add(editKey(op));
+        return true;
+      })
+      .slice(0, maxEdits);
     // Edits one by one on the model (cheap: slot schemas, copy rules, the linter of the page).
     let cand = state;
     const accepted: { op: EditOp; summary: string; touched: "all" | string[] }[] = [];
