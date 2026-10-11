@@ -16,6 +16,7 @@ import {
   critiqueScore,
   critiqueTool,
   type EditEnv,
+  impliedEdit,
   parseWhere,
   readSite,
   runCritic,
@@ -406,6 +407,66 @@ describe("V3-13 critic", () => {
       1,
     );
     expect(r.notes[0]).toMatch(/2 круга, оценка 38 → 75 из 100/);
+  });
+
+  // V3-40: the final measurement's critiques named catalog signs with no edit (v3-06: T04, L13, L15 on the hero, L06
+  // on the blog) and the loop stopped with nothing applied. The sign's own edit is applied and judged like any other.
+  test("findings without edits: the catalog sign implies the edit (T04 a smaller display, L15 a hero that is not split)", async () => {
+    const bare = (sign: string, where: string, severity = "P1") => ({
+      sign,
+      where,
+      severity,
+      evidence: "изображение 1",
+      replace: "спокойнее",
+      edit: null,
+    });
+    const fx = fixtureRoute(
+      critiqueLines(prompt, [
+        critique(2, [
+          bare("T04 раздутый h1", "/@390#hero"),
+          bare("L15 сплит-шапка", "/@390#hero", "P2"),
+          bare("L13 перегруженный первый экран", "/@390#hero"),
+          bare("L06 повтор раскладок", "/@1440#services"),
+          bare("T02 плоская иерархия", "/@390#hero", "P2"),
+        ]),
+        critique(3, [], "production"),
+      ]),
+    );
+    const r = await runCritic(
+      { ...ctx, route: fx.route },
+      { inspect: fakeInspector([]), verify: null, registry },
+    );
+    expect(r.stop).toBe("pass");
+    expect(r.cycles.map((c) => c.score)).toEqual([28, 75]);
+    const applied = r.cycles[0]?.applied ?? [];
+    expect(applied[0]).toBe("токены: заголовок первого экрана на ступень меньше");
+    // One edit per section: the most severe sign of the hero (L13, P1) wins over L15; T02 implies none.
+    expect(applied.filter((a) => a.startsWith("/#hero"))).toHaveLength(1);
+    expect(applied.some((a) => a.startsWith("/#services: вариант services-editorial →"))).toBe(true);
+    const site = siteOf(r);
+    const pattern = (id: string) => site?.pages[0]?.sections.find((x) => x.id === id)?.pattern ?? "";
+    const layout = (id: string) => PATTERNS.find((p) => p.id === pattern(id))?.layout;
+    expect(pattern("hero")).not.toBe("hero-split");
+    expect(layout("services")).not.toBe(PATTERNS.find((p) => p.id === "services-editorial")?.layout);
+    expect(r.design?.type.steps.display.max).toBeLessThan(ctx.design.type.steps.display.max);
+  });
+
+  test("an implied L15 edit never picks another split hero; a sign the catalog does not map implies nothing", () => {
+    const hero = home()?.sections.find((x) => x.id === "hero");
+    const op = impliedEdit({ sign: "L15 сплит-шапка", where: "/@390#hero" }, state, PATTERNS, "s");
+    expect(op).toMatchObject({ op: "swap_variant", route: "/", section: "hero" });
+    const to = PATTERNS.find((p) => op?.op === "swap_variant" && p.id === op.pattern);
+    expect(to?.layout).not.toBe("split");
+    expect(to?.sectionType).toBe(hero?.type);
+    expect(
+      impliedEdit({ sign: "T02 плоская иерархия", where: "/@390#hero" }, state, PATTERNS, "s"),
+    ).toBeNull();
+    expect(
+      impliedEdit({ sign: "L06 повтор раскладок", where: "/@390#nope" }, state, PATTERNS, "s"),
+    ).toBeNull();
+    expect(
+      impliedEdit({ sign: "подзаголовок слабый", where: "/@390#hero" }, state, PATTERNS, "s"),
+    ).toBeNull();
   });
 
   test("a regression in the browser checks rolls back the edit that caused it, the rest stays", async () => {

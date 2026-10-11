@@ -8,6 +8,7 @@ import { definePattern } from "../define.js";
 import { line, linkSlot, SAME_ORIGIN_PATH_RE } from "../slots.js";
 import type { PatternMeta } from "../types.js";
 import type Detail from "./detail.js";
+import type Showcase from "./showcase.js";
 
 /** Entity and field names of the system (AppSpec identifiers). */
 const ident = z.string().regex(/^[a-z][a-z0-9_]{0,39}$/, "имя сущности или поля латиницей");
@@ -57,6 +58,18 @@ export const PRODUCT_PATTERNS: readonly PatternMeta[] = [
     layout: "split",
     title:
       "Страница товара: большое фото слева, справа название, цена, остаток, «В корзину» и полное описание",
+    archetypes: ["*"],
+    slots: productSlots,
+    needs: "cart",
+    license: "own",
+    origin: "own",
+    example: PRODUCT_EXAMPLE,
+  }),
+  definePattern<typeof Showcase>()(at, "product", {
+    variant: "showcase",
+    layout: "stacked",
+    title:
+      "Страница товара витриной: фото во всю ширину, под ним слева название, цена, остаток и «В корзину», справа описание",
     archetypes: ["*"],
     slots: productSlots,
     needs: "cart",

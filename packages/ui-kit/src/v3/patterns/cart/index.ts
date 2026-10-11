@@ -8,6 +8,7 @@ import { definePattern } from "../define.js";
 import { line, linkSlot, SAME_ORIGIN_PATH_RE } from "../slots.js";
 import type { PatternMeta } from "../types.js";
 import type Split from "./split.js";
+import type Stacked from "./stacked.js";
 
 /** Entity and function names of the system (AppSpec identifiers). */
 const ident = z.string().regex(/^[a-z][a-z0-9_]{0,39}$/, "имя сущности латиницей");
@@ -85,6 +86,18 @@ export const CART_PATTERNS: readonly PatternMeta[] = [
     layout: "split",
     title:
       "Корзина и оформление на одной странице: строки корзины слева, справа карточка — доставка, контакты, итог",
+    archetypes: ["*"],
+    slots: cartSlots,
+    needs: "cart",
+    license: "own",
+    origin: "own",
+    example: CART_EXAMPLE,
+  }),
+  definePattern<typeof Stacked>()(at, "cart", {
+    variant: "stacked",
+    layout: "stacked",
+    title:
+      "Корзина и оформление одной узкой колонкой: сначала строки корзины и сумма, под ними карточка — доставка, контакты, итог",
     archetypes: ["*"],
     slots: cartSlots,
     needs: "cart",

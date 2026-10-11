@@ -83,6 +83,9 @@ jobs:
       # V3-08 (builder-v3.md C3): every pattern v3 × 4 design systems × 390/1280 × light/dark built by buildSystem
       # (Tailwind v4, Motion) — overflow, AA contrast, names, headings, touch; screenshots test/artifacts/patterns-v3.
       - run: pnpm exec vitest run --project browser packages/build/test/patterns-v3.browser.test.ts
+      # V3-08/V3-23/V3-40: the module-bound patterns on a preview system — the purchase path of every cart variant to the
+      # order by the module's function, lead and booking forms, empty/error/loading states under the checks.
+      - run: pnpm exec vitest run --project browser packages/build/test/patterns-v3-data.browser.test.ts
       # V3-18: every request and booking form variant of the library under the modules' goal programs (the platform's
       # checkScenario in Chromium on a site composed without a model).
       - run: pnpm exec vitest run --project browser apps/platform-api/test/v3-goals-variants.browser.test.ts

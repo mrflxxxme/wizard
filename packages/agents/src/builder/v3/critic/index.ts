@@ -20,6 +20,7 @@ export {
   runCritic,
   shotPlan,
 } from "./hook.js";
+export { editKey, impliedEdit } from "./implied.js";
 export {
   applyEdit,
   type CriticState,

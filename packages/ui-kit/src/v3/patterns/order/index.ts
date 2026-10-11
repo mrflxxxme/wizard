@@ -6,6 +6,7 @@ import { z } from "zod";
 import { definePattern } from "../define.js";
 import { linkSlot, SAME_ORIGIN_PATH_RE } from "../slots.js";
 import type { PatternMeta } from "../types.js";
+import type Split from "./split.js";
 import type Summary from "./summary.js";
 
 /** Entity names of the system (AppSpec identifiers). */
@@ -41,6 +42,18 @@ export const ORDER_PATTERNS: readonly PatternMeta[] = [
     layout: "card",
     title:
       "Заказ покупателя карточкой-чеком: номер и статус, состав и суммы, получение, «Оплатить» до оплаты",
+    archetypes: ["*"],
+    slots: orderSlots,
+    needs: "cart",
+    license: "own",
+    origin: "own",
+    example: ORDER_EXAMPLE,
+  }),
+  definePattern<typeof Split>()(at, "order", {
+    variant: "split",
+    layout: "split",
+    title:
+      "Заказ покупателя в две колонки: слева номер, статус, получение и «Оплатить», справа карточка состава и сумм",
     archetypes: ["*"],
     slots: orderSlots,
     needs: "cart",
