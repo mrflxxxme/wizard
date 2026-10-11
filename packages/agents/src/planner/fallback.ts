@@ -39,6 +39,9 @@ const GOAL_STEMS: Readonly<Record<GoalId, readonly string[]>> = {
   sell_online: ["интернет-магазин", "онлайн-магазин", "корзин", "сдэк", "юkassa", "юкасс"],
 };
 
+/** The niche of a business that only says it sells: the last resort of the keywords. */
+const GENERIC_NICHE = "магазин";
+
 /** Niche by keywords (2–5 words, modules.yaml#ai_rules); the first match wins. */
 const NICHES: readonly (readonly [RegExp, string])[] = [
   [/стоматолог|зубн/, "стоматологическая клиника"],
@@ -86,7 +89,7 @@ const NICHES: readonly (readonly [RegExp, string])[] = [
   [/клининг|уборк/, "клининг"],
   [/гостиниц|отел|хостел|гостев/, "гостиница"],
   [/недвижим|риелтор|риэлтор/, "агентство недвижимости"],
-  [/магазин|товар/, "магазин"],
+  [/магазин|товар/, GENERIC_NICHE],
 ];
 
 const ROLES: readonly (readonly [RegExp, string])[] = [
@@ -112,10 +115,17 @@ export const isKeywordNiche = (niche: string): boolean => NICHES.some(([, n]) =>
  * yoga) — else the first words of its first sentence, else «малый бизнес».
  */
 export function fallbackNiche(brief: string): string {
-  for (const phrase of lower(brief).split(/[.:;!?\n]+/)) {
-    const hit = NICHES.find(([re]) => re.test(phrase));
-    if (hit) return hit[1];
-  }
+  const phrases = lower(brief).split(/[.:;!?\n]+/);
+  // V3-40: «магазин» and «товар» say only that the business sells — a phrase naming what it sells wins wherever it
+  // stands (the final measurement: «Покупатель выбирает товары…» first made a tea shop and a farm «Магазин»).
+  for (const pool of [
+    NICHES.filter(([, n]) => n !== GENERIC_NICHE),
+    NICHES.filter(([, n]) => n === GENERIC_NICHE),
+  ])
+    for (const phrase of phrases) {
+      const hit = pool.find(([re]) => re.test(phrase));
+      if (hit) return hit[1];
+    }
   const words = (brief.split(/[.!?\n]/)[0] ?? "")
     .split(/\s+/)
     .map((w) => w.replace(/[^\p{L}\p{N}-]/gu, ""))
