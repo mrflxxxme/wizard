@@ -21,12 +21,18 @@ import {
   quotedName,
   toVisitor,
 } from "../src/builder/v3/compose/copy.js";
-import { lintSitePage, siteFacts, withSitePages } from "../src/builder/v3/compose/index.js";
+import {
+  lintSitePage,
+  primaryAction,
+  secondaryAction,
+  siteFacts,
+  withSitePages,
+} from "../src/builder/v3/compose/index.js";
 import type { SitePage, SiteSection } from "../src/builder/v3/compose/site.js";
 import { applyEdit, variantsFor } from "../src/builder/v3/critic/ops.js";
 import { DEFAULT_REGISTRY, fallbackNiche } from "../src/planner/index.js";
 import { briefSite, evalRequest } from "./v3-brief-site.js";
-import { CLEANING_CRM, EVAL_BRIEFS } from "./v3-eval-briefs.js";
+import { CERAMICS_SHOP, CLEANING_CRM, EVAL_BRIEFS } from "./v3-eval-briefs.js";
 import { FEATURE_BRIEFS } from "./v3-feature-briefs.js";
 
 const home = (site: SiteModel) => site.pages.find((p) => p.route === "/") as SitePage;
@@ -400,6 +406,104 @@ describe("texts of the skeleton from the brief (no model)", () => {
     });
     expect(sectionOf(home(bare.site), "hero").props.title).toBe("Клининг");
     expect(home(bare.site).seo.title).toBe("Клининг");
+  });
+
+  test("V3-40 (final v3-11, v3-12): a step of the cart or a form is never the lead of the first screen", () => {
+    const brief = systemBriefSchema.parse({
+      ...EVAL_BRIEFS["v3-05-ceramics-shop"],
+      goals: [
+        {
+          id: "g_sell",
+          text: "Покупатель выбирает доставку (Почта России или СДЭК до пункта выдачи)",
+          success: "Заказ оплачен",
+        },
+      ],
+      scenarios: [
+        {
+          id: "s_buy",
+          actor: "visitor",
+          when: "покупатель выбирает товары и кладёт их в корзину",
+          // biome-ignore lint/suspicious/noThenProperty: field name fixed by builder-v3.md §3 C1
+          then: ["показывает сумму заказа"],
+          goalId: "g_sell",
+          moduleHint: "shop",
+        },
+      ],
+    });
+    const copy = briefCopy({ name: "Чай и мёд", niche: "чай и мёд", keywordNiche: true, brief });
+    // The visitor's first action of this brief is exactly what the final measurement showed as the lead.
+    expect(toVisitor("Покупатель выбирает доставку (Почта России или СДЭК до пункта выдачи)")).toBe(
+      "Выберите доставку (Почта России или СДЭК до пункта выдачи)",
+    );
+    expect(copy.lead ?? "").not.toMatch(/^(Выберите|Положите|Укажите)/);
+    // A visitor's own action that says what the business does still leads.
+    const booking = systemBriefSchema.parse({
+      ...EVAL_BRIEFS["v3-05-ceramics-shop"],
+      goals: [
+        {
+          id: "g_book",
+          text: "Клиент записывается на мастер-класс по гончарному делу",
+          success: "Запись в кабинете",
+        },
+        ...(CERAMICS_SHOP.goals ?? []),
+      ],
+    });
+    expect(briefCopy({ name: "Глина", niche: "керамика", keywordNiche: true, brief: booking }).lead).toBe(
+      "Запишитесь на мастер-класс по гончарному делу.",
+    );
+  });
+
+  test("V3-40 (final v3-05, v3-12): a shop with a booking — the composed first screen leads to the goods", async () => {
+    const input = {
+      ...CERAMICS_SHOP,
+      goals: [
+        ...(CERAMICS_SHOP.goals ?? []),
+        { id: "g_class", text: "Клиенты записываются на мастер-класс", success: "Запись в кабинете" },
+      ],
+      scenarios: [
+        ...(CERAMICS_SHOP.scenarios ?? []),
+        {
+          id: "s_class",
+          actor: "visitor" as const,
+          when: "клиент записывается на мастер-класс по гончарному делу",
+          // biome-ignore lint/suspicious/noThenProperty: field name fixed by builder-v3.md §3 C1
+          then: ["выбирает дату и время", "получает подтверждение"],
+          goalId: "g_class",
+          moduleHint: "booking",
+        },
+      ],
+    };
+    const { site } = await briefSite("v3-05-ceramics-shop", input);
+    expect(site.pages.some((p) => p.kind === "booking" || p.sections.some((x) => x.props.booking))).toBe(
+      true,
+    );
+    const hero = sectionOf(home(site), "hero").props as {
+      action: { label: string; href: string };
+      secondary?: { label: string; href: string };
+    };
+    expect(hero.action).toEqual({ label: "Перейти в магазин", href: "/shop" });
+    expect(site.primary).toMatchObject({ kind: "shop" });
+  });
+
+  test("V3-40: a site with a shop sells first — «Перейти в магазин», the booking is the second action", () => {
+    const pages = [
+      { kind: "home", route: "/", title: "Главная" },
+      { kind: "booking", route: "/booking", title: "Запись" },
+      { kind: "shop", route: "/shop", title: "Магазин" },
+    ] as unknown as Parameters<typeof primaryAction>[1];
+    const facts = { texts: new Map(), copy: { title: "Керамика" } } as unknown as Parameters<
+      typeof primaryAction
+    >[0];
+    const primary = primaryAction(facts, pages, null);
+    expect(primary).toMatchObject({ kind: "shop", label: "Перейти в магазин", route: "/shop" });
+    expect(secondaryAction(primary, pages)).toMatchObject({
+      kind: "booking",
+      label: "Записаться",
+      route: "/booking",
+    });
+    // Without a shop the booking stays the main action, the shop-less secondary is none.
+    const noShop = pages.filter((p) => p.kind !== "shop");
+    expect(primaryAction(facts, noShop, null)).toMatchObject({ kind: "booking", route: "/booking" });
   });
 
   test("V3-18 (pilot v3-05): a country or a delivery scope is not where the business is", () => {

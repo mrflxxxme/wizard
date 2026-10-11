@@ -456,6 +456,10 @@ export function businessName(request: string): string | null {
   return (b && firstFit(40, quotedName(b.sentence), cap(b.what))) || null;
 }
 
+/** A visitor's step of a form, a cart or a cabinet: not a lead of the first screen. */
+const FORM_STEP_RE =
+  /^(?:Выберите|Укажите|Положите|Добавьте|Оплатите|Введите|Нажмите|Перейдите|Откройте|Войдите|Оформите|Заполните|Отследите|Подтвердите)(?![\p{L}])/u;
+
 /**
  * The skeleton's texts of a brief (deterministic: the same brief gives the same texts), from its facts in a fixed
  * order: the business name the owner gave, what the business is and offers in his words, the place — never a
@@ -530,7 +534,9 @@ export function briefCopy(input: CopyInput): BriefCopy {
 
   // The lead: 2–4 services the brief lists, else the offer in the owner's words, else the visitor's action.
   const services = listedServices(steps) ?? (request ? offerOf(input.request as string, business) : null);
-  const action = visitorTexts.map(toVisitor).find((x): x is string => !!x);
+  // A step of a form or a purchase («Выберите товары», «Укажите адрес») says nothing about the business: no lead
+  // rather than that (V3-40: the shops' first screens read «Выберите доставку (…)»).
+  const action = visitorTexts.map(toVisitor).find((x): x is string => !!x && !FORM_STEP_RE.test(x));
   let lead = services ? `${cap(listOf(services.slice(0, 4)))}.` : action ? `${action}.` : undefined;
   if (lead && (lead.length > LIMITS.lead || lead.toLowerCase() === `${title.toLowerCase()}.`))
     lead = undefined;
