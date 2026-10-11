@@ -442,6 +442,43 @@ export function offerOf(request: string, business: Business | null): string[] | 
   return services ? listItems((services[1] ?? services[2]) as string) : null;
 }
 
+/** A verb of the owner's «мы» that says what the business does («собираем», «строим»), not «работаем шестой год». */
+const WE_VERB =
+  /^(?!(?:работаем|находимся|существуем|живём|живем|хотим|планируем|ищем|думаем|начинаем|открываемся|ведём|ведем)$)[а-яё]+(?:ем|им|ём)$/u;
+
+/**
+ * What the business does or sells in the owner's own opening words (V3-40), when his sentence names no business the
+ * keywords know («Мы семейное дело из Барнаула: собираем и сушим травяные сборы, качаем мёд…», «Мы фермерское
+ * хозяйство под Владимиром: молоко, творог, сыры…»): the clauses of his «мы» that start with a verb, or the list after
+ * the colon. Never digits, Latin words or addresses; null — his first sentence says neither.
+ */
+export function ownWords(request: string): { deed?: string; items?: string[] } | null {
+  const first = sentencesOf(request, 1)[0];
+  if (!first || !/^(?:мы|у нас)\s/iu.test(first)) return null;
+  const text = clean(first.replace(/^(?:мы|у нас)\s+/iu, "").replace(/[.!?]+$/, ""));
+  if (!text || /[0-9@]|[A-Za-z]/.test(text)) return null;
+  const colon = text.indexOf(":");
+  const head = colon >= 0 ? text.slice(0, colon) : text;
+  const tail = colon >= 0 ? clean(text.slice(colon + 1)) : "";
+  // The deed: from the first verb of his «мы» (before the colon, else right after it), the clauses that start with one.
+  const deedOf = (part: string): string | null => {
+    const words = part.split(" ");
+    const at = words.findIndex((w) => WE_VERB.test(low(w)));
+    if (at < 0) return null;
+    const clauses = words.slice(at).join(" ").split(/,\s+/);
+    const kept: string[] = [];
+    for (const c of clauses) {
+      if (!WE_VERB.test(low(c.split(" ")[0] ?? ""))) break;
+      kept.push(c);
+    }
+    return `${cap(kept.join(", "))}.`;
+  };
+  const deed = deedOf(head) ?? (tail && WE_VERB.test(low(tail.split(" ")[0] ?? "")) ? deedOf(tail) : null);
+  if (deed) return { deed };
+  const items = tail ? listItems(tail) : null;
+  return items ? { items } : null;
+}
+
 /** The first candidate that fits `max` characters. */
 const firstFit = (max: number, ...xs: (string | null | undefined)[]): string | undefined =>
   xs.find((x): x is string => typeof x === "string" && x.length > 0 && x.length <= max);
@@ -533,11 +570,18 @@ export function briefCopy(input: CopyInput): BriefCopy {
     (isPlaceholderName(name) ? cap(input.niche) : name).slice(0, LIMITS.title);
 
   // The lead: 2–4 services the brief lists, else the offer in the owner's words, else the visitor's action.
-  const services = listedServices(steps) ?? (request ? offerOf(input.request as string, business) : null);
+  const opening = request ? ownWords(input.request as string) : null;
+  const services =
+    listedServices(steps) ??
+    (request ? offerOf(input.request as string, business) : null) ??
+    opening?.items ??
+    null;
   // A step of a form or a purchase («Выберите товары», «Укажите адрес») says nothing about the business: no lead
   // rather than that (V3-40: the shops' first screens read «Выберите доставку (…)»).
   const action = visitorTexts.map(toVisitor).find((x): x is string => !!x && !FORM_STEP_RE.test(x));
-  let lead = services ? `${cap(listOf(services.slice(0, 4)))}.` : action ? `${action}.` : undefined;
+  let lead = services
+    ? `${cap(listOf(services.slice(0, 4)))}.`
+    : (opening?.deed ?? (action ? `${action}.` : undefined));
   if (lead && (lead.length > LIMITS.lead || lead.toLowerCase() === `${title.toLowerCase()}.`))
     lead = undefined;
 

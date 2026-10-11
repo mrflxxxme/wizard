@@ -6,7 +6,7 @@
 import { type AppSpec, systemBriefSchema } from "@wizard/appspec";
 import { PATTERNS } from "@wizard/ui-kit/v3/patterns";
 import { describe, expect, test } from "vitest";
-import { briefPlan, type SiteModel } from "../src/builder/index.js";
+import { briefPlan, createPageComposer, readSite, type SiteModel } from "../src/builder/index.js";
 import { clientCabinet } from "../src/builder/v3/compose/account.js";
 import {
   briefCopy,
@@ -16,6 +16,7 @@ import {
   isPlaceholderName,
   listedServices,
   offerOf,
+  ownWords,
   placeOf,
   quotedAction,
   quotedName,
@@ -453,6 +454,42 @@ describe("texts of the skeleton from the brief (no model)", () => {
     );
   });
 
+  test("V3-40 (final v3-11, v3-12): the lead in the owner's opening words when no business word is known", () => {
+    const tea =
+      "Мы семейное дело из Барнаула: собираем и сушим травяные сборы, качаем мёд на своей пасеке, продаём по всей России. Нужен интернет-магазин.";
+    expect(ownWords(tea)).toEqual({
+      deed: "Собираем и сушим травяные сборы, качаем мёд на своей пасеке, продаём по всей России.",
+    });
+    expect(
+      ownWords("Мы фермерское хозяйство под Владимиром: молоко, творог, сыры, яйца. Продаём через чат."),
+    ).toEqual({
+      items: ["молоко", "творог", "сыры", "яйца"],
+    });
+    // The deed ends where his «мы» stops doing: «восемь лет на рынке» is not what the business does.
+    expect(
+      ownWords("Мы строим каркасные дома под ключ в Вологде и области, восемь лет на рынке, своя бригада."),
+    ).toEqual({ deed: "Строим каркасные дома под ключ в Вологде и области." });
+    // «Работаем шестой год», digits, an address or not his «мы» — nothing.
+    expect(ownWords("Мы студия интерьеров, работаем шестой год.")).toBeNull();
+    expect(ownWords("Мы водим группы до 12 человек: сплавы, походы.")).toBeNull();
+    expect(ownWords("Стоматологическая клиника в Казани: терапевт, хирург.")).toBeNull();
+    // In the brief's copy it is the lead when the brief lists no services.
+    const brief = systemBriefSchema.parse({
+      ...EVAL_BRIEFS["v3-05-ceramics-shop"],
+      goals: [
+        {
+          id: "g_sell",
+          text: "Покупатель выбирает доставку (Почта России или СДЭК до пункта выдачи)",
+          success: "Заказ оплачен",
+        },
+      ],
+      scenarios: [],
+    });
+    expect(
+      briefCopy({ name: "Чай и мёд", niche: "чай и мёд", keywordNiche: true, brief, request: tea }).lead,
+    ).toBe("Собираем и сушим травяные сборы, качаем мёд на своей пасеке, продаём по всей России.");
+  });
+
   test("V3-40 (final v3-05, v3-12): a shop with a booking — the composed first screen leads to the goods", async () => {
     const input = {
       ...CERAMICS_SHOP,
@@ -530,6 +567,30 @@ describe("texts of the skeleton from the brief (no model)", () => {
       request: `${request} Мастерская называется «Глина и печь».`,
     });
     expect(named).toMatchObject({ title: "Керамическая мастерская «Глина и печь»", site: "Глина и печь" });
+  });
+});
+
+describe("V3-40: the skeleton laid out again without the patterns of a close site (a pinned style)", () => {
+  test("most patterns of the first layout give way; every section stays; the style stays", async () => {
+    const first = await briefSite("v3-05-ceramics-shop", EVAL_BRIEFS["v3-05-ceramics-shop"] as never);
+    const patternsOf = (site: SiteModel) =>
+      site.pages.flatMap((p) => p.sections.map((x) => x.pattern)).filter((id) => id !== "signature");
+    const used = [...new Set(patternsOf(first.site))];
+    const out = await createPageComposer().skeleton({
+      ...first.ctx,
+      files: new Map(first.ctx.files),
+      avoidPatterns: used,
+    });
+    const files = new Map(first.ctx.files);
+    for (const [p, v] of out.files) v === null ? files.delete(p) : files.set(p, v);
+    const again = readSite(files) as SiteModel;
+    const sections = (site: SiteModel) =>
+      site.pages.flatMap((p) => p.sections.map((x) => `${p.route}#${x.type}`));
+    expect(sections(again)).toEqual(sections(first.site));
+    expect(again.archetype).toBe(first.site.archetype);
+    const kept = new Set(patternsOf(again).filter((id) => used.includes(id)));
+    // A pattern stays only where no other variant of the section takes its content.
+    expect(kept.size).toBeLessThan(used.length / 2);
   });
 });
 

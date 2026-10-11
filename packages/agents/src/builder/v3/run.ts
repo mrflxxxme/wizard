@@ -130,10 +130,14 @@ interface SkeletonTemplate {
   note?: string;
   /** The style changed: archetype ids and the new style's name. */
   redesign?: { from: string; to: string; styleName: string };
+  /** V3-40: the owner's style stayed and the skeleton was laid out again on other section variants. */
+  relayout?: boolean;
 }
 
 const TEMPLATE_PINNED_RU =
   "Каркас похож на недавние сайты в этой нише, но стиль вы выбрали сами — оставляю его.";
+const TEMPLATE_RELAYOUT_RU =
+  "Каркас был похож на недавний сайт в этой нише — оставил выбранный вами стиль и собрал страницы на других вариантах секций.";
 const TEMPLATE_NO_OTHER_RU =
   "Каркас похож на недавние сайты в этой нише, а другого подходящего стиля для неё нет — оставляю выбранный.";
 const TEMPLATE_STILL_RU =
@@ -387,6 +391,8 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
       costMilli: 0,
       durationMs: 0,
     });
+  /** V3-40: patterns of a too close recent site the skeleton leaves out when the owner pinned the style. */
+  let avoidPatterns: string[] = [];
   const ctxFor = (w: V3Wallet): V3BuildContext => {
     const files = mergedFiles();
     return {
@@ -401,6 +407,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
       files,
       route: w.route(host, llm),
       budgetRub: w.leftRub,
+      ...(avoidPatterns.length ? { avoidPatterns } : {}),
       ...(host.signal ? { signal: host.signal } : {}),
     };
   };
@@ -757,11 +764,22 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
         };
         const first = await check();
         const avoid = first.status === "done" ? (first.redesign?.avoid ?? []) : [];
+        const patterns = first.status === "done" ? (first.redesign?.patterns ?? []) : [];
         // A hook that asks for a redesign without saying anything gets the harness's note.
         const noteIfSilent = (ru: string) => {
           if (!template.notes.length) template.notes.push(ru);
         };
-        if (avoid.length && ownerPinned()) noteIfSilent(TEMPLATE_PINNED_RU);
+        if (patterns.length && ownerPinned()) {
+          // V3-40: the owner's style stays, the skeleton is laid out again without the close site's patterns.
+          avoidPatterns = patterns;
+          skeleton = new Map();
+          r = await compose();
+          spent += r.spentRub;
+          template.relayout = true;
+          template.notes = [TEMPLATE_RELAYOUT_RU];
+          const second = await check();
+          if (second.status === "done" && second.note) template.note = second.note;
+        } else if (avoid.length && ownerPinned()) noteIfSilent(TEMPLATE_PINNED_RU);
         else if (avoid.length) {
           const changed = await redesign(avoid);
           if (!changed) noteIfSilent(TEMPLATE_NO_OTHER_RU);
@@ -1074,8 +1092,8 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
         hookExtensions.push(...ext);
         await buildBackend();
       }
-      const late = h.data.redesign as { avoid?: string[] } | undefined;
-      if (st === "template_gate" && late?.avoid?.length && hookNotes.length === 0)
+      const late = h.data.redesign as { avoid?: string[]; patterns?: string[] } | undefined;
+      if (st === "template_gate" && (late?.avoid?.length || late?.patterns?.length) && hookNotes.length === 0)
         notes = [...new Set([...notes, TEMPLATE_LATE_RU])];
       const blockers = (h.data.blockers as string[]) ?? [];
       if (blockers.length)
