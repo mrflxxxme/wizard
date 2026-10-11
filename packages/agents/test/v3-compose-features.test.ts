@@ -16,6 +16,7 @@ import {
   isPlaceholderName,
   listedServices,
   offerOf,
+  ownWords,
   placeOf,
   quotedAction,
   quotedName,
@@ -451,6 +452,42 @@ describe("texts of the skeleton from the brief (no model)", () => {
     expect(briefCopy({ name: "Глина", niche: "керамика", keywordNiche: true, brief: booking }).lead).toBe(
       "Запишитесь на мастер-класс по гончарному делу.",
     );
+  });
+
+  test("V3-40 (final v3-11, v3-12): the lead in the owner's opening words when no business word is known", () => {
+    const tea =
+      "Мы семейное дело из Барнаула: собираем и сушим травяные сборы, качаем мёд на своей пасеке, продаём по всей России. Нужен интернет-магазин.";
+    expect(ownWords(tea)).toEqual({
+      deed: "Собираем и сушим травяные сборы, качаем мёд на своей пасеке, продаём по всей России.",
+    });
+    expect(
+      ownWords("Мы фермерское хозяйство под Владимиром: молоко, творог, сыры, яйца. Продаём через чат."),
+    ).toEqual({
+      items: ["молоко", "творог", "сыры", "яйца"],
+    });
+    // The deed ends where his «мы» stops doing: «восемь лет на рынке» is not what the business does.
+    expect(
+      ownWords("Мы строим каркасные дома под ключ в Вологде и области, восемь лет на рынке, своя бригада."),
+    ).toEqual({ deed: "Строим каркасные дома под ключ в Вологде и области." });
+    // «Работаем шестой год», digits, an address or not his «мы» — nothing.
+    expect(ownWords("Мы студия интерьеров, работаем шестой год.")).toBeNull();
+    expect(ownWords("Мы водим группы до 12 человек: сплавы, походы.")).toBeNull();
+    expect(ownWords("Стоматологическая клиника в Казани: терапевт, хирург.")).toBeNull();
+    // In the brief's copy it is the lead when the brief lists no services.
+    const brief = systemBriefSchema.parse({
+      ...EVAL_BRIEFS["v3-05-ceramics-shop"],
+      goals: [
+        {
+          id: "g_sell",
+          text: "Покупатель выбирает доставку (Почта России или СДЭК до пункта выдачи)",
+          success: "Заказ оплачен",
+        },
+      ],
+      scenarios: [],
+    });
+    expect(
+      briefCopy({ name: "Чай и мёд", niche: "чай и мёд", keywordNiche: true, brief, request: tea }).lead,
+    ).toBe("Собираем и сушим травяные сборы, качаем мёд на своей пасеке, продаём по всей России.");
   });
 
   test("V3-40 (final v3-05, v3-12): a shop with a booking — the composed first screen leads to the goods", async () => {
