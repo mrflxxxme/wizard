@@ -2424,13 +2424,13 @@ tasks:
   - id: V4-09
     title: "Критик v4: снимки 390/1440, правки кода страницы, другое семейство, решают детерминированные проверки"
     milestone: V4
-    deps: [V4-05, V4-06]
+    deps: [V4-05]
     specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4", specs/agents/builder-v3.md]
     owner: agents
     parallel_group: v4-b
     estimate_days: 1
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: session_01FAiGcdwk6WNp3eioRKs2Fc
     owns: ["packages/agents/src/builder/v3/critic/**"]
     acceptance:
       - "Критик видит настоящие снимки, правит код страниц (не только закрытый список операций), не больше 2 циклов; правка, ломающая гейт или сценарий, откатывается"
