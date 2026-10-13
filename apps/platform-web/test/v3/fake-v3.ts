@@ -382,7 +382,7 @@ export async function serveV3(page: Page, fake: FakeV3): Promise<void> {
       const r = fake.approve(req.postDataJSON());
       return json(route, r.status, r.body);
     }
-    if (path === "/directions" && req.method() === "GET") return json(route, 200, fake.directions());
+    if (path === "/directions") return json(route, req.method() === "POST" ? 201 : 200, fake.directions());
     if (path === "/directions/pick" && req.method() === "POST") {
       const r = fake.pick(req.postDataJSON());
       return json(route, r.status, r.body);
