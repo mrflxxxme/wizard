@@ -11,7 +11,6 @@ const TARGETS = [
   { name: "DeepSeek", keyEnv: "DEEPSEEK_API_KEY", bases: ["https://api.deepseek.com/v1"], prefer: [/v4.*flash/i, /chat/i, /./] },
   { name: "Kimi", keyEnv: "KIMI_API_KEY", bases: ["https://api.moonshot.ai/v1", "https://api.moonshot.cn/v1"], prefer: [/k3/i, /k2\.?6/i, /kimi/i, /./], temperature: 1, vision: ["kimi-k3"] },
   { name: "MiMo (MIMO_API_KEY)", keyEnv: "MIMO_API_KEY", bases: ["https://api.xiaomimimo.com/v1"], prefer: [/v2\.?6.*pro/i, /pro/i, /flash/i, /./] },
-  { name: "MiMo (MIMO_SECOND_API_KEY)", keyEnv: "MIMO_SECOND_API_KEY", bases: ["https://api.xiaomimimo.com/v1"], prefer: [/v2\.?6.*pro/i, /pro/i, /flash/i, /./] },
   { name: "Z.ai", keyEnv: "ZAI_API_KEY", bases: [process.env.ZAI_BASE_URL || "https://api.z.ai/api/paas/v4"], prefer: [/glm-5\.3$/i, /glm-5/i, /./], vision: ["glm-5v", "glm-5v-turbo", "glm-5.3v", "glm-4.6v", "glm-4.5v"] },
 ];
 
