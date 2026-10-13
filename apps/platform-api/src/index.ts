@@ -119,6 +119,14 @@ export {
   type V3BudgetStatus,
   v3BudgetStatus,
 } from "./billing/v3-limits.js";
+/** V4-04: build reports — collect, store, render; the founder's build check of the issue sweeper. */
+export {
+  type BuildReport,
+  isFounderBuild,
+  loadBuildReport,
+  renderReportMd,
+  reportStorage,
+} from "./builds-v3/report/index.js";
 export {
   assertStartupAllowed,
   type Config,

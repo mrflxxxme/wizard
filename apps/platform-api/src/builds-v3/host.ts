@@ -58,6 +58,7 @@ import {
   platformCritic,
 } from "./critic.js";
 import { liveStats, withLiveProgress } from "./progress.js";
+import { isFounderBuild, startBuildReport } from "./report/index.js";
 import { platformTechreview } from "./techreview.js";
 import { templateGateHooks } from "./template-gate.js";
 
@@ -374,6 +375,8 @@ export async function buildByBrief(
     photos?: PhotoHost | null;
     /** V3-40: the shared file storage (the photo library wz_photos/*) — the critic's browser shows the real photos. */
     files?: FileStorage | null;
+    /** V4-04: WIZARD_FOUNDER_EMAIL — the founder's builds keep the records of their model calls. */
+    founderEmail?: string | null;
   },
 ): Promise<{ status: "succeeded"; summary_ru: string }> {
   const systemId = host.run.systemId;
@@ -396,6 +399,19 @@ export async function buildByBrief(
     });
     return demo;
   };
+  // V4-04: the report of the build (screenshots, gates and scenarios with their HTTP responses, critic, ₽ and minutes).
+  const founder = await once("v4_report_founder", () => isFounderBuild(o.pg, host.run.id, o.founderEmail));
+  const report = startBuildReport({
+    pg: o.pg,
+    runId: host.run.id,
+    files: o.files ?? null,
+    store: host.store,
+    browser: withBrowser ? provider : null,
+    founder,
+    critic: { ...(o.files ? { photo: criticLibraryPhotos(o.files) } : {}), data: demoRows },
+    signal: host.signal,
+    ...(o.log ? { log: o.log } : {}),
+  });
   // V3-12 / V4-06: the page composer (skeleton without a model; pages as code through host.route); the judge of the
   // home page's two first screens sees them in the process Chromium (the critic's inspector).
   const composer =
@@ -413,7 +429,7 @@ export async function buildByBrief(
         : {},
     );
   const v3: V3Host = {
-    route: host.route,
+    route: report.route(host.route),
     runStep: host.runStep,
     emit: (type, payload) => host.emit(type as EventType, payload),
     signal: host.signal,
@@ -439,7 +455,10 @@ export async function buildByBrief(
       if (errored.length) return { ok: false, problems: errored.map((c) => c.message_ru), unavailable: true };
       return { ok: true, problems: [] };
     },
-    checkScenario: (input) => checkScenario(host, provider, withBrowser, input),
+    checkScenario: (input) =>
+      report.scenario(input.scenario.id, () =>
+        checkScenario(host, report.provider(provider), withBrowser, input),
+      ),
     goalBrowser: withBrowser,
     // V3-13: the visual critic in the process Chromium by default — with the platform's composer (its site model).
     // V3-14: the template gate with the process browser (without one the stage stays skipped); o.hooks override.
@@ -503,7 +522,19 @@ export async function buildByBrief(
     ...(request ? { request } : {}),
     platformUrl: o.platformOrigin,
     ...(cap !== null ? { runCapRub: cap } : {}),
+  }).catch(async (e: unknown) => {
+    await report.finish({
+      status: "failed",
+      code: typeof (e as { code?: unknown })?.code === "string" ? (e as { code: string }).code : "INTERNAL",
+      message: String((e as Error)?.message ?? e).slice(0, 300),
+    });
+    throw e;
   });
+  await report.finish(
+    out.status === "succeeded"
+      ? { status: "succeeded" }
+      : { status: "failed", code: out.code, message: out.message_ru },
+  );
   if (out.status === "succeeded") return { status: "succeeded", summary_ru: out.summary_ru };
   throw new RunFailure(out.code, out.message_ru, out.retryable);
 }

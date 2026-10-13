@@ -1,31 +1,26 @@
-// Canvas screen /s/:systemId of the modules pipeline (B2-25, platform-screens.yaml#canvas, prototype E, grill-7): the
-// client system grows on the whole screen from the first phrase, the chat floats bottom-centre (a pull-up sheet on the
-// phone), the plan is approved on the canvas and the build «materializes» it; «Как это работает» shows the automation.
+// Canvas v4 /s/:systemId (V4-11, D79_v4 (8), grill-9 №4): the client system on the whole window, 1 to 1 — the live
+// draft runtime at the real width of the window (or 390 px for «Телефон»), working forms, booking and payment. Everything
+// else floats: an island of icons (chat, the build with its ring, brief, device, edit, publication) that hides on
+// Ctrl/Cmd+B, and panels that slide over the system from the right (from below on a phone) without changing its width.
+// Esc or a click on the system closes them. During a build a thin bar runs along the top and short notices say what
+// landed; the frame changes in batches, never showing a half-built page (preview/SystemFrame.tsx). Systems of the
+// modules pipeline v2 open here too: the board v2 is gone, their plan is approved from the chat.
 import "@wizard/ui-kit/v2/theme.css";
 import {
   ActionButton,
-  businessColors,
-  type CanvasBlockState,
   ChatMessage,
-  ChatSheet,
-  Chip,
   Composer,
   Glass,
   PLATFORM_COLORS,
-  type PlatformThemeMode,
   QuestionCard,
-  Serif,
   ThemeRoot,
 } from "@wizard/ui-kit/v2";
-import { type CSSProperties, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "../../api/client.js";
 import type {
   Answer,
   GoalQuestion,
   Message,
-  MessageBlock,
-  PlanEdit,
-  PlanSketch,
   RunEvent,
   SystemPlanRevision,
   SystemView,
@@ -35,49 +30,28 @@ import { AppLink } from "../../components/v2/Shell.js";
 import { openSupport } from "../../features/support/SupportWidget.js";
 import { canvas } from "../../i18n/ru/canvas.js";
 import { demo } from "../../i18n/ru/demo.js";
-import { support } from "../../i18n/ru/support.js";
 import { ru } from "../../i18n/ru.js";
+import { type Device, openPreviewTab, SystemFrame } from "../../preview/SystemFrame.js";
 import { subscribeRun } from "../../run/stream.js";
 import { useCanvasBrief } from "../brief/CanvasBrief.js";
-import { briefRu } from "../brief/ru.js";
 import { useBriefUpload } from "../v3/BriefUpload.js";
-import { LivePreview, lastReportRun, useV3Live } from "../v3/build/index.js";
+import { lastReportRun, useV3Live } from "../v3/build/index.js";
 import { useKeyWindows } from "../v3/keys/index.js";
-import { publishRu, publishRunState, V3PublishCard } from "../v3/publish/index.js";
+import { publishRunState, V3PublishCard } from "../v3/publish/index.js";
 import { DELEGATE_OPTION_ID, v3Question } from "../v3/question.js";
 import { v3Ru } from "../v3/ru.js";
 import { StyleDrawer, spentLine, V3BuildCard } from "../v3/V3Build.js";
-import { Board, type BoardView, XrayData } from "./Board.js";
 import { buildProgress, remainingText } from "./buildProgress.js";
 import s from "./Canvas.module.css";
-import {
-  blockSignature,
-  type CanvasBlockModel,
-  type CanvasModel,
-  canvasModel,
-  type LocalAnswer,
-  materializedCount,
-} from "./model.js";
-import { blockActions } from "./pick.js";
-import { xrayModel } from "./xray.js";
-
-/** The block the client tapped («ткни и скажи», B2-29: hints and edits in pick.ts). */
-export interface SelectedBlock {
-  id: string;
-  kind: CanvasBlockModel["kind"];
-  title: string;
-  module?: string;
-  /** Index of the landing section in the plan (PATCH /plan update_section). */
-  sectionIndex?: number;
-}
+import { islandRu, stageRu } from "./ru.js";
 
 export interface CanvasProps {
   systemId: string;
   /** GET /systems/:id already read by the route (pipeline = modules). */
   initial: SystemView;
-  /** A block was picked (null — the pick was cleared). */
-  onBlockSelect?(block: SelectedBlock | null): void;
 }
+
+type PanelId = "chat" | "build" | "publish";
 
 interface Line {
   id: string;
@@ -86,28 +60,18 @@ interface Line {
   warn: boolean;
 }
 
-interface LocalAnswerRow extends LocalAnswer {
+interface LocalAnswerRow {
   answer: Answer;
+  label: string;
 }
 
-/** The x-ray layer shows itself while this part of the build runs (grill-7 #3: «на несколько секунд»). */
-const XRAY_AUTO = { from: 0.3, to: 0.7 } as const;
-const THEME_KEY = "wz.canvas.theme";
 const NO_EVENTS: RunEvent[] = [];
-const TOUCH_MS = 1800;
 /** api.yaml postAnswers: an answer in own words is at most this long (longer — refused before the request). */
 const ANSWER_MAX = 500;
+/** A build notice stays this long over the system. */
+const NEWS_MS = 4000;
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : ru.errors.generic);
-
-function readTheme(): PlatformThemeMode {
-  try {
-    const v = window.localStorage.getItem(THEME_KEY);
-    return v === "light" || v === "dark" ? v : "auto";
-  } catch {
-    return "auto";
-  }
-}
 
 function darkQuery(): MediaQueryList | null {
   return typeof window !== "undefined" && typeof window.matchMedia === "function"
@@ -127,17 +91,11 @@ function useDarkScheme(): boolean {
   return dark;
 }
 
-/** Stable key of a sketch: the plan reloads the canvas only when its fingerprint changes (api.yaml#PlanSketch). */
-export function sketchKey(sk: PlanSketch): string {
-  if (sk.stage === "plan") return `plan:${sk.fingerprint ?? JSON.stringify(sk.errors.map((e) => e.code))}`;
-  return `interview:${JSON.stringify([sk.goals.map((g) => g.id), sk.modules.map((m) => m.id), sk.outOfScope])}`;
-}
-
 function messageText(m: Message): string {
   if (m.role === "user") {
     const masked = m.payload?.maskedText;
     const text = typeof masked === "string" ? masked : (m.text ?? "");
-    // B2-29: a wish to a canvas block carries its label.
+    // B2-29: a wish to a canvas block of a v2 system carries its label.
     const block = m.payload?.block as { title?: unknown } | undefined;
     return typeof block?.title === "string" && text ? canvas.pick.wish(block.title, text) : text;
   }
@@ -149,13 +107,37 @@ function isGoalQuestion(q: unknown): q is GoalQuestion {
   return !!o && typeof o.id === "string" && typeof o.text === "string" && Array.isArray(o.options);
 }
 
-export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): ReactNode {
+/** An icon of the island: 24×24 strokes. */
+function Icon({ d }: { d: string }): ReactNode {
+  return (
+    <svg className={s.icon} viewBox="0 0 24 24" aria-hidden="true">
+      <path d={d} />
+    </svg>
+  );
+}
+
+const ICONS = {
+  chat: "M4 5h16v11H9l-5 4z",
+  brief: "M7 3.5h7l4 4v13H7zM14 3.5v4h4M10 12h5M10 15.5h5",
+  desktop: "M3.5 5h17v11h-17zM9 20h6M12 16v4",
+  phone: "M8 3h8v18H8zM11 18h2",
+  edit: "M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4",
+  publish: "M12 15V4M7.5 8.5 12 4l4.5 4.5M5 14v6h14v-6",
+  open: "M14 4h6v6M20 4l-9 9M18 14v6H4V6h6",
+  more: "M5 12h.01M12 12h.01M19 12h.01",
+  hide: "M6 9l6 6 6-6",
+  show: "M6 15l6-6 6 6",
+  home: "M4 11 12 4l8 7M6 9.5V20h12V9.5",
+  settings: "M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4",
+  support: "M12 21a9 9 0 1 0-9-9c0 1.6.4 3 1.1 4.3L3 21l4.7-1.1A9 9 0 0 0 12 21z",
+  close: "M6 6l12 12M18 6 6 18",
+} as const;
+
+export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
   const { api, auth, roleIn } = usePlatform();
   const [styleOpen, setStyleOpen] = useState(false);
   const [view, setView] = useState<SystemView>(initial);
   const [plan, setPlan] = useState<SystemPlanRevision | null>(null);
-  const [sketch, setSketch] = useState<PlanSketch | null>(null);
-  const sketchRef = useRef<string | null>(null);
   const [runId, setRunId] = useState<string | null>(initial.activeRunId ?? null);
   /** V3-19: the publish run started from the canvas (before its run_started arrives). */
   const [publishRunId, setPublishRunId] = useState<string | null>(null);
@@ -168,37 +150,26 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
-  const [board, setBoard] = useState<BoardView>("overview");
-  const [readyCard, setReadyCard] = useState(true);
-  const [manualXray, setManualXray] = useState<boolean | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  /** The last removed section and the edits that bring it back («Вернуть»). */
-  const [undo, setUndo] = useState<{ title: string; edits: PlanEdit[] } | null>(null);
-  const [theme, setTheme] = useState<PlatformThemeMode>(readTheme);
   const [live, setLive] = useState("");
-  const [fx, setFx] = useState<{ born: Set<string>; touched: Set<string> }>({
-    born: new Set(),
-    touched: new Set(),
-  });
-  const sysDark = useDarkScheme();
-  const dark = theme === "dark" || (theme === "auto" && sysDark);
+  const [news, setNews] = useState<{ id: number; text: string } | null>(null);
+  const [device, setDevice] = useState<Device>("desktop");
+  const [hidden, setHidden] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [openError, setOpenError] = useState(false);
+  const route = useRef("/");
+  const dark = useDarkScheme();
 
   const stage = view.system.stage;
-  // The floating «Написать команде» would cover the chat: on the canvas it lives in the top bar (D68).
+  const built = view.system.previewRevision != null;
+  // Nothing to look at yet (the interview, the brief before «Собрать»): the chat is open from the start.
+  const [panel, setPanel] = useState<PanelId | null>(() =>
+    initial.system.previewRevision == null && initial.system.stage !== "building" ? "chat" : null,
+  );
+
+  // The floating «Написать команде» would cover the island: on the canvas it lives in «Ещё» (D68).
   useEffect(() => {
     document.documentElement.setAttribute("data-wz-canvas", "");
     return () => document.documentElement.removeAttribute("data-wz-canvas");
-  }, []);
-  // Height of the floating chat (--dock-h): the canvas scrolls above it and the x-ray data panel sits over it.
-  const screenRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = screenRef.current;
-    const dockEl = el?.querySelector<HTMLElement>('[data-testid="p-sheet-dock"]');
-    if (!el || !dockEl || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => el.style.setProperty("--dock-h", `${dockEl.offsetHeight}px`));
-    ro.observe(dockEl);
-    return () => ro.disconnect();
   }, []);
   // The page under the canvas has the canvas background (overscroll, safe areas), set through CSSOM (CSP).
   useEffect(() => {
@@ -211,23 +182,19 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
     };
   }, [dark]);
   const announce = useCallback((t: string) => setLive(t), []);
-  // V3-06: the system brief (a system with a brief v3): «Бриф» button, short brief before «Собрать», the panel.
-  const focusInput = useCallback(
-    () => screenRef.current?.querySelector<HTMLElement>('[data-testid="p-composer-input"]')?.focus(),
-    [],
-  );
+  const screenRef = useRef<HTMLDivElement>(null);
+  const focusInput = useCallback(() => {
+    setPanel("chat");
+    setHidden(false);
+    requestAnimationFrame(() =>
+      screenRef.current?.querySelector<HTMLElement>('[data-testid="p-composer-input"]')?.focus(),
+    );
+  }, []);
+  // V3-06: the system brief (a system with a brief v3): «Бриф» in the island, short brief before «Собрать», the panel.
   const brief = useCanvasBrief(systemId, { orgId: view.system.orgId, announce, onAskInChat: focusInput });
   // V3-04: «Приложить ТЗ» of a v3 system — the new version goes straight to the brief.
   const upload = useBriefUpload(systemId, { onUploaded: brief.adopt, onOpen: brief.show, announce });
   const reloadBrief = brief.reload;
-
-  const applySketch = useCallback((sk: PlanSketch | null | undefined) => {
-    if (!sk) return;
-    const key = sketchKey(sk);
-    if (key === sketchRef.current) return;
-    sketchRef.current = key;
-    setSketch(sk);
-  }, []);
 
   const reload = useCallback(async () => {
     const v = await api.getSystem(systemId);
@@ -237,35 +204,20 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
 
   const loadPlan = useCallback(async () => {
     try {
-      const r = await api.getSystemPlan(systemId);
-      setPlan(r.plan);
-      applySketch(r.plan?.sketch);
+      setPlan((await api.getSystemPlan(systemId)).plan);
     } catch {
-      // No plan yet (interview) or a network blip: the canvas keeps what it has.
+      // No plan (a v3 system, the interview) or a network blip: the canvas keeps what it has.
     }
-  }, [api, systemId, applySketch]);
+  }, [api, systemId]);
 
-  // Plan and sketch of a system past the interview; the interview sketch is replayed from its run (plan_sketch).
   // biome-ignore lint/correctness/useExhaustiveDependencies: once per opened system
   useEffect(() => {
-    if (initial.system.stage !== "interview") {
-      void loadPlan();
-      return;
-    }
-    const q = [...initial.messages].reverse().find((m) => m.kind === "questions" && m.runId);
-    if (!q?.runId || q.runId === initial.activeRunId) return;
-    return subscribeRun({
-      url: (after) => api.eventsUrl(q.runId as string, after),
-      onEvent: (e) => {
-        if (e.type === "plan_sketch") applySketch(e.payload.sketch as PlanSketch);
-      },
-    });
+    if (initial.system.stage !== "interview") void loadPlan();
   }, []);
 
   const onEvent = useCallback(
     (e: RunEvent) => {
       setEvents((xs) => (xs.some((x) => x.seq === e.seq) ? xs : [...xs, e]));
-      if (e.type === "plan_sketch") applySketch(e.payload.sketch as PlanSketch);
       if (e.type === "chat_output") {
         void reload().catch(() => {});
         reloadBrief();
@@ -278,13 +230,12 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
         // V3-18: a failed turn leaves its question pending — it is asked again, not hidden by the answer given.
         if (e.type === "run_failed") setAnswers([]);
         setSent([]);
-        setManualXray(null);
         void reload().catch(() => {});
         void loadPlan();
         reloadBrief();
       }
     },
-    [applySketch, reload, loadPlan, reloadBrief],
+    [reload, loadPlan, reloadBrief],
   );
 
   useEffect(() => {
@@ -301,8 +252,7 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
     replayedFailure.current = true;
     setRunId(id);
   }, [initial.system.stage, plan?.buildRunId, runId]);
-  // V3-17: a v3 system (a brief, no plan) opened after its build replays that build from the server: the scenarios,
-  // the spend and the growing system as the build left them.
+  // V3-17: a v3 system opened after its build replays that build from the server (scenarios, spend, revision).
   const reportRun = useMemo(() => lastReportRun(view.messages), [view.messages]);
   const replayedV3 = useRef(false);
   useEffect(() => {
@@ -320,19 +270,26 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
   const stopBuild = useCallback(async () => {
     if (runId) await api.cancelRun(runId);
   }, [api, runId]);
-  // V3-17: the live v3 build from the structured progress of the run's events (main, ready dock, toast, time).
+  const runActive =
+    runId !== null && !events.some((e) => e.type === "run_finished" || e.type === "run_failed");
+  const onNews = useCallback((t: string) => setNews({ id: Date.now(), text: t }), []);
+  const closePanels = useCallback(() => {
+    setPanel(null);
+    setMoreOpen(false);
+  }, []);
+  // V3-17: the live v3 build from the structured progress of the run's events (panel, revision, toast, time).
   const v3live = useV3Live({
     systemId,
     name: view.system.name,
     events: runKind === "build" ? events : NO_EVENTS,
     announce,
+    onNews,
+    onLook: closePanels,
     ...(runKind === "build" && editable ? { onStop: stopBuild } : {}),
   });
   // V3-06: «потрачено X ₽ из Y» while a build runs — the v3 progress, else the harness v3 lines.
   const spend = runKind === "build" ? (v3live.spend ?? spentLine(events)) : null;
   const eta = v3live.remainingSec ?? progress.remainingSec;
-  const runActive =
-    runId !== null && !events.some((e) => e.type === "run_finished" || e.type === "run_failed");
   // V3-19: a publish run is followed in the publication card, not as the model «thinking».
   const publishing = runId !== null && (runKind === "publish" || runId === publishRunId);
   const publishRun = useMemo(() => (publishing ? publishRunState(events) : null), [publishing, events]);
@@ -373,120 +330,15 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
           retry: failedEvent.payload.retryable !== false ? retryTurn.current : null,
         }
       : null;
-  const localAnswers = useMemo<LocalAnswer[]>(
-    () => answers.map((a) => ({ ...(a.module ? { module: a.module } : {}), label: a.label })),
-    [answers],
-  );
 
-  const model: CanvasModel | null = useMemo(
-    () => (sketch ? canvasModel(sketch, view.system.name || sketch.niche, localAnswers) : null),
-    [sketch, view.system.name, localAnswers],
-  );
-
-  const selected = useMemo(
-    () =>
-      selectedId && model
-        ? ([...model.frames.site, ...model.frames.phone, ...model.frames.cab].find(
-            (b) => b.id === selectedId,
-          ) ?? null)
-        : null,
-    [model, selectedId],
-  );
-
-  // «Born» and «touched» blocks of a new model (amber edge for a change, rise for a new block).
-  const sigs = useRef<Map<string, string> | null>(null);
-  useEffect(() => {
-    if (!model) return;
-    const all = [...model.frames.site, ...model.frames.phone, ...model.frames.cab];
-    const prev = sigs.current;
-    const next = new Map(all.map((b) => [b.id, blockSignature(b)]));
-    sigs.current = next;
-    if (!prev) {
-      setFx({ born: new Set(next.keys()), touched: new Set() });
-      announce(canvas.chat.sketchReady);
-    } else {
-      const born = new Set([...next.keys()].filter((k) => !prev.has(k)));
-      const touched = new Set([...next.keys()].filter((k) => prev.has(k) && prev.get(k) !== next.get(k)));
-      if (born.size === 0 && touched.size === 0) return;
-      setFx({ born, touched });
-    }
-    const t = setTimeout(() => setFx({ born: new Set(), touched: new Set() }), TOUCH_MS);
-    return () => clearTimeout(t);
-  }, [model, announce]);
-
-  const xray = useMemo(
-    () => (sketch?.stage === "plan" && model ? xrayModel(sketch, model) : null),
-    [sketch, model],
-  );
   const building = stage === "building" || (runKind === "build" && progress.phase === "running");
-  const autoXray =
-    building &&
-    progress.phase === "running" &&
-    progress.fraction >= XRAY_AUTO.from &&
-    progress.fraction < XRAY_AUTO.to;
-  const xrayVisible = !!xray && (manualXray ?? autoXray);
-
   const ready = stage === "ready" && !runActive;
-  // A built system whose plan was edited waits for the rebuild: its blocks stay built (B2-29).
-  const built = view.system.previewRevision !== null;
-  const order = model?.order ?? [];
-  const done = materializedCount(order.length, progress.fraction);
-  const stateOf = useCallback(
-    (id: string): CanvasBlockState => {
-      if (ready || (stage === "card" && built && progress.phase === "idle")) return "ready";
-      const i = order.indexOf(id);
-      if (stage === "building" || stage === "failed" || progress.phase !== "idle") {
-        if (progress.phase === "done") return "ready";
-        if (i < done) return "ready";
-        if (i === done && progress.phase === "running") return "materializing";
-      }
-      return "sketch";
-    },
-    [ready, built, order, stage, progress.phase, done],
-  );
-  const delayOf = useCallback(() => 0, []);
-
-  // «Ткни и скажи» (B2-29): blocks of a plan awaiting approval or of a built system; never during a run.
-  const canPick =
-    !!plan && sketch?.stage === "plan" && !runActive && !building && (ready || stage === "card");
-  const actions = useMemo(
-    () => (selected && sketch && canPick ? blockActions(selected, sketch, plan?.plan ?? null) : null),
-    [selected, sketch, canPick, plan],
-  );
-  // The picked block went away (removed, or picking is over): the pick is cleared.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: pick is a plain function of this render
-  useEffect(() => {
-    if (selectedId && (!canPick || (model && !selected))) pick(null);
-  }, [selectedId, canPick, model, selected]);
-
-  // Esc clears the pick when the history is closed (the sheet handles Esc itself while open).
-  useEffect(() => {
-    if (!selected) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !open) pick(null);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  });
-
-  function pick(b: CanvasBlockModel | null) {
-    const next = b && selectedId === b.id ? null : b;
-    setSelectedId(next?.id ?? null);
-    if (next) setUndo(null);
-    if (next) announce(canvas.pick.selected(next.title));
-    const idx = next?.data.sectionIndex;
-    onBlockSelect?.(
-      next
-        ? {
-            id: next.id,
-            kind: next.kind,
-            title: next.title,
-            ...(next.module ? { module: next.module } : {}),
-            ...(typeof idx === "number" ? { sectionIndex: idx } : {}),
-          }
-        : null,
-    );
-  }
+  const sketch = plan?.sketch?.stage === "plan" ? plan.sketch : null;
+  const fraction = v3live.live ? v3live.fraction : progress.fraction;
+  const stepLabel = v3live.stageLabel ?? (progress.label || canvas.build.stages.plan);
+  // The newest revision with a preview: the system as saved, or the one the running build grew to.
+  const revision = Math.max(view.system.previewRevision ?? -1, v3live.previewRevision ?? -1);
+  const shownRevision = revision >= 0 ? revision : null;
 
   async function act<T>(name: string, fn: () => Promise<T>): Promise<T | null> {
     setBusy(name);
@@ -504,6 +356,16 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
     }
   }
 
+  // A build started: the panels give the whole window back to the system (the bar and notices say how it goes).
+  const started = useCallback(
+    (id: string) => {
+      setRunId(id);
+      closePanels();
+      announce(canvas.build.ring);
+    },
+    [announce, closePanels],
+  );
+
   async function submitAnswers(rows: LocalAnswerRow[], rest = false): Promise<boolean> {
     const r = await act("answers", () =>
       api.postAnswers(systemId, {
@@ -519,9 +381,9 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
   }
 
   /** An answer to the question; `typed` — the own words from the composer, put back if the answer is refused. */
-  function answer(q: GoalQuestion, a: Answer, label: string, typed?: string) {
+  function answer(a: Answer, label: string, typed?: string) {
     const before = answers;
-    const rows = [...answers, { answer: a, label, ...(q.module ? { module: q.module } : {}) }];
+    const rows = [...answers, { answer: a, label }];
     setAnswers(rows);
     setSent((x) => [...x, label]);
     announce(canvas.chat.answered(label));
@@ -538,59 +400,6 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
     });
   }
 
-  /**
-   * A hint of a picked block (B2-29): the edits go to PATCH /plan with the revision the client sees, no model and no
-   * credits. The dry run answers first and the sketch is redrawn by it at once; then the edit is saved. A stale
-   * revision reloads the sketch with a plain message; an edit the plan cannot take is explained and rolled back.
-   */
-  async function edit(edits: PlanEdit[], said: string, after?: { title: string; edits: PlanEdit[] }) {
-    const base = plan;
-    if (!base || busy !== null) return;
-    setBusy("edit");
-    setError(null);
-    setNotice(null);
-    setUndo(null);
-    let previewed = false;
-    try {
-      const dry = await api.editPlan(systemId, { revision: base.revision, edits, dryRun: true });
-      applySketch(dry.plan.sketch);
-      previewed = true;
-      const saved = await api.editPlan(systemId, { revision: base.revision, edits });
-      setPlan(saved.plan);
-      applySketch(saved.plan.sketch);
-      setSent((x) => [...x, said]);
-      announce(canvas.pick.done(said));
-      if (after) setUndo(after);
-      // A built system: the edit waits for the rebuild (the plan card says «Пересобрать»).
-      if (built) setNotice(canvas.pick.rebuild);
-      if (stage === "ready") await reload().catch(() => {});
-    } catch (e) {
-      if (e instanceof ApiError && e.code === "PLAN_REVISION_STALE") {
-        setNotice(canvas.pick.stale);
-        sketchRef.current = null;
-        await loadPlan();
-        await reload().catch(() => {});
-      } else {
-        setError(
-          e instanceof ApiError && e.code === "PLAN_INVALID" ? canvas.pick.invalid(e.message) : errText(e),
-        );
-        if (previewed) {
-          sketchRef.current = null;
-          applySketch(base.sketch);
-        }
-      }
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  function hint(id: string) {
-    const h = actions?.hints.find((x) => x.id === id);
-    if (!h || !selected) return;
-    const title = selected.title;
-    void edit(h.edits, h.said, h.undo ? { title, edits: h.undo } : undefined);
-  }
-
   async function send(t: string) {
     const value = t.trim();
     if (!value) return;
@@ -604,30 +413,15 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
       }
       setError(null);
       setText("");
-      answer(question, { questionId: question.id, text: value }, value, t);
+      answer({ questionId: question.id, text: value }, value, t);
       return;
     }
-    // A wish with the label of the picked block goes to the planner about that block (B2-29).
-    const target = selected && canPick ? selected : null;
-    const idx = target?.data.sectionIndex;
-    const block: MessageBlock | undefined = target
-      ? {
-          id: target.id,
-          title: target.title,
-          ...(target.module ? { module: target.module } : {}),
-          ...(typeof idx === "number" ? { sectionIndex: idx } : {}),
-        }
-      : undefined;
-    const said = target ? canvas.pick.wish(target.title, value) : value;
     const post = async (first: boolean): Promise<void> => {
-      const r = await act("message", () => api.postMessage(systemId, value, block ? { block } : {}));
+      const r = await act("message", () => api.postMessage(systemId, value, {}));
       if (!r) return;
       retryTurn.current = () => post(false);
-      if (first) {
-        setText("");
-        setUndo(null);
-      }
-      setSent((x) => [...x, said]);
+      if (first) setText("");
+      setSent((x) => [...x, value]);
       setRunId(r.run.id);
       await reload().catch(() => {});
     };
@@ -639,60 +433,24 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
     const r = await act("approve", () => api.approvePlan(systemId, plan.revision));
     if (!r) return;
     setNotice(null);
-    setUndo(null);
-    setManualXray(null);
-    setReadyCard(true);
-    setBoard("overview");
-    setRunId(r.run.id);
-    announce(canvas.build.ring);
+    started(r.run.id);
     await reload().catch(() => {});
   }
 
   async function retry() {
     const r = await act("fix", () => api.startFix(systemId));
     if (!r) return;
-    setManualXray(null);
-    setRunId(r.run.id);
+    started(r.run.id);
     await reload().catch(() => {});
   }
 
-  function chooseView(v: BoardView) {
-    window.scrollTo({ top: 0 });
-    setBoard(v);
-    setReadyCard(false);
-    setManualXray(false);
-    pick(null);
+  async function openTab() {
+    setMoreOpen(false);
+    setOpenError(!(await openPreviewTab(api, systemId, route.current)));
   }
-
-  function toggleTheme() {
-    const next = dark ? "light" : "dark";
-    setTheme(next);
-    try {
-      window.localStorage.setItem(THEME_KEY, next);
-    } catch {
-      // Private mode: the choice lives for this tab.
-    }
-  }
-
-  // Business colour of the client system once the plan has it (grill-7 #7). Set as custom properties on the screen
-  // root (CSSOM: the platform CSP forbids injected <style>, so ThemeRoot's own business stylesheet is not used here).
-  const tint = useMemo<CSSProperties | undefined>(() => {
-    const hex = model?.accent;
-    if (!hex) return undefined;
-    const b = businessColors(hex, dark ? "dark" : "light");
-    return {
-      "--p-biz": b.biz,
-      "--p-biz-text": b.bizText,
-      "--p-biz-ink": b.bizInk,
-      "--p-biz-soft": b.bizSoft,
-      "--p-biz-ring": b.bizRing,
-      "--p-biz-wash": b.bizWash,
-      "--p-tint": b.biz,
-      "--p-tint-text": b.bizText,
-      "--p-tint-soft": b.bizSoft,
-      "--p-tint-ring": b.bizRing,
-    } as CSSProperties;
-  }, [model?.accent, dark]);
+  const onRoute = useCallback((r: string) => {
+    route.current = r;
+  }, []);
 
   const messages = [...view.messages].sort((a, b) => a.seq - b.seq);
   const lines = messages.flatMap((m): Line[] => {
@@ -705,61 +463,16 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
     ...lines,
     ...sent.map((t, i): Line => ({ id: `sent-${i}`, from: "me", text: t, warn: false })),
   ];
-  const blockCount = order.length;
-  // «Система готова»: back to the top of the canvas, like after the last block of the prototype.
-  const finished = progress.phase === "done";
-  useEffect(() => {
-    if (!finished) return;
-    const reduce =
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    window.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
-  }, [finished]);
   const failure = stage === "failed" || progress.phase === "failed" ? progress.failure : null;
 
+  // ——— what the chat asks of the owner now (a question, a card to act on) ———
   let dock: ReactNode = null;
-  /** The dock shows only the last lines of the chat (a short brief replaces them, V3-06). */
-  let recentOnly = false;
-  if (selected && actions) {
-    dock = (
-      <div className={s.pick} data-testid="canvas-pick">
-        {actions.variant && (
-          <p className={s.pickMeta} data-testid="canvas-pick-variant">
-            {canvas.pick.variantOf(actions.variant.index, actions.variant.of)}
-          </p>
-        )}
-        {actions.params.length > 0 && (
-          <fieldset className={s.params} data-testid="canvas-params">
-            <legend className={s.srOnly}>{canvas.pick.params}</legend>
-            {actions.params.map((c) => (
-              <fieldset key={c.param} className={s.paramSet}>
-                <legend className={c.kind === "bool" ? s.srOnly : s.paramLabel}>{c.label}</legend>
-                <div className={s.param}>
-                  {c.options.map((o) => (
-                    <Chip
-                      key={o.id}
-                      tone="outline"
-                      pressed={o.pressed}
-                      disabled={busy !== null}
-                      testId={`canvas-param-${c.param}${c.kind === "bool" ? "" : `-${o.id}`}`}
-                      onClick={() => void edit(o.edits, o.said)}
-                    >
-                      {o.label}
-                    </Chip>
-                  ))}
-                </div>
-              </fieldset>
-            ))}
-          </fieldset>
-        )}
-        <p className={s.pickNote} data-testid="canvas-pick-note">
-          {built ? canvas.pick.built : canvas.pick.free}
-        </p>
-      </div>
-    );
-  } else if (question) {
+  /** The owner has something to answer or press: the chat opens by itself. */
+  let attention: string | null = null;
+  if (question) {
     // V3-03: a v3 question has «Почему советуем», «Решите за меня» and «Дальше решай сам» as its own buttons.
     const q3 = v3Question(question);
+    attention = `q:${question.id}`;
     dock = (
       <div className={s.qwrap}>
         <QuestionCard
@@ -776,7 +489,7 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
           selected={[]}
           onToggle={(id) => {
             const o = question.options.find((x) => x.id === id);
-            if (o) answer(question, { questionId: question.id, optionId: o.id }, o.label);
+            if (o) answer({ questionId: question.id, optionId: o.id }, o.label);
           }}
           {...(q3
             ? {
@@ -785,7 +498,6 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
                   ? {
                       onDelegate: () =>
                         answer(
-                          question,
                           { questionId: question.id, optionId: DELEGATE_OPTION_ID },
                           v3Ru.question.delegated,
                         ),
@@ -814,8 +526,10 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
         )}
       </div>
     );
-  } else if (stage === "card" && plan && !runActive && sketch?.stage === "plan") {
+  } else if (stage === "card" && plan && !runActive && sketch) {
+    // A v2 system: its plan is approved from the chat (the board v2 is gone, V4-11).
     const errors = plan.errors ?? [];
+    attention = `plan:${plan.revision}`;
     dock = (
       <div className={s.sum} data-testid="canvas-plan-card">
         <div className={s.sumText}>
@@ -823,7 +537,7 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
           <p className={s.sumMeta}>
             {[
               canvas.plan.goals(sketch.goals.length),
-              canvas.plan.blocks(blockCount),
+              canvas.plan.blocks(sketch.modules.length),
               ...(sketch.outOfScope.length > 0 ? [canvas.plan.out(sketch.outOfScope.length)] : []),
             ].join(" · ")}
             {" · "}
@@ -852,6 +566,7 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
       </div>
     );
   } else if (failure) {
+    attention = `fail:${failure.code}`;
     dock = (
       <div className={s.fail} role="alert" data-testid="canvas-failure">
         <p className={s.failTitle}>{canvas.failed.title}</p>
@@ -890,101 +605,19 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
         )}
       </div>
     );
-  } else if (building) {
-    dock = (
-      <div className={s.bRow} data-testid="canvas-build-row" aria-live="polite">
-        <span className={s.spark} aria-hidden="true" />
-        <span className={s.k}>{canvas.build.doing}</span>
-        <b className={s.bStep} data-testid="canvas-build-step">
-          {progress.label || canvas.build.stages.plan}
-        </b>
-        {progress.index > 0 && (
-          <span className={s.count}>
-            {canvas.chat.step(progress.index, progress.total)}
-            <span className={s.etaInline}> · {remainingText(eta)}</span>
-          </span>
-        )}
-        {progress.reused > 0 && <p className={s.note}>{canvas.build.reused(progress.reused)}</p>}
-        {spend && (
-          <p className={s.note} data-testid="canvas-build-spend">
-            {spend}
-          </p>
-        )}
-      </div>
-    );
-  } else if (ready && readyCard) {
-    dock = (
-      <div className={s.ready} data-testid="canvas-ready">
-        <Serif as="p" size="lg">
-          {canvas.ready.title}
-        </Serif>
-        <p className={s.sumMeta}>{canvas.ready.meta(blockCount)}</p>
-        <div className={s.readyA}>
-          <ActionButton variant="primary" testId="canvas-open-site" onClick={() => chooseView("site")}>
-            {canvas.ready.open.site}
-          </ActionButton>
-          <ActionButton testId="canvas-open-cab" onClick={() => chooseView("cab")}>
-            {canvas.ready.open.cab}
-          </ActionButton>
-          {(model?.frames.phone.length ?? 0) > 0 && (
-            <ActionButton testId="canvas-open-phone" onClick={() => chooseView("phone")}>
-              {canvas.ready.open.phone}
-            </ActionButton>
-          )}
-        </div>
-      </div>
-    );
-  } else if (allLines.length > 0) {
-    recentOnly = true;
-    dock = (
-      <ol className={s.recent} data-testid="canvas-recent">
-        {allLines.slice(-3).map((l) => (
-          <li key={l.id}>
-            <ChatMessage from={l.from} {...(l.warn ? { tone: "warn" as const } : {})}>
-              {l.text}
-            </ChatMessage>
-          </li>
-        ))}
-      </ol>
-    );
+  } else if (ready && v3live.ready) {
+    // V3-17: after a v3 build the chat says «Система готова»; «Посмотреть» closes the panel over the system.
+    dock = v3live.ready;
   }
-
-  // V3-17: after a v3 build the chat says «Система готова» and leads to the system (its live preview).
-  if (v3live.ready && ready && readyCard && !selected && !failure && !question) dock = v3live.ready;
-  // V3-18: the agent's reply to a wish about a built system stays in sight above the publication card.
+  // V3-18: the agent's reply to a wish about a built system stays in sight.
   const lastMessage = messages[messages.length - 1];
   const lastReply =
     lastMessage?.role === "assistant" && lastMessage.kind === "text" && lastMessage.text
       ? lastMessage.text
       : null;
-  // V3-19: a built v3 system — what stops the publication, the owner's data, «Опубликовать», the site and the cabinet.
-  if (brief.available && (ready || (publishing && stage === "ready")) && !selected && !failure && !question)
-    dock = (
-      <>
-        {ready && readyCard ? v3live.ready : null}
-        {lastReply && (
-          <ol className={s.recent} data-testid="canvas-last-reply">
-            <li>
-              <ChatMessage from="ai">{lastReply}</ChatMessage>
-            </li>
-          </ol>
-        )}
-        <V3PublishCard
-          systemId={systemId}
-          view={view}
-          run={publishRun}
-          announce={announce}
-          onStarted={(run) => {
-            setPublishRunId(run.id);
-            setRunId(run.id);
-          }}
-          onChanged={() => void reload().catch(() => {})}
-          {...(editable ? { onFix: () => void retry(), fixing: busy === "fix" } : {})}
-        />
-      </>
-    );
-  // V3-18: a chat turn that failed — its reason and «Повторить» above whatever the dock shows.
-  if (turnFailure)
+  // V3-18: a chat turn that failed — its reason and «Повторить» above whatever the chat shows.
+  if (turnFailure) {
+    attention = `turn:${failedEvent?.runId ?? ""}`;
     dock = (
       <>
         <div className={s.fail} role="alert" data-testid="canvas-turn-failed">
@@ -1004,11 +637,11 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
         {dock}
       </>
     );
-
-  // V3-06: before «Собрать» a system with a brief shows the short brief in the chat (above the plan card).
+  }
   // V3-06: a v3 system with its brief ready (no plan) — the short brief, the style and «Собрать» (startV3Build).
-  const v3Ready = !!brief.current && stage === "card" && !plan && !runActive && !building && !selected;
-  if (v3Ready && brief.current)
+  const v3Ready = !!brief.current && stage === "card" && !plan && !runActive && !building;
+  if (v3Ready && brief.current) {
+    attention = `build:${brief.current.version}`;
     dock = (
       <>
         {brief.summary}
@@ -1016,51 +649,109 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
           systemId={systemId}
           version={brief.current.version}
           brief={brief.current.brief}
-          editable={canEdit(roleIn(view.system.orgId), auth)}
+          editable={editable}
           onStyle={() => setStyleOpen(true)}
           onStale={brief.reload}
           onStarted={(run) => {
-            setManualXray(null);
-            setRunId(run.id);
-            announce(canvas.build.ring);
+            started(run.id);
             void reload().catch(() => {});
           }}
         />
       </>
     );
+  }
   // V3-04: the result of «Приложить ТЗ» (short brief and gaps) stays above the question until «Понятно».
-  if (upload.card)
+  if (upload.card) {
+    attention = "upload";
     dock = (
       <>
         {upload.card}
         {dock}
       </>
     );
-  else if (
+  } else if (
     brief.summary &&
     !v3Ready &&
     !runActive &&
     !building &&
-    !selected &&
     (stage === "card" || (stage === "interview" && !question))
   )
-    dock = recentOnly ? (
-      brief.summary
-    ) : (
+    dock = (
       <>
         {brief.summary}
         {dock}
       </>
     );
-
-  // V3-21: the key window (interception, the agent's request, the result) stays above whatever the dock shows.
-  if (keys.card)
+  // V3-21: the key window (interception, the agent's request, the result) stays above whatever the chat shows.
+  if (keys.card) {
+    attention = "keys";
     dock = (
       <>
         {keys.card}
         {dock}
       </>
     );
+  }
+
+  // The chat opens by itself when it asks something new of the owner.
+  const seenAttention = useRef<string | null>(null);
+  useEffect(() => {
+    if (attention === seenAttention.current) return;
+    seenAttention.current = attention;
+    if (attention) {
+      setPanel("chat");
+      setHidden(false);
+    }
+  }, [attention]);
+
+  // V3-19: a built v3 system — what stops the publication, the owner's data, «Опубликовать», the site and the cabinet.
+  const canPublish = brief.available && (built || publishing);
+  const publishCard = canPublish ? (
+    <V3PublishCard
+      systemId={systemId}
+      view={view}
+      run={publishRun}
+      announce={announce}
+      onStarted={(run) => {
+        setPublishRunId(run.id);
+        setRunId(run.id);
+      }}
+      onChanged={() => void reload().catch(() => {})}
+      {...(editable ? { onFix: () => void retry(), fixing: busy === "fix" } : {})}
+    />
+  ) : null;
+
+  // Esc closes the panel; Ctrl/Cmd+B hides the island and its panels (and shows them again).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        setHidden((h) => !h);
+        closePanels();
+        return;
+      }
+      if (e.key === "Escape" && !brief.open && !styleOpen) closePanels();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [brief.open, styleOpen, closePanels]);
+  // A click on the system (focus goes into its frame) closes the panel over it.
+  useEffect(() => {
+    if (panel === null && !moreOpen) return;
+    const onBlur = () =>
+      setTimeout(() => {
+        const el = document.activeElement;
+        if (el instanceof HTMLIFrameElement && screenRef.current?.contains(el)) closePanels();
+      }, 0);
+    window.addEventListener("blur", onBlur);
+    return () => window.removeEventListener("blur", onBlur);
+  }, [panel, moreOpen, closePanels]);
+  // A build notice disappears by itself.
+  useEffect(() => {
+    if (!news) return;
+    const t = setTimeout(() => setNews(null), NEWS_MS);
+    return () => clearTimeout(t);
+  }, [news]);
 
   // V3-04: a v3 system (it has a brief, or its question is a v3 one) offers «Приложить ТЗ» until the build.
   const v3 = brief.available || questions.some((q) => v3Question(q) !== null);
@@ -1071,270 +762,103 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
       ? canvas.chat.thinking
       : question
         ? canvas.chat.custom
-        : stage === "interview" && !sketch
+        : stage === "interview"
           ? canvas.chat.start
           : canvas.chat.change;
   const canType = !building && !thinking && question?.allowCustom !== false;
+  const hasBuild = building || v3live.live !== null || progress.phase !== "idle";
 
-  return (
-    <ThemeRoot theme={theme} className={s.root} testId="canvas-root">
-      <div
-        ref={screenRef}
-        className={s.screen}
-        style={tint}
-        data-biz={tint ? "" : undefined}
-        data-testid="canvas"
-      >
-        <Glass as="header" className={s.top} testId="canvas-top">
-          <AppLink to="/" className={s.brand} label={canvas.home} testId="canvas-home">
-            <svg viewBox="0 0 20 20" aria-hidden="true">
-              <rect className={s.m1} x="2" y="2" width="10" height="10" rx="3" />
-              <rect className={s.m2} x="8" y="8" width="10" height="10" rx="3" />
-            </svg>
-            <span className={s.wm}>{canvas.brand}</span>
-          </AppLink>
-          {model && (
-            <span className={s.sys}>
-              <Serif as="h1" size="md" className={s.sysName} testId="canvas-name">
-                {view.system.name || sketch?.niche}
-              </Serif>
-            </span>
-          )}
-          <span className={s.grow} />
-          {building && (
-            <span
-              className={s.eta}
-              role="progressbar"
-              aria-label={canvas.build.ring}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={Math.round(progress.fraction * 100)}
-              data-testid="canvas-eta"
-            >
-              <svg className={s.ringSm} width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
-                <circle className={s.tr} cx="11" cy="11" r="8.5" />
-                <circle
-                  className={s.fg}
-                  cx="11"
-                  cy="11"
-                  r="8.5"
-                  pathLength="100"
-                  strokeDasharray="100"
-                  strokeDashoffset={(100 - progress.fraction * 100).toFixed(1)}
-                />
-              </svg>
-              <span className={s.num} data-testid="canvas-eta-text">
-                {remainingText(eta)}
-              </span>
-            </span>
-          )}
-          {ready && (
-            <div
-              className={s.seg}
-              role="radiogroup"
-              aria-label={canvas.views.label}
-              data-testid="canvas-views"
-            >
-              {(["site", "cab", "phone"] as const)
-                .filter((v) => (model?.frames[v].length ?? 0) > 0)
-                .map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    aria-pressed={board === v}
-                    data-testid={`canvas-view-${v}`}
-                    onClick={() => chooseView(v)}
-                  >
-                    {canvas.views[v]}
-                  </button>
-                ))}
-            </div>
-          )}
-          <span className={s.grow} />
-          {brief.available && (
-            <button
-              type="button"
-              className={s.tbtn}
-              aria-pressed={brief.open}
-              aria-haspopup="dialog"
-              aria-label={briefRu.button}
-              data-testid="canvas-brief-toggle"
-              onClick={() => {
-                pick(null);
-                brief.show();
-              }}
-            >
-              <svg className={s.icon} viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M7 3.5h7l4 4v13H7z" />
-                <path d="M14 3.5v4h4M10 12h5M10 15.5h5" />
-              </svg>
-              <span className={s.lx}>{briefRu.button}</span>
-            </button>
-          )}
-          {xray && (
-            <button
-              type="button"
-              className={s.tbtn}
-              aria-pressed={xrayVisible}
-              aria-label={canvas.xray.button}
-              data-testid="canvas-xray-toggle"
-              onClick={() => {
-                setManualXray(!xrayVisible);
-                pick(null);
-              }}
-            >
-              <svg className={s.icon} viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="6" cy="6" r="2.5" />
-                <circle cx="18" cy="12" r="2.5" />
-                <circle cx="6" cy="18" r="2.5" />
-                <path d="M8.3 7.2 15.6 11M8.3 16.8l7.3-3.8" />
-              </svg>
-              <span className={s.lx}>{canvas.xray.button}</span>
-            </button>
-          )}
-          <AppLink
-            to={`/s/${systemId}/settings`}
-            className={`${s.tbtn} ${s.iconOnly}`}
-            label={publishRu.settings}
-            testId="canvas-settings"
-          >
-            <svg className={s.icon} viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
-              <circle cx="15" cy="7" r="2" />
-              <circle cx="9" cy="17" r="2" />
-            </svg>
-          </AppLink>
-          <button
-            type="button"
-            className={`${s.tbtn} ${s.iconOnly}`}
-            aria-label={support.open}
-            title={support.open}
-            data-testid="canvas-support"
-            onClick={() => openSupport()}
-          >
-            <svg className={s.icon} viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 5h16v11H9l-5 4z" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            className={`${s.tbtn} ${s.iconOnly}`}
-            aria-pressed={dark}
-            aria-label={dark ? canvas.theme.toLight : canvas.theme.toDark}
-            data-testid="canvas-theme"
-            onClick={toggleTheme}
-          >
-            <svg className={s.icon} viewBox="0 0 24 24" aria-hidden="true">
-              {dark ? (
-                <>
-                  <circle cx="12" cy="12" r="4" />
-                  <path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4" />
-                </>
-              ) : (
-                <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />
-              )}
-            </svg>
-          </button>
-        </Glass>
+  const placeholderNode =
+    shownRevision !== null ? (
+      <p className={s.emptyText}>{stageRu.loading}</p>
+    ) : building ? (
+      <div className={s.emptyBox}>
+        <p className={s.emptyTitle}>{stepLabel}</p>
+        <p className={s.emptyText}>{stageRu.pending}</p>
+      </div>
+    ) : thinking ? (
+      <div className={s.emptyBox} aria-busy="true" data-testid="canvas-empty">
+        <p className={s.emptyTitle}>{canvas.chat.thinking}</p>
+      </div>
+    ) : (
+      // V3-18: the owner's turn before the build — what will appear here, not «Думаю».
+      <div className={s.emptyBox} data-testid="canvas-empty">
+        <div className={s.emptyBox} data-testid={v3 ? "canvas-v3-empty" : undefined}>
+          <p className={s.emptyTitle}>{canvas.v3.emptyTitle}</p>
+          <p className={s.emptyText}>
+            {!v3 ? stageRu.v2Empty : stage === "card" ? canvas.v3.card : canvas.v3.interview}
+          </p>
+        </div>
+      </div>
+    );
 
-        <div className={`${s.veil} ${s.veilTop}`} aria-hidden="true" />
-        <div className={`${s.veil} ${s.veilBottom}`} aria-hidden="true" />
-        <main className={s.canvas} data-testid="canvas-main">
-          {view.demoReplay && (
-            <p className={s.demo} role="status" data-testid="demo-replay">
-              {demo.banner}
-            </p>
-          )}
-          {v3live.main}
-          {v3live.main ? null : model ? (
-            <Board
-              model={model}
-              slug={view.system.slug}
-              view={xrayVisible ? "overview" : board}
-              stateOf={stateOf}
-              delayOf={delayOf}
-              born={fx.born}
-              touched={fx.touched}
-              xray={xray}
-              xrayVisible={xrayVisible}
-              selected={selected?.id ?? null}
-              {...(canPick ? { onSelect: (b: CanvasBlockModel) => pick(b) } : {})}
-            />
-          ) : v3 && view.system.previewRevision != null ? (
-            // V3-18: a built v3 system outside a build (opened again, published, a chat turn) shows its preview.
-            <div className={s.v3System} data-testid="canvas-v3-system">
-              <LivePreview systemId={systemId} revision={view.system.previewRevision ?? null} settled />
-            </div>
-          ) : v3 && !thinking ? (
-            // V3-18: the owner's turn before the build — what will appear here, not «Думаю».
-            <div className={s.empty} data-testid="canvas-empty">
-              <div className={s.emptyBox} data-testid="canvas-v3-empty">
-                <Serif as="p" size="xl">
-                  {canvas.v3.emptyTitle}
-                </Serif>
-                <p className={s.emptyText}>{stage === "card" ? canvas.v3.card : canvas.v3.interview}</p>
+  const toggle = (id: PanelId) => {
+    setMoreOpen(false);
+    setPanel((p) => (p === id ? null : id));
+  };
+  const leftText = remainingText(eta);
+
+  const panelBody: Record<PanelId, { title: string; body: ReactNode }> = {
+    chat: {
+      title: canvas.chat.label,
+      body: (
+        <>
+          <ol className={s.history} role="log" aria-label={canvas.chat.label} data-testid="canvas-history">
+            {allLines.map((l) => (
+              <li key={l.id}>
+                <ChatMessage
+                  from={l.from}
+                  testId="canvas-message"
+                  {...(l.warn ? { tone: "warn" as const } : {})}
+                >
+                  {l.text}
+                </ChatMessage>
+              </li>
+            ))}
+          </ol>
+          <div className={s.dock} data-testid="canvas-dock">
+            {lastReply && ready && !question && (
+              <p className={s.lastReply} data-testid="canvas-last-reply">
+                {lastReply}
+              </p>
+            )}
+            {dock}
+            {building && (
+              <div className={s.bRow} data-testid="canvas-build-row" aria-live="polite">
+                <span className={s.spark} aria-hidden="true" />
+                <span className={s.k}>{canvas.build.doing}</span>
+                <b className={s.bStep} data-testid="canvas-build-step">
+                  {stepLabel}
+                </b>
+                {spend && (
+                  <p className={s.note} data-testid="canvas-build-spend">
+                    {spend}
+                  </p>
+                )}
               </div>
-            </div>
-          ) : (
-            <div className={s.empty} aria-busy={thinking || undefined} data-testid="canvas-empty">
-              <Serif as="p" size="xl">
-                {canvas.chat.thinking}
-              </Serif>
-            </div>
-          )}
-        </main>
-        {xray && xrayVisible && <XrayData xray={xray} />}
+            )}
 
-        <ChatSheet
-          open={open}
-          onOpenChange={setOpen}
-          label={canvas.chat.label}
-          testId="canvas-sheet"
-          history={allLines.map((l) => (
-            <ChatMessage
-              key={l.id}
-              from={l.from}
-              testId="canvas-message"
-              {...(l.warn ? { tone: "warn" as const } : {})}
-            >
-              {l.text}
-            </ChatMessage>
-          ))}
-        >
-          {dock}
-          {notice && (
-            <p className={s.sheetNotice} role="status" data-testid="canvas-notice">
-              {notice}
-            </p>
-          )}
-          {undo && !selected && (
-            <p className={s.undo} role="status" data-testid="canvas-undo">
-              <span>{canvas.pick.removed(undo.title)}</span>
-              <Chip
-                tone="outline"
-                testId="canvas-undo-button"
-                disabled={busy !== null}
-                onClick={() => void edit(undo.edits, canvas.pick.said.undo(undo.title))}
+            {notice && (
+              <p className={s.sheetNotice} role="status" data-testid="canvas-notice">
+                {notice}
+              </p>
+            )}
+            {error && (
+              <p className={s.error} role="alert" data-testid="canvas-error">
+                {error}
+              </p>
+            )}
+            {upload.progress}
+            {keys.row}
+            {question && question.allowCustom !== false && text.trim().length > 0 && (
+              <p
+                className={`${s.limit} ${text.trim().length > ANSWER_MAX ? s.limitOver : ""}`}
+                data-testid="canvas-answer-count"
               >
-                {canvas.pick.undo}
-              </Chip>
-            </p>
-          )}
-          {error && (
-            <p className={s.error} role="alert" data-testid="canvas-error">
-              {error}
-            </p>
-          )}
-          {upload.progress}
-          {keys.row}
-          {question && question.allowCustom !== false && text.trim().length > 0 && (
-            <p
-              className={`${s.limit} ${text.trim().length > ANSWER_MAX ? s.limitOver : ""}`}
-              data-testid="canvas-answer-count"
-            >
-              {canvas.chat.answerCount(text.trim().length, ANSWER_MAX)}
-            </p>
-          )}
+                {canvas.chat.answerCount(text.trim().length, ANSWER_MAX)}
+              </p>
+            )}
+          </div>
           <Composer
             testId="canvas-composer"
             attach={v3 && !building && (stage === "interview" || stage === "card") ? upload.attach : null}
@@ -1344,16 +868,294 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
             placeholder={placeholder}
             state={composerState}
             disabled={!canType || busy !== null}
-            target={selected ? { label: selected.title, onClear: () => pick(null) } : null}
-            suggestions={actions?.hints.map((h) => ({ id: h.id, label: h.label })) ?? []}
-            onSuggestion={hint}
           />
-        </ChatSheet>
+        </>
+      ),
+    },
+    build: {
+      title: stageRu.buildPanel,
+      body: v3live.panel ?? (
+        <div className={s.bPanel} data-testid="canvas-build-panel">
+          {hasBuild ? (
+            <>
+              <p className={s.bStep} data-testid="canvas-build-step">
+                {stepLabel}
+              </p>
+              {progress.index > 0 && (
+                <p className={s.note}>
+                  {canvas.chat.step(progress.index, progress.total)} · {leftText}
+                </p>
+              )}
+              {progress.reused > 0 && <p className={s.note}>{canvas.build.reused(progress.reused)}</p>}
+              {spend && <p className={s.note}>{spend}</p>}
+            </>
+          ) : (
+            <p className={s.note}>{stageRu.noBuild}</p>
+          )}
+        </div>
+      ),
+    },
+    publish: { title: stageRu.publishPanel, body: publishCard },
+  };
+  const current = panel && (panel !== "publish" || publishCard) ? panelBody[panel] : null;
+
+  return (
+    <ThemeRoot theme="auto" className={s.root} testId="canvas-root">
+      <div ref={screenRef} className={s.screen} data-testid="canvas" data-panel={current ? panel : undefined}>
+        <main className={s.main} data-testid="canvas-main">
+          <h1 className={s.srOnly} data-testid="canvas-name">
+            {view.system.name || canvas.brand}
+          </h1>
+          <SystemFrame
+            systemId={systemId}
+            revision={shownRevision}
+            device={device}
+            batching={building}
+            title={view.system.name ? `${stageRu.frame}: ${view.system.name}` : stageRu.frame}
+            placeholder={placeholderNode}
+            onRoute={onRoute}
+          />
+        </main>
+
+        {building && (
+          <div
+            className={s.bar}
+            role="progressbar"
+            aria-label={canvas.build.ring}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(fraction * 100)}
+            aria-valuetext={`${stepLabel} · ${leftText}`}
+            data-testid="canvas-eta"
+          >
+            <span className={s.barFill} style={{ transform: `scaleX(${Math.max(0.02, fraction)})` }} />
+          </div>
+        )}
+        {view.demoReplay && (
+          <p className={s.demo} role="status" data-testid="demo-replay">
+            {demo.banner}
+          </p>
+        )}
+        {news && !current && (
+          <p key={news.id} className={s.news} role="status" data-testid="canvas-news">
+            {news.text}
+          </p>
+        )}
+
+        {current && panel && (
+          <Glass
+            as="aside"
+            className={`${s.panel} ${panel === "chat" ? s.panelChat : ""}`}
+            testId={panel === "chat" ? "canvas-sheet" : `canvas-panel-${panel}`}
+            aria-label={current.title}
+          >
+            <header className={s.panelHead}>
+              <h2 className={s.panelTitle}>{current.title}</h2>
+              <button
+                type="button"
+                className={s.ibtn}
+                aria-label={islandRu.close}
+                title={islandRu.close}
+                data-testid="canvas-panel-close"
+                onClick={closePanels}
+              >
+                <Icon d={ICONS.close} />
+              </button>
+            </header>
+            <div className={s.panelBody}>{current.body}</div>
+          </Glass>
+        )}
+
+        {hidden ? (
+          <button
+            type="button"
+            className={`${s.ibtn} ${s.showIsland}`}
+            aria-label={islandRu.show}
+            title={islandRu.show}
+            data-testid="canvas-island-show"
+            onClick={() => setHidden(false)}
+          >
+            <Icon d={ICONS.show} />
+          </button>
+        ) : (
+          <Glass as="nav" className={s.island} testId="canvas-island" aria-label={islandRu.label}>
+            <button
+              type="button"
+              className={s.ibtn}
+              aria-pressed={panel === "chat"}
+              aria-label={
+                attention && panel !== "chat" ? `${islandRu.chat}: ${islandRu.attention}` : islandRu.chat
+              }
+              title={islandRu.chat}
+              data-testid="canvas-island-chat"
+              data-attention={attention && panel !== "chat" ? "" : undefined}
+              onClick={() => toggle("chat")}
+            >
+              <Icon d={ICONS.chat} />
+              {attention && panel !== "chat" && <span className={s.dot} aria-hidden="true" />}
+            </button>
+            {hasBuild && (
+              <button
+                type="button"
+                className={s.ibtn}
+                aria-pressed={panel === "build"}
+                aria-label={building ? islandRu.buildLeft(leftText) : islandRu.build}
+                title={building ? islandRu.buildLeft(leftText) : islandRu.build}
+                data-testid="canvas-island-build"
+                onClick={() => toggle("build")}
+              >
+                <svg className={s.ring} viewBox="0 0 24 24" aria-hidden="true">
+                  <circle className={s.ringTrack} cx="12" cy="12" r="8.5" />
+                  <circle
+                    className={s.ringFill}
+                    cx="12"
+                    cy="12"
+                    r="8.5"
+                    pathLength="100"
+                    strokeDasharray="100"
+                    strokeDashoffset={(100 - fraction * 100).toFixed(1)}
+                  />
+                </svg>
+              </button>
+            )}
+            {brief.available && (
+              <button
+                type="button"
+                className={s.ibtn}
+                aria-pressed={brief.open}
+                aria-haspopup="dialog"
+                aria-label={islandRu.brief}
+                title={islandRu.brief}
+                data-testid="canvas-brief-toggle"
+                onClick={() => {
+                  setMoreOpen(false);
+                  brief.show();
+                }}
+              >
+                <Icon d={ICONS.brief} />
+              </button>
+            )}
+            <fieldset className={s.device} aria-label={islandRu.device.label}>
+              {(["desktop", "phone"] as const).map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  className={s.ibtn}
+                  aria-pressed={device === d}
+                  aria-label={islandRu.device[d]}
+                  title={islandRu.device[d]}
+                  data-testid={`canvas-device-${d}`}
+                  onClick={() => setDevice(d)}
+                >
+                  <Icon d={ICONS[d]} />
+                </button>
+              ))}
+            </fieldset>
+            {editable && (
+              <button
+                type="button"
+                className={s.ibtn}
+                aria-label={islandRu.edit}
+                title={islandRu.edit}
+                data-testid="canvas-island-edit"
+                disabled={building}
+                onClick={() => (v3Ready ? setStyleOpen(true) : focusInput())}
+              >
+                <Icon d={ICONS.edit} />
+              </button>
+            )}
+            {canPublish && (
+              <button
+                type="button"
+                className={s.ibtn}
+                aria-pressed={panel === "publish"}
+                aria-label={islandRu.publish}
+                title={islandRu.publish}
+                data-testid="canvas-island-publish"
+                onClick={() => toggle("publish")}
+              >
+                <Icon d={ICONS.publish} />
+              </button>
+            )}
+            <span className={s.moreWrap}>
+              <button
+                type="button"
+                className={s.ibtn}
+                aria-expanded={moreOpen}
+                aria-label={islandRu.more}
+                title={islandRu.more}
+                data-testid="canvas-island-more"
+                onClick={() => setMoreOpen((o) => !o)}
+              >
+                <Icon d={ICONS.more} />
+              </button>
+              {moreOpen && (
+                <Glass className={s.menu} testId="canvas-menu">
+                  {shownRevision !== null && (
+                    <button
+                      type="button"
+                      className={s.mitem}
+                      data-testid="canvas-open-tab"
+                      onClick={() => void openTab()}
+                    >
+                      <Icon d={ICONS.open} />
+                      {islandRu.open}
+                    </button>
+                  )}
+                  <AppLink to="/" className={s.mitem} label={canvas.home} testId="canvas-home">
+                    <Icon d={ICONS.home} />
+                    {islandRu.home}
+                  </AppLink>
+                  <AppLink
+                    to={`/s/${systemId}/settings`}
+                    className={s.mitem}
+                    label={islandRu.settings}
+                    testId="canvas-settings"
+                  >
+                    <Icon d={ICONS.settings} />
+                    {islandRu.settings}
+                  </AppLink>
+                  <button
+                    type="button"
+                    className={s.mitem}
+                    data-testid="canvas-support"
+                    onClick={() => {
+                      setMoreOpen(false);
+                      openSupport();
+                    }}
+                  >
+                    <Icon d={ICONS.support} />
+                    {islandRu.support}
+                  </button>
+                </Glass>
+              )}
+            </span>
+            <button
+              type="button"
+              className={s.ibtn}
+              aria-label={islandRu.hide}
+              title={islandRu.hide}
+              data-testid="canvas-island-hide"
+              onClick={() => {
+                closePanels();
+                setHidden(true);
+              }}
+            >
+              <Icon d={ICONS.hide} />
+            </button>
+          </Glass>
+        )}
+        {openError && (
+          <p className={s.news} role="alert" data-testid="canvas-open-error">
+            {islandRu.openFailed}
+          </p>
+        )}
+
         {brief.panel}
         {styleOpen && (
           <StyleDrawer
             systemId={systemId}
-            editable={canEdit(roleIn(view.system.orgId), auth)}
+            editable={editable}
             onClose={() => setStyleOpen(false)}
             onPicked={() => {
               setStyleOpen(false);

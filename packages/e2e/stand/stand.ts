@@ -8,7 +8,8 @@
 // platform's YooKassa shop on YookassaMock with a test checkout page (stand/shop.ts). The pilot stand (stand/pilot.ts,
 // M2-15) has the same M2 rules with WIZARD_REGISTRATION=invite and WIZARD_PAYMENTS=off and no shop. The v3 stand
 // (stand/v3.ts, D78) runs the real executors on WIZARD_BUILD_PIPELINE=v3 — the grill interview, three directions and the
-// harness v3 — with the recorded model answers of stand/v3-models.ts, G1 without the browser.
+// harness v3 with the platform's page composer and visual critic — on the records of real model answers
+// (stand/v3-models.ts, V4-03).
 // Run: `pnpm --filter @wizard/e2e exec tsx stand/m1.ts` or `stand/m2.ts` (Playwright starts them as webServers).
 import { randomBytes } from "node:crypto";
 import {
@@ -27,6 +28,8 @@ import { createAgentExecutors, createPlatformApi, RunFailure } from "@wizard/pla
 import { DbRegistry, startRuntime } from "@wizard/runtime";
 import postgres from "postgres";
 import { createServer } from "vite";
+import { chromiumProvider } from "../../../apps/platform-api/src/agents/goal-browser.js";
+import { platformCritic } from "../../../apps/platform-api/src/builds-v3/critic.js";
 import { platformViteConfig } from "../../../apps/platform-web/vite.config.js";
 import {
   M1,
@@ -45,9 +48,10 @@ import {
   V3_DB_FILE,
   V3_LLM_LOG,
   V3_OUTBOX,
+  V3_RECORDS_LOG,
 } from "./ports.js";
 import { startShop } from "./shop.js";
-import { v3Composer, v3Router } from "./v3-models.js";
+import { v3Router } from "./v3-models.js";
 
 const ROOT = join(import.meta.dirname, "..", "..", "..");
 /** WIZARD_INTERNAL_TOKEN of the stand (platform-api ⇄ runtime internal calls, M3-02). */
@@ -308,6 +312,13 @@ const STANDS = {
   v3: { ports: { ...V3, shop: 0 }, files: { dbFile: V3_DB_FILE, outbox: V3_OUTBOX, llmLog: V3_LLM_LOG } },
 } as const;
 
+let critics: ReturnType<typeof chromiumProvider> | null = null;
+/** The Chromium of the v3 stand's visual critic (one per process). */
+const criticBrowser = () => {
+  critics ??= chromiumProvider({ slots: 1 });
+  return critics;
+};
+
 /** Starts the stand of `kind` and stops it (dropping its database) on SIGINT/SIGTERM. */
 export async function startStand(kind: StandKind): Promise<void> {
   const { ports, files } = STANDS[kind];
@@ -341,6 +352,7 @@ export async function startStand(kind: StandKind): Promise<void> {
   mkdirSync(artifacts, { recursive: true });
   rmSync(files.outbox, { recursive: true, force: true });
   rmSync(files.llmLog, { force: true });
+  if (kind === "v3") rmSync(V3_RECORDS_LOG, { force: true });
   writeFileSync(files.dbFile, url.toString(), { mode: 0o600 });
   // M2: the platform's own YooKassa shop (billing.yaml#recurring) on the mock, with its test checkout page.
   const shop =
@@ -361,7 +373,7 @@ export async function startStand(kind: StandKind): Promise<void> {
       // T1 build by default (models.yaml#week0_decision): «только РФ» visibly changes the S1 policy label.
       buildDefaultTier: "T1",
       // D78: v3 is the default; the m1/m2/pilot stands script the v1 card flow. The v3 stand checks the goal scenarios
-      // of G1 without the browser (the browser rung is v3-goals.browser.test.ts).
+      // of G1 without the browser (the browser rung is v3-goals.browser.test.ts); its visual critic has one (below).
       ...(kind === "v3"
         ? { buildPipeline: "v3" as const, g1Browser: "off" as const }
         : { buildPipeline: "legacy" as const }),
@@ -390,7 +402,12 @@ export async function startStand(kind: StandKind): Promise<void> {
     },
     executors: (d) =>
       kind === "v3"
-        ? createAgentExecutors({ ...d, research: null, v3: { enabled: true, composer: v3Composer() } })
+        ? createAgentExecutors({
+            ...d,
+            research: null,
+            // V4-03: the platform's page composer and its visual critic in a Chromium of the stand (V3-13).
+            v3: { enabled: true, hooks: { critic: platformCritic(criticBrowser()) } },
+          })
         : legacyExecutors(d),
     createRouter: (opts) =>
       kind === "v3"
@@ -440,6 +457,7 @@ export async function startStand(kind: StandKind): Promise<void> {
     stopping = true;
     log("остановка…");
     await vite.close().catch(() => {});
+    await critics?.close().catch(() => {});
     await new Promise<void>((r) => apiServer.close(() => r()));
     await runtime.close().catch(() => {});
     await platform.close().catch(() => {});

@@ -568,6 +568,8 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
             photos: photoHost(),
             // V3-40: the critic's browser shows the library's real photos from the shared storage.
             files: sharedFiles(),
+            // V4-04: the founder's builds keep the records of their model calls in the report.
+            founderEmail: o.config.founderEmail ?? null,
           });
       }
       const qa = createHostQa(host, { milestone: o.config.milestone });

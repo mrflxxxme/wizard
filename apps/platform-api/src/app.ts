@@ -16,6 +16,7 @@ import { Payments } from "./billing/payments.js";
 import { briefRoutes } from "./briefs/routes.js";
 import { sessionRoutes } from "./briefs/sessions.js";
 import { briefUploadRoutes } from "./briefs/upload.js";
+import { reportRoutes, reportStorage } from "./builds-v3/report/index.js";
 import { buildV3Routes } from "./builds-v3/routes.js";
 import { type ByokService, byokRoutes, byokServiceOf, type TransitKms } from "./byok/index.js";
 import { assertStartupAllowed, type Config, loadConfig, StartupError } from "./config.js";
@@ -474,6 +475,19 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   api.route("/", capabilityRoutes({ ...abuse, ...(opts.now ? { now: opts.now } : {}) }));
   // V3-18: /admin «Системы и сбои» — every system with its last build and spend, failed runs with the error.
   api.route("/", adminSystemsRoutes(abuse));
+  // V4-04: /admin/runs/:id/report — the report of a v3 build (screenshots, gates, scenarios with HTTP, critic, ₽, records).
+  let reportFiles: ReturnType<typeof reportStorage> | undefined;
+  api.route(
+    "/",
+    reportRoutes({
+      ...abuse,
+      files: () => {
+        reportFiles ??= reportStorage(config);
+        return reportFiles;
+      },
+      origin: config.platformOrigin,
+    }),
+  );
   // B2-26: module factory — «Кандидаты в модули» and the consent to «Теперь умеем» letters.
   api.route("/", factoryRoutes({ ...abuse, factoryNow: opts.now, modules: opts.modules }));
   api.route("/", runRoutes(deps, opts.pingMs !== undefined ? { pingMs: opts.pingMs } : {}));

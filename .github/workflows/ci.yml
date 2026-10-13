@@ -15,12 +15,17 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 permissions:
   contents: read
+  # Service images come from the GHCR mirror (mirror-images.yml).
+  packages: read
 jobs:
   build:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: public.ecr.aws/docker/library/postgres:16
+        image: ghcr.io/${{ github.repository_owner }}/mirror/docker/library/postgres:16
+        credentials:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
         env:
           POSTGRES_USER: wizard
           POSTGRES_HOST_AUTH_METHOD: trust
@@ -80,7 +85,10 @@ jobs:
     needs: build
     services:
       postgres:
-        image: public.ecr.aws/docker/library/postgres:16
+        image: ghcr.io/${{ github.repository_owner }}/mirror/docker/library/postgres:16
+        credentials:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
         env:
           POSTGRES_USER: wizard
           POSTGRES_HOST_AUTH_METHOD: trust
@@ -123,6 +131,8 @@ jobs:
       # V3-18: every request and booking form variant of the library under the modules' goal programs (the platform's
       # checkScenario in Chromium on a site composed without a model).
       - run: pnpm exec vitest run --project browser apps/platform-api/test/v3-goals-variants.browser.test.ts
+      # V4-04: the build report's screenshots 390/1440 and the HTTP responses of a scenario's steps.
+      - run: pnpm exec vitest run --project browser apps/platform-api/test/v4-build-report.browser.test.ts
       # V3-40/V3-23: the measurement's ЮKassa automation in Chromium on a double of the real test page (masked card
       # fields that take typing only, the CVC as «•••», a split date, 3-D Secure) — skipped in the build job without
       # a browser, so it runs here.
@@ -158,7 +168,10 @@ jobs:
         shard: ["1/3", "2/3", "3/3"]
     services:
       postgres:
-        image: public.ecr.aws/docker/library/postgres:16
+        image: ghcr.io/${{ github.repository_owner }}/mirror/docker/library/postgres:16
+        credentials:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
         env:
           POSTGRES_USER: wizard
           POSTGRES_HOST_AUTH_METHOD: trust
@@ -215,7 +228,10 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: public.ecr.aws/docker/library/postgres:16
+        image: ghcr.io/${{ github.repository_owner }}/mirror/docker/library/postgres:16
+        credentials:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
         env:
           POSTGRES_USER: wizard
           POSTGRES_HOST_AUTH_METHOD: trust
@@ -246,7 +262,10 @@ jobs:
     # tools/deploy tests (PITR drill marks, pg-ops) need a PostgreSQL on :5433 like the other jobs.
     services:
       postgres:
-        image: public.ecr.aws/docker/library/postgres:16
+        image: ghcr.io/${{ github.repository_owner }}/mirror/docker/library/postgres:16
+        credentials:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
         env:
           POSTGRES_USER: wizard
           POSTGRES_HOST_AUTH_METHOD: trust
