@@ -4248,8 +4248,8 @@ tasks:
     owner: agents
     parallel_group: v4-b
     estimate_days: 1
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: session_01G2aRP3L1VgXctxShsFmu58
     owns: ["packages/agents/src/builder/v3/art-director.ts", "packages/agents/src/directions/**", "packages/ui-kit/src/v3/design/**"]
     acceptance:
       - "Модель предлагает палитру, шрифтовую пару из каталога OFL, сетку, ритм и движение; код проверяет контраст WCAG AA, лицензии и токены и возвращает на исправление"
