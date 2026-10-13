@@ -9,6 +9,9 @@
 // Keys: the pilot release passes the founder's keys as env (WIZARD_STOCK_PEXELS_KEY / WIZARD_STOCK_PIXABAY_KEY, only with
 // stock_mode=live, tools/deploy/pilot-secrets.mjs pilotStockEnv); they win over the SecretStore values, which stay the
 // way for a hand-added key. Nothing is written to the store: env changes with the next release, removal included.
+
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   createLibraryStockClient,
   createStockClient,
@@ -23,7 +26,16 @@ import {
   StockCache,
   type StockProvider,
 } from "@wizard/agents/builder";
-import { type FileStorage, libraryPhoto, readLibraryIndex, storeLibraryPhoto } from "@wizard/runtime";
+import { createSemanticSource, storageObjects } from "@wizard/agents/stock";
+import {
+  type FileStorage,
+  libraryPhoto,
+  libraryPhotoFile,
+  libraryPhotoId,
+  PHOTO_LIBRARY_PREFIX,
+  readLibraryIndex,
+  storeLibraryPhoto,
+} from "@wizard/runtime";
 
 export type StockMode = "fixture" | "live" | "record" | "off" | "library";
 
@@ -93,13 +105,34 @@ export interface PhotoHostOptions {
   env?: NodeJS.ProcessEnv;
 }
 
+/** Semantic sources by storage: one loaded library and one text encoder per process. */
+const semanticSources = new WeakMap<FileStorage, ReturnType<typeof createSemanticSource>>();
+
 /**
- * The photo host of library mode: searches answered from the library index of `storage` (re-read every few minutes),
- * `store` returns the copy already in the library (a photo of the index whose copy is missing fails that one pick).
+ * V4-10: the semantic photo library of `storage` (shards and the SigLIP text tower filled by CI, stock-library.yml):
+ * search by the meaning of the brief, 480 px copies for the vision pick, the backfill queue.
+ */
+export function semanticPhotoSource(storage: FileStorage): ReturnType<typeof createSemanticSource> {
+  let src = semanticSources.get(storage);
+  if (!src) {
+    src = createSemanticSource({
+      objects: storageObjects(storage, (name) => `${PHOTO_LIBRARY_PREFIX}/${libraryPhotoId(name)}`),
+      modelDir: join(process.env.WIZARD_MODEL_CACHE_DIR || tmpdir(), "wizard-siglip"),
+      thumbnail: async (file) => (await libraryPhotoFile(storage, file, 480))?.body ?? null,
+    });
+    semanticSources.set(storage, src);
+  }
+  return src;
+}
+
+/**
+ * The photo host of library mode: the semantic library first (V4-10; empty while CI fills it), then searches
+ * answered from the library index of `storage` (re-read every few minutes); `store` returns the copy already in the
+ * library (a photo of the index whose copy is missing fails that one pick).
  */
 export function libraryPhotoHost(
   storage: FileStorage,
-  o: { ttlMs?: number; now?: () => number } = {},
+  o: { ttlMs?: number; now?: () => number; semantic?: boolean } = {},
 ): PhotoHost {
   const stock = createLibraryStockClient({
     load: async () => parseLibraryIndex(await readLibraryIndex(storage)),
@@ -107,6 +140,7 @@ export function libraryPhotoHost(
   });
   return {
     stock,
+    ...(o.semantic === false ? {} : { semantic: semanticPhotoSource(storage) }),
     async store(hit) {
       const file = stock.fileOf(hit);
       const copy = file ? await libraryPhoto(storage, file) : null;
