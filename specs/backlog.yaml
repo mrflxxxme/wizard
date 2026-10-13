@@ -2595,11 +2595,203 @@ tasks:
       - "Скрипт страницы в Chromium на 390 и 1440 находит те же виды в DOM (браузерный тест, skipIf(!hasChromium))"
       - "Критик V4-09 получает находки как детерминированные проблемы: правка, поднявшая их штраф, отклоняется"
 
+  # ---------------- V5: SaaS №1 экосистемы (D80, docs/plans/2026-10-13-ecosystem.md) - быстрая полоса D79 (11); ядро - на прежних воротах (D80 (7)) ----------------
+  - id: V5-01
+    title: "Боевой магазин ЮKassa платформы, оферта с ценами D31 и согласиями у юриста, «да» на включение оплаты"
+    milestone: V5
+    deps: []
+    specs: [docs/plans/2026-10-13-ecosystem.md, "specs/product.yaml#decisions.D80_ecosystem", "specs/platform/billing.yaml#rub_model"]
+    owner: founder
+    parallel_group: v5-a
+    estimate_days: 0.5
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Ключи боевого магазина ЮKassa платформы - в GitHub Secrets и настройках выката (E-ACCESS); агент подтверждает тестовый платёж и возврат"
+      - "Юрист проверил оферту с ценами D31, согласие на передачу брифа (V4-13) и согласие на передачу контакта в лид-мосте V5-04 (E-LEGAL)"
+
+  - id: V5-02
+    title: "Тарифы D31 в billing/plans.ts и включённая оплата: черновик бесплатно, запуск 2 990 ₽ + 990 ₽/мес, «под ключ» от 49 000 ₽"
+    milestone: V5
+    deps: [V4-14, V5-01]
+    specs: [docs/plans/2026-10-13-ecosystem.md, "specs/product.yaml#decisions.D80_ecosystem", "specs/product.yaml#decisions.D31_pricing_rub", "specs/platform/billing.yaml#rub_model", specs/platform/billing.yaml]
+    owner: platform
+    parallel_group: v5-b
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    owns: ["apps/platform-api/src/billing/**", "apps/platform-api/src/routes/billing.ts", "apps/platform-api/src/routes/plans.ts", "apps/platform-web/src/screens/billing/**", "их тесты"]
+    description: >
+      Ядро, прежние ворота (D80 (7)), PR с меткой founder-review (E-MONEY). Клиент видит только рубли D31; планы Free, 1990 и 6990 на
+      кредитах остаются внутренними профилями лимитов (billing.yaml#rub_model.internal_guard). Берёт из M2-34 и M2-36 то, что ещё
+      актуально, остальное помечает в чистке V5-08. Включение WIZARD_PAYMENTS=on на prod - после V5-01.
+    acceptance:
+      - "Цены приходят из одного места (billing.yaml#rub_model.prices): черновик бесплатно, запуск 2 990 ₽ разово + 990 ₽/мес, «под ключ» от 49 000 ₽; кредиты клиенту не показываются (тест API и экрана)"
+      - "e2e в тестовом магазине: оплата запуска → система уходит в prod, чек 54-ФЗ; ежемесячное списание и отказ карты обрабатываются (тест)"
+      - "Пометка «на пилоте бесплатно» убрана, WIZARD_PAYMENTS=on на prod; первая настоящая оплата запуска видна в /admin"
+
+  - id: V5-03
+    title: "Открытая регистрация с антиабуз-лимитами и минимальный лендинг (вытянуто из M4-01)"
+    milestone: V5
+    deps: [V5-02]
+    specs: [docs/plans/2026-10-13-ecosystem.md, "specs/product.yaml#decisions.D80_ecosystem", "specs/product.yaml#decisions.D57_yandex_widgets", specs/security/abuse.yaml, "specs/platform/billing.yaml#rub_model"]
+    owner: platform
+    parallel_group: v5-c
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    owns: ["apps/platform-api/src/pilot/invites.ts", "apps/platform-api/src/auth/** (регистрация)", "apps/platform-web/src/screens/landing/** (новый)", "их тесты"]
+    description: >
+      Ядро, прежние ворота (D80 (7)), PR с меткой founder-review. WIZARD_REGISTRATION=open: новая почта входит без приглашения.
+      Антиабуз-лимиты по плану §4 (числа предложены, утвердить владельцу). Минимальный лендинг на borntobuild.ru: обещание
+      positioning.promise_draft, четыре класса систем, цены D31, «Написать команде»; тексты по humanizer (D28). Полный лендинг,
+      нагрузка и мониторинг остаются в M4-01.
+    acceptance:
+      - "Регистрация без приглашения на borntobuild.ru (e2e); режим invite остаётся переключателем"
+      - "Лимиты плана §4 работают: подтверждённая почта до первой сборки, SmartCaptcha, лимит новых организаций с IP в сутки, доля бесплатных сборок в суточном лимите платформы; при исчерпании бесплатные сборки ждут следующих суток, платные не страдают (тесты)"
+      - "Лендинг открывается на 390 и 1440, проходит доступность и humanizer; запрет non_goals на лендинг и открытую регистрацию снят в product.yaml"
+
+  - id: V5-04
+    title: "Лид-мост: LeadEvent want_team, limit_hit, build_failed, build_published в приёмник экосистемы и CTA «Запустить с экспертом»"
+    milestone: V5
+    deps: []
+    specs: [docs/plans/2026-10-13-ecosystem.md, "specs/product.yaml#decisions.D80_ecosystem", "specs/product.yaml#decisions.D32_human_layer", specs/security/data-boundary.yaml]
+    owner: platform
+    parallel_group: v5-a
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    owns: ["apps/platform-api/src/ecosystem/leads/** (новый)", "apps/platform-api/src/support/service.ts (вызов события)", "apps/platform-web/src/screens/ecosystem/ExpertCta.tsx (новый)", "specs/platform/ecosystem/lead-event.schema.json (копия v1.0, новый)", "их тесты"]
+    description: >
+      Лёгкий режим (D80 (7)); передача контакта - ядро, PR с меткой founder-review (E-LEGAL). Контракт - схема LeadEvent v1.0 из
+      github.com/mrflxxxme/ecosystem (schemas/lead-event.schema.json), копия лежит в specs/platform/ecosystem/ и сверяется
+      тестом. Приёмник - стек экосистемы (ROADMAP 1.3); до его готовности - мок. Переменные WIZARD_LEAD_WEBHOOK_URL и
+      WIZARD_LEAD_WEBHOOK_TOKEN, бот - WIZARD_ECOSYSTEM_BOT. source = {product: btb, placement}. Детали - план §2.
+    acceptance:
+      - "want_team (отметка «Хочу, чтобы доделала команда»), limit_hit (FREE_DRAFTS_LIMIT, BUILDS_LIMIT, INSUFFICIENT_CREDITS), build_failed (провал сборки владельца) и build_published (первая публикация) отправляют LeadEvent, который проходит схему v1.0 (тест на каждый вид)"
+      - "Отправка не блокирует путь владельца: очередь с повторами, идемпотентный id, не больше одного события вида на систему в сутки; без WIZARD_LEAD_WEBHOOK_URL события не шлются (тест)"
+      - "Без согласия в событии нет ПДн (только subject_ref и summary без контактов); контакт уходит только с согласием и версией текста согласия (тест)"
+      - "CTA «Запустить с экспертом» на экранах лимита, провала сборки и «Написать команде» ведёт на t.me/<бот>?start=btb_<placement>[_<ref>] (≤ 64 символов, [A-Za-z0-9_-]) (тест)"
+
+  - id: V5-05
+    title: "Вход из экосистемы: /start?ctx=&exp=&sig= с LaunchContext, сервисный токен, засеянный бриф и 1-2 оставшихся вопроса"
+    milestone: V5
+    deps: [V4-14]
+    specs: [docs/plans/2026-10-13-ecosystem.md, "specs/product.yaml#decisions.D80_ecosystem", specs/agents/builder-v3.md, specs/security/data-boundary.yaml]
+    owner: platform
+    parallel_group: v5-b
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    owns: ["apps/platform-api/src/ecosystem/start/** (новый)", "packages/appspec/src/brief/schema.ts (поле context, источник допущения context)", "packages/agents/src/interview-v3/** (засеянное интервью)", "apps/platform-api/src/agents/interview-v3.ts", "apps/platform-web/src/screens/start/** (новый)", "specs/platform/ecosystem/launch-context.schema.json (копия v1.0, новый)", "их тесты"]
+    description: >
+      Лёгкий режим (D80 (7)). Контракт - LaunchContext v1.0 из github.com/mrflxxxme/ecosystem (schemas/launch-context.schema.json,
+      docs/handoff.md), копия в specs/platform/ecosystem/ со сверкой тестом. sig = HMAC-SHA256(WIZARD_ECOSYSTEM_CTX_SECRET,
+      ctx + "." + exp). Длинный контекст - ctx_id, Born to Build забирает его у приёмника по WIZARD_ECOSYSTEM_SERVICE_TOKEN.
+      Раскладка контекста по брифу - план §3. Пользователь входит сам (обычный вход или регистрация V5-03), контекст ждёт его
+      до 7 суток.
+    acceptance:
+      - "Верная подпись и срок: после входа система стартует с засеянным брифом, интервью задаёт не больше 2 вопросов (тест на 3 фикстурах контекста: RADAR, Скаут-решение, Скаут-аналог)"
+      - "Неверная подпись, истёкший exp, срок больше 7 суток или контекст не по схеме - обычный старт без сообщения пользователю, событие в журнале (тесты)"
+      - "Поля контекста попадают в бриф по плану §3: goal_hint → цели, audience_hint и region → аудитория, solution.contract_ref → integrations[].contractRef, signals → допущения с источником context (цифры - только с measured и url, D49); бриф хранит context {id, source, region.okato, need.id} (тест схемы брифа)"
+      - "Свободный текст контекста проходит сигнальный фильтр ПДн; найденное отбрасывается до интервью (тест)"
+
+  - id: V5-06
+    title: "«Следующий шаг» после публикации и полоса экосистемы «от Кирилла Уклонского» на страницах платформы"
+    milestone: V5
+    deps: [V5-05]
+    specs: [docs/plans/2026-10-13-ecosystem.md, "specs/product.yaml#decisions.D80_ecosystem", "specs/product.yaml#decisions.D27_brand", specs/ui/platform-screens.yaml]
+    owner: frontend
+    parallel_group: v5-c
+    estimate_days: 1
+    status: todo
+    claimed_by: null
+    owns: ["apps/platform-web/src/screens/ecosystem/** (новый)", "apps/platform-api/src/ecosystem/links/** (новый)", "их тесты"]
+    description: >
+      Лёгкий режим (D80 (7)). После публикации - одна карточка «следующего шага» в оформлении Born to Build, например «Проверить
+      спрос в регионе - RADAR» с подписанной ссылкой LaunchContext (region, need из context брифа, source {btb, publish_next}).
+      Полоса экосистемы в подвале платформы - source {btb, footer_strip}. Секреты получателей - WIZARD_ECOSYSTEM_LINK_SECRETS.
+    acceptance:
+      - "Карточка появляется только после публикации, одна на экран, закрывается и не возвращается для этой системы; до публикации рекомендаций нет (браузерный тест)"
+      - "Ссылка несёт подписанный LaunchContext без ПДн и source; без region и need в брифе ведёт на общий вход RADAR (тест)"
+      - "Полоса «от Кирилла Уклонского» есть на страницах платформы и отсутствует на системах клиентов (sandpile.ru и свои домены) (тест)"
+
+  - id: V5-07
+    title: "Шлюз ключей моделей экосистемы: виртуальный ключ и бюджет Born to Build, свои лимиты 3 000 ₽/сут и 15 000 ₽/мес"
+    milestone: V5
+    deps: []
+    specs: [docs/plans/2026-10-13-ecosystem.md, "specs/product.yaml#decisions.D80_ecosystem", specs/agents/models.yaml, specs/security/data-boundary.yaml]
+    owner: platform
+    parallel_group: v5-a
+    estimate_days: 0.5
+    status: todo
+    claimed_by: null
+    owns: ["tools/deploy/** (переменные шлюза)", "apps/platform-api/src/billing/llm-cap.ts (только чтение журнала Born to Build)", "их тесты"]
+    description: >
+      Лёгкий режим (D80 (7)). Вызовы сборки идут к провайдерам через шлюз экосистемы по *_BASE_URL и виртуальному ключу Born to
+      Build; переход и обратное разведение ключей - только переменными выката, без правки кода. Список моделей и маршруты не
+      меняются (D18, models.yaml). Детали - план §6.
+    acceptance:
+      - "Сборка на стенде проходит через шлюз по виртуальному ключу Born to Build; возврат на прямые ключи - сменой переменных (смоук выката)"
+      - "Суточный и месячный лимиты D77 (18б) считаются только по журналу расходов Born to Build; расход других продуктов в шлюзе их не меняет (тест)"
+      - "Runtime-вызовы с данными конечных клиентов идут только в контур РФ, как в D79 (3) (тест маршрута)"
+
+  - id: V5-08
+    title: "Разовая чистка устаревшего бэклога: вердикт по каждой открытой задаче прошлых вех, снятые - из backlog.yaml"
+    milestone: V5
+    deps: []
+    specs: [docs/plans/2026-10-13-ecosystem.md, "specs/product.yaml#decisions.D80_ecosystem", specs/milestones.yaml]
+    owner: docs
+    parallel_group: v5-a
+    estimate_days: 1
+    status: todo
+    claimed_by: null
+    owns: ["specs/backlog.yaml", "specs/backlog-archive.yaml", "tools/specs/** (если нужен новый статус)"]
+    description: >
+      Лёгкий режим (D80 (7)). На 13.10.2026 открыты задачи прошлых вех: M2P - 79, M2 - 5, V3 - 5, B2 - 2, M3 - 3, M0 - 2, M1 - 1;
+      многие заменены решениями D75-D80 и задачами V3-V5 (например M3-01 → V4-12). Механизм снятия (поле replaced_by и перенос
+      в архив или новый статус) выбирает задача; новый статус - вместе с правкой validate.mjs.
+    acceptance:
+      - "У каждой открытой задачи вех M0-M3 есть вердикт: актуальна (остаётся или переносится в V5) или снята со ссылкой на заменившее решение или задачу; список - в CHANGELOG"
+      - "Снятые задачи не лежат в backlog.yaml как todo; validate.mjs зелёный; задачи про биллинг, ПДн и runtime снимаются только с «да» владельца в PR с меткой founder-review"
+
+  - id: V5-09
+    title: "Решение о вводе тарифа «Прототип»: замер по критериям входа плана §5 и «да» основателя"
+    milestone: V5
+    deps: [V5-03]
+    specs: [docs/plans/2026-10-13-ecosystem.md, "specs/product.yaml#decisions.D80_ecosystem"]
+    owner: founder
+    parallel_group: v5-d
+    estimate_days: 0.5
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Основатель утвердил критерии входа плана §5 (сейчас - предложение) до замера"
+      - "Отчёт замера на 12 эталонных брифах (по отчёту сборки V4-04) показывает выполнение всех критериев; основатель дал «да» на ввод тарифа"
+
+  - id: V5-10
+    title: "Тариф «Прототип»: живой прототип за минуты бесплатно или дёшево, ссылка для показа, плашка «Собрано в Born to Build»"
+    milestone: V5
+    deps: [V5-09]
+    specs: [docs/plans/2026-10-13-ecosystem.md, "specs/product.yaml#decisions.D80_ecosystem", "specs/platform/billing.yaml#rub_model", specs/security/abuse.yaml]
+    owner: platform
+    parallel_group: v5-e
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    owns: ["apps/platform-api/src/billing/** (тариф)", "apps/platform-api/src/prototype/** (новый)", "apps/platform-web/src/screens/prototype/** (новый)", "их тесты"]
+    description: >
+      Ядро (биллинг), прежние ворота (D80 (7)), PR с меткой founder-review. Не брать до «да» основателя в V5-09. Основное
+      позиционирование не меняется (D80 (2)): прототип - вход в систему, а не отдельный продукт.
+    acceptance:
+      - "Прототип по ссылке для показа с плашкой «Собрано в Born to Build», noindex и сроком жизни ссылки; из прототипа - переход к запуску системы по D31 (e2e)"
+      - "Себестоимость и время прототипа в пределах критериев плана §5; бюджет бесплатных прототипов в суточном лимите исчерпывается без влияния на платные сборки (тест)"
+
   # ---------------- M4: запуск ----------------
   - id: M4-01
     title: "Лендинг под финальным именем, самостоятельная регистрация, нагрузочный тест 200 одновременных прогонов"
     milestone: M4
-    deps: [M3-01, M3-02, M3-03]
+    deps: [M3-01, M3-02, M3-03, V5-03]
     specs: [specs/product.yaml]
     owner: platform
     parallel_group: m4-a
