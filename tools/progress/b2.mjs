@@ -39,9 +39,12 @@ const bucket = (status) => (status === "done" || status === "in_progress" ? stat
 /** All backlog tasks (dependencies may point outside B2). */
 export function loadBacklog(root = ROOT) {
   const p = join(root, "specs", "backlog.yaml");
-  const r = parseYamlFiles([p])[p];
+  const a = join(root, "specs", "backlog-archive.yaml");
+  const all = parseYamlFiles(existsSync(a) ? [p, a] : [p]);
+  const r = all[p];
   if (!r || "error" in r) throw new Error(`specs/backlog.yaml: ${r?.error ?? "не прочитан"}`);
-  return r.ok?.tasks ?? [];
+  const archived = all[a] && !("error" in all[a]) ? (all[a].ok?.tasks ?? []) : [];
+  return [...(r.ok?.tasks ?? []), ...archived];
 }
 
 const arr = (v) => (Array.isArray(v) ? v : []);

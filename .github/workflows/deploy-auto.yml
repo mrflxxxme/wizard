@@ -1,0 +1,39 @@
+# V4-02 (product.yaml#decisions.D79_v4 (11)): a green main deploys itself to the pilot prod (borntobuild.ru) — the same
+# reusable job as deploy-pilot.yml (images when missing, Secrets, Helm), v3 pipeline, photos from the library. The run
+# of ci on main must succeed; main keeps one running and one pending ci run, so bursts of merges deploy the newest one.
+# Off switch: repository variable WIZARD_AUTODEPLOY=off. Rollback: deploy-pilot.yml with the previous SHA (one run).
+# A build started before a deploy is not lost: the worker resumes durable runs after the restart (V3-18).
+name: deploy-auto
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pilot-prod
+  cancel-in-progress: false
+
+jobs:
+  pilot:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      vars.WIZARD_AUTODEPLOY != 'off'
+    uses: ./.github/workflows/pilot-reusable.yml
+    permissions:
+      contents: read
+      packages: write
+      issues: write
+    with:
+      env: prod
+      command: deploy
+      sha: ${{ github.event.workflow_run.head_sha }}
+      confirm: PROD
+      build_pipeline: v3
+      stock_mode: library
+    secrets: inherit
