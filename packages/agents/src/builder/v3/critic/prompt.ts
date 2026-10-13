@@ -12,6 +12,7 @@ import { editOpSchema, variantsFor } from "./ops.js";
 import {
   AXIS_RUBRIC,
   CRITIC_AXES,
+  codePatchSchema,
   critiqueSchema,
   type DeterministicProblem,
   problemDigest,
@@ -30,7 +31,7 @@ const SYSTEM = [
   ...CRITIC_AXES.map((a) => `- ${a} — ${AXIS_RUBRIC[a].label}: ${AXIS_RUBRIC[a].questions}`),
   "polish — проработка: production (можно показывать) или draft; в missing — чего не хватает, словами.",
   "",
-  "Находка: sign — признак (id каталога, если есть: L01 три карточки, L04 eyebrow, L05 нумерация, L06 повтор раскладок, L13 перегруженный первый экран, L15 сплит-шапка, C06 лишний акцент, T02 плоская иерархия, T04 раздутый h1, I01 фейковые скриншоты, I05 плашки на фото) и что видно; where — <маршрут>@<ширина>#<id секции> из списка секций; severity — P0 не работает, P1 серьёзно, P2 заметно, P3 мелочь; evidence — номер изображения и область; replace — замена в рамках темы; edit — операция, которая её применяет, или null.",
+  "Находка: sign — признак (id каталога, если есть: L01 три карточки, L04 eyebrow, L05 нумерация, L06 повтор раскладок, L13 перегруженный первый экран, L15 сплит-шапка, C06 лишний акцент, T02 плоская иерархия, T04 раздутый h1, I01 фейковые скриншоты, I05 плашки на фото) и что видно; where — <маршрут>@<ширина>#<id секции> из списка секций; severity — P0 не работает, P1 серьёзно, P2 заметно, P3 мелочь; evidence — номер изображения и область, replace — замена в рамках темы (каждое — одна короткая фраза до 120 знаков); edit — операция, которая её применяет, или null.",
   "Не принимаются: находка без замены, без видимого признака («не нравится»), мнения о конверсии. Не повторяй то, что уже нашёл код.",
   "",
   "edit — только одна из операций, ничего другого:",
@@ -39,8 +40,12 @@ const SYSTEM = [
   "- set_text {route, section, path, text} — новый текст поля из списка «тексты» секции; факты, числа, цены, сроки и имена — только те, что уже есть на странице (D49); без слов-пустышек, эмодзи и восклицательных знаков;",
   "- token {token, value} — density, radius, display_size (smaller | larger — заголовок первого экрана), muted_contrast (light | dark — второстепенный текст контрастнее); значения — из списка «Токены»;",
   "- drop_section {route, section} — убрать секцию, которой нечего честно сказать (не первый экран, не форма и не данные).",
-  "Не больше 6 правок, важные — первыми. Секции с данными (каталог, запись, блог, форма) показаны без записей — их наполнение не оценивай.",
+  "patch {file, find, replace} — правка кода страницы вместо операции (V4-09), когда операций не хватает: file — файл из блока «Код», find — фрагмент, который встречается в файле ровно один раз (скопируй его дословно), replace — новый фрагмент. Только классы токенов (bg-*, text-*, rounded-*, py-section, px-gutter, gap-*), без #hex, rgb(), font-family и новых импортов; привязки к данным (entity, href, path) не трогай. У находки — edit или patch, не оба.",
+  "Не больше 4 находок — только самые важные, первыми; мелочи (P3) не перечисляй. Оси оценивай по тому, что видно на снимках, а не по числу находок. Секции с данными (каталог, запись, блог, форма) показаны без записей — их наполнение не оценивай. Правку принимают проверки кода, а не твоя оценка: сломанная правка откатится.",
 ].join("\n");
+
+/** Characters of a page's code shown to the critic (the rest is cut). */
+export const CRITIC_CODE_CHARS = 8000;
 
 /** Keys whose strings are not copy (links, sources, bindings). */
 const SKIP_KEYS = new Set([
@@ -141,6 +146,8 @@ export interface CritiqueInput {
   found: readonly DeterministicProblem[];
   history: readonly CritiqueHistory[];
   stubPhotos?: boolean;
+  /** V4-09: the code of the shown pages (file → source) the patches edit. */
+  code?: ReadonlyMap<string, string>;
 }
 
 /** Messages of a critic_visual call: the rubric and one user message with the images. */
@@ -167,6 +174,11 @@ export function critiqueMessages(o: CritiqueInput): LlmMessage[] {
             ? `; отклонено — ${h.rejected.map((r) => `${r.edit} (${r.reason_ru})`).join("; ")}`
             : ""
         }.`,
+    ),
+    "",
+    ...[...(o.code ?? new Map())].map(
+      ([file, src]) =>
+        `Код ${file}:\n\`\`\`tsx\n${src.length > CRITIC_CODE_CHARS ? `${src.slice(0, CRITIC_CODE_CHARS)}\n// …обрезано` : src}\n\`\`\``,
     ),
     "",
     o.stubPhotos
@@ -213,6 +225,15 @@ function dropBadEdits(args: unknown): unknown {
         f && typeof f === "object" && "edit" in f && f.edit != null && !editOpSchema.safeParse(f.edit).success
           ? { ...f, edit: null }
           : f,
+      )
+      .map((f) =>
+        f &&
+        typeof f === "object" &&
+        "patch" in f &&
+        f.patch != null &&
+        !codePatchSchema.safeParse(f.patch).success
+          ? { ...f, patch: null }
+          : f,
       ),
   };
 }
@@ -221,7 +242,7 @@ function dropBadEdits(args: unknown): unknown {
 export const critiqueTool = defineTool({
   name: "submit_critique",
   description:
-    "Visual critique by the rubric: axis scores 0-4, polish, findings with closed edit operations.",
+    "Visual critique by the rubric: axis scores 0-4, polish, findings with closed edit operations or code patches.",
   input: critiqueSchema,
   normalize: dropBadEdits,
 });
