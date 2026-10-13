@@ -88,7 +88,19 @@ export const PLACEHOLDER_PATTERNS: readonly { re: RegExp; what: string }[] = [
     what: "шаблон текста",
   },
   { re: /(?:^|\s)(?:x{3,}|х{3,})(?:\s|$)/i, what: "xxx" },
+  // A demo row named by its entity and number («Услуга 1», «Товар 3»): the generator's fallback, not the owner's offer.
+  {
+    re: /^\s*(?:услуга|товар|позиция|элемент|пункт|продукт|категория|раздел|запись|статья|новость|отзыв|проект|карточка|врач|мастер|сотрудник|item|product|service|card|post)\s*(?:№\s*)?\d{1,3}\s*$/i,
+    what: "название «<сущность> N»",
+  },
 ];
+
+/**
+ * Headings of a section that promise content («Как работает запись», «Наши врачи», «Отзывы»): with nothing under them
+ * but a button the section is a stub (S03); a call to action («Запишитесь сегодня» + button) is not.
+ */
+export const CONTENT_HEADING_RE =
+  /^(?:как\s|почему|что\s|зачем|наш[аиеу]?\s|отзыв|цен[аы]|прайс|услуг|вопрос|част[оы]|этап|шаг|преимуществ|врач|команд|галере|портфолио|работы|о\s(?:нас|клинике|компании|салоне)|контакт|адрес|где\sмы|мастер|специалист|расписани|меню|каталог)/i;
 
 const norm = (s: string) =>
   s
