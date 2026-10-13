@@ -2429,8 +2429,8 @@ tasks:
     owner: agents
     parallel_group: v4-b
     estimate_days: 1
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: session_01G2aRP3L1VgXctxShsFmu58
     owns: ["packages/agents/src/builder/v3/critic/**"]
     acceptance:
       - "Критик видит настоящие снимки, правит код страниц (не только закрытый список операций), не больше 2 циклов; правка, ломающая гейт или сценарий, откатывается"
