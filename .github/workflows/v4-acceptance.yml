@@ -28,6 +28,8 @@ concurrency:
 jobs:
   acceptance:
     runs-on: ubuntu-latest
+    # The photo library bucket and its keys live in the prod environment (as stock-library.yml): read only here.
+    environment: prod
     timeout-minutes: 120
     services:
       postgres:
