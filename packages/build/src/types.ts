@@ -1,4 +1,5 @@
 import type { AppSpec } from "@wizard/appspec";
+import type { SourceMap } from "./source-map/index.js";
 import type { WzMap } from "./wz-id.js";
 
 export type BuildEnv = "draft" | "prod";
@@ -73,6 +74,8 @@ export interface BuildResult {
   serverFunctions: string;
   /** null for env=prod (no wz-map.json in prod, ui-kit.yaml#wz_id.prod). */
   wzMap: WzMap | null;
+  /** V4-15: the page literals of a draft (source-map.json, served as /_wizard/source-map.json); null for prod. */
+  sourceMap?: SourceMap | null;
   manifest: BuildManifest;
   spec: AppSpec;
 }

@@ -10,6 +10,7 @@ import * as esbuild from "esbuild";
 import { canonicalJson, sha256Hex, specHash } from "./hash.js";
 import { ENTRY_NS, SDK, SDK_JSX, toPosix, UI_KIT, wizardPlugin } from "./plugin.js";
 import { parseSeo, SEO_ASSET, SEO_PATH, type SiteSeo, seoClientCode, seoHeadTags, seoTitle } from "./seo.js";
+import { annotateSource, buildSourceMap, type SourceMap } from "./source-map/index.js";
 import { DESIGN_CSS_PATH, layeredCss, systemTailwind } from "./tailwind.js";
 import type {
   BuildEnv,
@@ -290,6 +291,7 @@ export async function buildSystem(input: BuildInput): Promise<BuildResult> {
     client: new Map(),
     serverFunctions: "",
     wzMap: null,
+    sourceMap: null,
     manifest: emptyManifest(spec, env),
     spec,
   });
@@ -336,9 +338,11 @@ export async function buildSystem(input: BuildInput): Promise<BuildResult> {
 
   const loaded = new Map<string, string>();
   const wzMap: WzMap = {};
+  // V4-15: a draft maps the texts and photos of its pages to their literals (source-map.json); free TSX gets data-wz-src.
+  const sourceMap: SourceMap | null = env === "draft" ? buildSourceMap(sources) : null;
   for (const [path, text] of sources) {
     if (path.startsWith("ui/") && path.endsWith(".tsx")) {
-      const t = injectWzIds(path, text);
+      const t = injectWzIds(path, sourceMap ? annotateSource(path, text) : text);
       loaded.set(path, t.code);
       for (const [id, e] of t.entries) wzMap[id] = e;
     } else loaded.set(path, text);
@@ -516,7 +520,16 @@ export async function buildSystem(input: BuildInput): Promise<BuildResult> {
       wzMap: wz !== null,
       sizes: { client: clientSize, functions: fnSize },
     };
-    return { ok: true, errors: [], client: clientFiles, serverFunctions, wzMap: wz, manifest, spec };
+    return {
+      ok: true,
+      errors: [],
+      client: clientFiles,
+      serverFunctions,
+      wzMap: wz,
+      sourceMap,
+      manifest,
+      spec,
+    };
   } finally {
     rmSync(copyDir, { recursive: true, force: true });
   }

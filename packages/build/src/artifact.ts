@@ -60,6 +60,8 @@ export function writeArtifact(
     put("server/functions.mjs", result.serverFunctions);
     if (manifest.env === "draft" && result.wzMap)
       put("wz-map.json", `${JSON.stringify(result.wzMap, null, 2)}\n`);
+    if (manifest.env === "draft" && result.sourceMap)
+      put("source-map.json", JSON.stringify(result.sourceMap));
     put("manifest.json", pretty(manifest));
     renameSync(stage, dir);
   } catch (e) {

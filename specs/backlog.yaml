@@ -2472,18 +2472,38 @@ tasks:
   - id: V4-12
     title: "Правки в три слоя: мгновенные без модели, «Укажи и измени» ≤ 60 с, чат (заменяет M3-01)"
     milestone: V4
-    deps: [V4-06, V4-11]
+    deps: [V4-06, V4-11, V4-15]
     specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4"]
     owner: frontend
     parallel_group: v4-c
     estimate_days: 2
     status: todo
     claimed_by: null
-    owns: ["apps/platform-web/src/screens/edit/** (новый)", "packages/build/src/source-map/** (новый)", "packages/agents/src/builder/v3/edit/** (новый)"]
+    owns: ["apps/platform-web/src/screens/edit/** (новый)"]
+    description: >
+      Интерфейс правок (поток В). Сервер — V4-15: разметка исходников, мост превью, API мгновенных правок и ползунков,
+      агент «Укажи и измени».
     acceptance:
       - "Сборка размечает тексты и изображения ссылками на исходник; правка текста или замена фото применяется ≤ 3 с без вызова модели"
       - "Ползунки токенов (скругление, плотность, контраст, шрифтовая пара) меняют сайт мгновенно и сохраняются в дизайн-систему"
       - "Клик по элементу → правка словами меняет только файл этого компонента и применяется ≤ 60 с"
+
+  - id: V4-15
+    title: "Правки в три слоя — сервер: разметка исходников, мгновенная правка без модели, ползунки токенов, агент «Укажи и измени» для v3"
+    milestone: V4
+    deps: []
+    specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4", specs/ui/platform-screens.yaml]
+    owner: platform
+    parallel_group: v4-c
+    estimate_days: 1.5
+    status: in_progress
+    claimed_by: session_01FAiGcdwk6WNp3eioRKs2Fc
+    owns: ["packages/build/src/source-map/** (новый)", "apps/platform-api/src/builds-v3/edit/** (новый)", "packages/agents/src/builder/v3/edit/** (новый)", "apps/runtime/src/preview/bridge-client.js"]
+    acceptance:
+      - "Черновик размечает тексты и изображения ссылками на исходник (паттерны и свободный TSX); мост отдаёт ссылки по клику без текста элемента"
+      - "Правка текста или замена фото по ссылке без модели даёт новую ревизию превью ≤ 3 с (тест)"
+      - "Ползунки токенов (скругление, плотность, контраст, шрифтовая пара) пересобирают CSS и сохраняются в дизайн-систему (тест)"
+      - "«Укажи и измени» для системы v3 меняет только файл выбранного компонента, гейты после правки, ≤ 60 с на записях (тест)"
 
   - id: V4-13
     title: "Ключи Moonshot, Xiaomi MiMo, DeepSeek и проверка визуальной модели GLM; формулировка согласия на передачу брифа у юриста"
