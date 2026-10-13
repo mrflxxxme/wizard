@@ -12,7 +12,7 @@ import { type CallBase, callTool, type RouteFn } from "../../../core/loop.js";
 import { defineTool, type ToolIssue } from "../../../core/tool.js";
 import type { V3BuildContext } from "../contract.js";
 import type { CriticInspector, CriticShot, CriticShotRequest } from "../critic/types.js";
-import { siteFiles } from "./codegen.js";
+import { keepPhotoPlaces, siteFiles } from "./codegen.js";
 import type { SiteFacts } from "./facts.js";
 import { lintErrors } from "./lint.js";
 import {
@@ -153,7 +153,8 @@ export async function pageCode(
       return null;
     }
     const answer = r.value as PageCodeAnswer;
-    const applied = applyPageCode(s.page, answer, s.library);
+    const code = applyPageCode(s.page, answer, s.library);
+    const applied = { ...code, page: keepPhotoPlaces(s.page, code.page) };
     const all = new Map([...s.signatures, ...applied.sources]);
     const sys = systemWith(ctx, s, applied.page, all);
     const check = await s.verify(sys.spec, sys.files, [...applied.sources.keys(), applied.page.file]);

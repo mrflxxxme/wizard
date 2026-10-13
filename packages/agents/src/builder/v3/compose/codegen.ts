@@ -7,6 +7,7 @@ import { photoGrade, photoGradeCss } from "../../../stock/grade.js";
 import { fitPhotos, siteRules } from "./content.js";
 import {
   SECTIONS_DIR,
+  type SectionPhotos,
   SITE_PAGES_DIR,
   SITE_PATH,
   type SiteModel,
@@ -52,12 +53,50 @@ function importOf(s: SiteSection): string {
 
 const json = (v: unknown) => JSON.stringify(v);
 
+const isPhoto = (v: unknown): boolean =>
+  typeof v === "object" && v !== null && typeof (v as { src?: unknown }).src === "string";
+
+/**
+ * V4-06: a section the model wrote as code keeps the places of the owner's photos («Фото сайта») of the section it
+ * replaced (same id), so the page still passes the owner's picture into its props (codePhotos).
+ */
+export function keepPhotoPlaces(before: SitePage, after: SitePage): SitePage {
+  const was = new Map(before.sections.map((s) => [s.id, s.photos]));
+  let changed = false;
+  const sections = after.sections.map((s) => {
+    const photos = was.get(s.id);
+    if (s.type !== "signature" || s.photos || !photos) return s;
+    changed = true;
+    return { ...s, photos };
+  });
+  return changed ? { ...after, sections } : after;
+}
+
+/**
+ * Places of a section written as code (V4-06): those of the section it replaced whose props it still takes in the
+ * library's shape — `image` {src, alt}, `images` [{src, alt}], `items` [{image}] (the prompt: props carry the photos).
+ */
+function codePhotos(s: SiteSection): SectionPhotos | undefined {
+  const p = s.photos;
+  if (!p) return undefined;
+  const out: SectionPhotos = {};
+  if (p.image && isPhoto(s.props.image)) out.image = p.image;
+  if (p.images && Array.isArray(s.props.images) && s.props.images.every(isPhoto)) out.images = p.images;
+  if (
+    p.items &&
+    Array.isArray(s.props.items) &&
+    s.props.items.some((i) => isPhoto((i as { image?: unknown } | null)?.image))
+  )
+    out.items = p.items;
+  return Object.keys(out).length ? out : undefined;
+}
+
 /**
  * Attributes of a section's pictures the owner may replace (V3-18, «Фото сайта»): the place's photo of the owner,
  * else the stock picture of the props (useSitePhotos of the headless hooks).
  */
 function photoAttrs(s: SiteSection, patternOf: (id: string) => PatternMeta | undefined): string {
-  const places = s.type === "signature" ? undefined : fitPhotos(patternOf(s.pattern), s.photos, s.props);
+  const places = s.type === "signature" ? codePhotos(s) : fitPhotos(patternOf(s.pattern), s.photos, s.props);
   if (!places) return "";
   const out: string[] = [];
   if (places.image) {
