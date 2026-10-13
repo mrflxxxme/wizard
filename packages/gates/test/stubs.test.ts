@@ -156,6 +156,8 @@ describe("rules", () => {
       "[Название компании]",
       "{{name}}",
       "8 (999) 999-99-99",
+      "Услуга 1",
+      "Товар №12",
     ])
       expect(placeholderOf(t), t).not.toBeNull();
     for (const t of [
@@ -167,6 +169,8 @@ describe("rules", () => {
       "Наш адрес: Казань, ул. Баумана, 1",
       // The empty state of a data list the owner has not filled yet (ui-kit catalog) is not a stub.
       "Позиции каталога скоро появятся.",
+      "Зал 1",
+      "Услуга для детей 1-го класса",
     ])
       expect(placeholderOf(t), t).toBeNull();
   });

@@ -4,7 +4,13 @@
 // A button's click handler is read from React's props on the node (`__reactProps$…`): no onClick, not a form submit,
 // no popover or command target — the button does nothing. Sections as the critic sees them: the anchor div of a body
 // section in <main>, else header / footer.
-import { PLACEHOLDER_PATTERNS, PLACEHOLDER_TEXTS, type StubCode, SYSTEM_ROUTES } from "./rules.js";
+import {
+  CONTENT_HEADING_RE,
+  PLACEHOLDER_PATTERNS,
+  PLACEHOLDER_TEXTS,
+  type StubCode,
+  SYSTEM_ROUTES,
+} from "./rules.js";
 
 /** Options of window.__wzStubs.run. */
 export interface StubPageOptions {
@@ -27,6 +33,7 @@ const RULES = JSON.stringify({
   texts: PLACEHOLDER_TEXTS,
   patterns: PLACEHOLDER_PATTERNS.map((p) => ({ source: p.re.source, flags: p.re.flags, what: p.what })),
   system: SYSTEM_ROUTES,
+  heading: { source: CONTENT_HEADING_RE.source, flags: CONTENT_HEADING_RE.flags },
 });
 
 /** Defines window.__wzStubs.run(opts) → StubPageResult. */
@@ -34,6 +41,7 @@ export const STUB_CHECKS_SCRIPT = String.raw`
 (() => {
   const RULES = ${RULES};
   const patterns = RULES.patterns.map((p) => ({ re: new RegExp(p.source, p.flags), what: p.what }));
+  const contentHeading = new RegExp(RULES.heading.source, RULES.heading.flags);
   const norm = (s) => s.toLowerCase().replace(/ё/g, "е").replace(/[\s ]+/g, " ").trim().replace(/[.!?:…]+$/, "").trim();
   const placeholderOf = (text) => {
     const t = norm(text);
@@ -158,7 +166,27 @@ export const STUB_CHECKS_SCRIPT = String.raw`
         if (!sec.id || (opts.dataSections || []).includes(sec.id) || getComputedStyle(sec).display === "none") continue;
         const text = (sec.innerText || "").replace(/\s+/g, " ").trim();
         const media = sec.querySelector("img, svg, video, iframe, canvas, form, input, select, textarea, picture");
-        if (text.length < 15 && !media) add("S03", sec, "пустая секция", text || "(пусто)");
+        if (text.length < 15 && !media) {
+          add("S03", sec, "пустая секция", text || "(пусто)");
+          continue;
+        }
+        // One heading that promises content and nothing under it but short buttons («Как работает запись» +
+        // «Записаться»); cards (more headings) or a card that is a link are content.
+        const heads = [...sec.querySelectorAll("h1, h2, h3, h4, h5, h6")];
+        const head = heads.length === 1 ? (heads[0].innerText || "").replace(/\s+/g, " ").trim() : "";
+        if (head && !media && contentHeading.test(head)) {
+          let rest = "";
+          const tw = document.createTreeWalker(sec, NodeFilter.SHOW_TEXT);
+          for (let n = tw.nextNode(); n; n = tw.nextNode()) {
+            const el = n.parentElement;
+            if (!el || el.closest("h1, h2, h3, h4, h5, h6, button, [role=button]")) continue;
+            const a = el.closest("a");
+            if (a && (a.innerText || "").trim().length <= 30) continue;
+            rest += n.nodeValue || "";
+          }
+          if (rest.replace(/\s+/g, "").length < 15)
+            add("S03", sec, "секция без содержимого: только заголовок и кнопка", head);
+        }
       }
       for (const group of document.querySelectorAll("main *")) {
         const kids = [...group.children].filter((c) => visible(c));
@@ -169,6 +197,11 @@ export const STUB_CHECKS_SCRIPT = String.raw`
         const counts = new Map();
         for (const ps of paras) for (const p of new Set(ps)) counts.set(p, (counts.get(p) || 0) + 1);
         for (const [p, n] of counts) if (n >= 2) add("S03", group, "одна фраза в " + n + " карточках из " + kids.length, p);
+        // Cards titled by one word and their numbers («Врач 1», «Врач 2»): demo rows without names.
+        const titles = kids.map((c) => { const h = c.querySelector("h2, h3, h4, h5, strong"); return h ? (h.innerText || "").replace(/\s+/g, " ").trim() : ""; });
+        const numbered = titles.map((t) => /^(\S.{0,30}?)\s+№?\s*\d{1,3}$/.exec(t)).filter(Boolean);
+        if (numbered.length >= 2 && numbered.every((m) => m[1] === numbered[0][1]))
+          add("S02", group, "карточки названы «" + numbered[0][1] + " N» — демо-строки без названий", titles.filter(Boolean).slice(0, 3).join(", "));
         const withImg = kids.filter((c) => c.querySelector("img")).length;
         // Three cards at least: two siblings of one class are as often the columns of a split (text | photo).
         if (withImg > 0 && withImg < kids.length && kids.length >= 3 && kids.length <= 12)
