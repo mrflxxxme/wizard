@@ -41,15 +41,15 @@ providers:
     base_url_env: DEEPSEEK_BASE_URL         # по умолчанию https://api.deepseek.com
     api_key_env: DEEPSEEK_API_KEY           # необязателен: без ключа модели провайдера недоступны, цепочка идёт дальше
     termsCheckedAt: 2026-10-13
-    rule: "V4-05 (D79 (4), план v4 §3): массовые правки (deepseek-v4.1-flash) и запасной код страниц (deepseek-v4-pro-0813). MUST NOT для callType из pii_forbidden_for_T1 и client_code. Баланс 13.10.2026 нулевой (402): цепочки пропускают провайдера до пополнения (fallback_rules, D76)"
+    rule: "V4-05 (D79 (4), план v4 §3): массовые правки (deepseek-v4.1-flash) и запасной код страниц (deepseek-v4-pro-0813). MUST NOT для callType из pii_forbidden_for_T1 и client_code. Ключ обновлён и баланс пополнен 13.10.2026 (provider-probe 38438806198: 200)"
     thinking: "MUST: thinking: {type: disabled} в КАЖДОМ запросе (у DeepSeek он включён по умолчанию; с tools в режиме thinking API требует вернуть reasoning_content, а мы его вырезаем → 400 на втором ходе)"
     prompt_cache: auto                      # «Context Caching on Disk» включён по умолчанию (api-docs.deepseek.com/guides/kv_cache): usage.prompt_cache_hit_tokens = prompt_tokens_details.cached_tokens
   xiaomi:
     tier: T1
     base_url_env: MIMO_BASE_URL             # по умолчанию https://api.xiaomimimo.com/v1
-    api_key_env: MIMO_API_KEY               # в GitHub рабочий секрет — MIMO_SECOND_API_KEY (MIMO_API_KEY недействителен, проба 13.10.2026): выкат и пробы кладут его в MIMO_API_KEY
+    api_key_env: MIMO_API_KEY               # секрет MIMO_API_KEY, баланс пополнен 13.10.2026 (provider-probe 38438806198: 200)
     termsCheckedAt: 2026-10-13
-    rule: "V4-05 (D79 (4)): MiMo V2.6 Pro — техревью, V2.6 Flash — запасной на массовых правках. MUST NOT для callType из pii_forbidden_for_T1 и client_code. Баланс 13.10.2026 нулевой (402): цепочки пропускают провайдера до пополнения"
+    rule: "V4-05 (D79 (4)): MiMo V2.6 Pro — техревью, V2.6 Flash — запасной на массовых правках. MUST NOT для callType из pii_forbidden_for_T1 и client_code. Баланс пополнен 13.10.2026"
     prompt_cache: auto                      # кэш-попадания в usage [?] (цена кэша $0.0036/M по вторичным источникам)
   ollama:
     tier: T1
@@ -217,7 +217,7 @@ routes:                # chain.T1 пробуется только если tier=
   # V3-32 (D77 (4)): код клиента — только T0 (client_code); голова ревьюера — другого семейства, чем голова агента, вызывающий передаёт avoidFamilies семейства модели агента
   repo_code:           { role: repo_agent,   default_tier: T0, chain: { T0: [glm-5.1, qwen3-coder-next, kimi-k2.6, deepseek-v4-pro] },              temperature: 0.1, max_tokens: 16000, timeout_ms: 480000, note: "агент репозитория: чтение файлов, правка, тесты в песочнице без сети; потолок задачи 80 ₽ (как правка D77 (11)); glm-5.1 — первой: у Cloud.ru стабильно отвечает инструментом (D74), deepseek-v4-pro отвечает 500 на запрос с инструментом (проба формы 09.10.2026)" }
   repo_review:         { role: reviewer,     default_tier: T0, chain: { T0: [gpt-oss-120b, gigachat-3.5, deepseek-v4-pro, kimi-k2.6] },              temperature: 0.1, max_tokens: 8000,  timeout_ms: 300000, note: "ревьюер изменения агента: только T0, семейство MUST отличаться от модели агента (avoidFamilies)" }
-  # V4-05 (план v4 §3): массовые правки — DeepSeek V4.1 Flash, запасная MiMo V2.6 Flash; пока у обоих нулевой баланс — glm-5.3-flash и glm-5.3
+  # V4-05 (план v4 §3): массовые правки — DeepSeek V4.1 Flash, запасная MiMo V2.6 Flash, затем glm-5.3-flash и glm-5.3
   page_edit:           { role: editor,       default_tier: T1, chain: { T1: [deepseek-v4.1-flash, mimo-v2.6-flash, glm-5.3-flash, glm-5.3], T0: [deepseek-v4-pro, kimi-k2.6, glm-5.1] }, temperature: 0.2, max_tokens: 16000, timeout_ms: 300000 }
   # V4-10 (D79 (6)): выбор фото сайта визуальной моделью — только vision; стоковые фото без ПДн уходят за рубеж
   photo_pick:          { role: critic,       default_tier: T1, chain: { T1: [glm-5v-turbo, kimi-k3, glm-4.6v], T0: [qwen3.6-35b, kimi-k2.6] },       temperature: 0.2, max_tokens: 1500,  timeout_ms: 120000, note: "V4-10: 3–5 из 20 кандидатов по смыслу и палитре направления; kimi-k3 — temperature 1 модели" }
