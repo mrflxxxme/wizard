@@ -97,7 +97,8 @@ async function builtClinic(
   const design = archetype
     ? designSystemV3({ archetype, brandColor: "#2a7f9e", seed: 7, niche: fixture.plan.niche })
     : fixture.design;
-  const base = { ...fixture, design, route: withOpenPolicy(route), budgetRub: 40 };
+  // The step budget of the fixture (V4-05: a page call of Kimi K3 is ≈ 20–30 ₽, room for the scenario's attempts).
+  const base = { ...fixture, design, route: withOpenPolicy(route) };
   const out = await createPageComposer({ patterns: PATTERNS }).skeleton(base);
   const files = new Map(base.files);
   for (const [p, v] of out.files) {
