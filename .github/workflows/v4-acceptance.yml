@@ -1,0 +1,121 @@
+# V4 acceptance before the founder (docs/plans/2026-10-11-v4.md §5, D79 (10)): the whole v3 build on live models for
+# three briefs — clinic, coffee house, beauty salon — on a platform started in this job (tools/eval/acceptance/v4.ts),
+# the owner's way through the API, not the UI. Per build: the time to the three screens and to the ready system, ₽ by
+# stage, the screenshots 390/1440, the critic's score, the gates (the report V4-04). The table goes to the run's summary;
+# the screenshots to the branch acceptance-shots (<run id>/<brief>/) so the table's links open in GitHub. By hand only:
+# a run costs up to cap_rub (≤ 1 000 ₽ — more needs the founder's «да», D77 (18б)).
+name: v4-acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      briefs:
+        description: "Брифы через запятую (пусто — все три: v3-02-dental-booking, v3-13-coffee-house, v3-14-beauty-salon)"
+        type: string
+        default: ""
+      cap_rub:
+        description: "Потолок трат на прогон, ₽ (не больше 1000)"
+        type: string
+        default: "900"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: v4-acceptance
+  cancel-in-progress: false
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    services:
+      postgres:
+        image: ghcr.io/${{ github.repository_owner }}/mirror/docker/library/postgres:16
+        credentials:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          POSTGRES_USER: wizard
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: wizard
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U wizard" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      # No secrets in the environment of dependency installation.
+      - run: pnpm install --frozen-lockfile
+      - name: Cap
+        env:
+          CAP: ${{ inputs.cap_rub }}
+        run: |
+          if ! [[ "$CAP" =~ ^[0-9]+$ ]] || [ "$CAP" -gt 1000 ] || [ "$CAP" -lt 1 ]; then
+            echo "::error::Потолок — целое число от 1 до 1000 ₽ (больше — только с «да» основателя)"
+            exit 1
+          fi
+      - name: Chromium
+        run: pnpm --filter @wizard/e2e exec playwright install --with-deps chromium
+      - name: Live builds
+        env:
+          WIZARD_DB_URL: postgres://wizard@localhost:5433/wizard
+          V4_ACC_OUT: ${{ runner.temp }}/acc
+          V4_ACC_BRIEFS: ${{ inputs.briefs }}
+          V4_ACC_CAP_RUB: ${{ inputs.cap_rub }}
+          V4_ACC_SHOTS_BASE: ${{ github.server_url }}/${{ github.repository }}/blob/acceptance-shots/${{ github.run_id }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          WIZARD_LLM_MODE: live
+          CLOUDRU_API_KEY: ${{ secrets.CLOUDRU_API_KEY }}
+          CLOUDRU_BASE_URL: ${{ vars.CLOUDRU_BASE_URL }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          ZAI_BASE_URL: ${{ vars.ZAI_BASE_URL }}
+          YANDEX_API_KEY: ${{ secrets.YANDEX_API_KEY }}
+          YANDEX_FOLDER_ID: ${{ secrets.YANDEX_FOLDER_ID }}
+          YANDEX_BASE_URL: ${{ vars.YANDEX_BASE_URL }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_BASE_URL: ${{ vars.DEEPSEEK_BASE_URL }}
+          MOONSHOT_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          MOONSHOT_BASE_URL: https://api.moonshot.ai/v1
+          MIMO_API_KEY: ${{ secrets.MIMO_SECOND_API_KEY }}
+        run: pnpm --filter @wizard/e2e exec tsx ../../tools/eval/acceptance/v4.ts
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: cat "$RUNNER_TEMP/acc/summary.md" >> "$GITHUB_STEP_SUMMARY" || echo "Итога нет — смотрите лог." >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: v4-acceptance-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/acc/**
+            !${{ runner.temp }}/acc/.work/**
+          if-no-files-found: ignore
+      # The screenshots and reports on their own branch (no workflow runs on it): the table's links open in GitHub.
+      - name: Screenshots to the branch acceptance-shots
+        if: ${{ !cancelled() }}
+        env:
+          SRC: ${{ runner.temp }}/acc
+        run: |
+          set -euo pipefail
+          [ -f "$SRC/summary.md" ] || exit 0
+          dir="$RUNNER_TEMP/shots"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin acceptance-shots >/dev/null; then
+            git clone -q --depth 1 --branch acceptance-shots "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" "$dir"
+          else
+            mkdir -p "$dir" && cd "$dir" && git init -q -b acceptance-shots && \
+              git remote add origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git"
+          fi
+          mkdir -p "$dir/$GITHUB_RUN_ID"
+          cp -r "$SRC"/. "$dir/$GITHUB_RUN_ID"/
+          rm -rf "$dir/$GITHUB_RUN_ID/.work"
+          cd "$dir"
+          git add "$GITHUB_RUN_ID"
+          git commit -q -m "Приёмка V4: прогон ${GITHUB_RUN_ID}"
+          git push -q origin HEAD:acceptance-shots

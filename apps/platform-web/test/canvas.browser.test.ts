@@ -181,4 +181,69 @@ describe.skipIf(!hasChromium)("canvas v4: a failed build is explained in words",
     await page.getByTestId("canvas-frame-site").waitFor({ timeout: 20_000 });
     await page.context().close();
   });
+
+  // V4-11: every failure in plain words without its code, and only the action the server supports for it.
+  for (const c of [
+    {
+      code: "RUN_TIMEOUT",
+      message_ru: "run exceeded 45 min",
+      words: "Сборка шла дольше обычного",
+      action: "retry",
+      button: "Повторить",
+    },
+    {
+      code: "GATES_FAILED",
+      message_ru: "G1 failed: 2 blockers",
+      words: "не прошла проверки",
+      action: "fix",
+      button: "Исправить",
+    },
+    {
+      code: "INSUFFICIENT_CREDITS",
+      message_ru: "Недостаточно кредитов",
+      words: "Пополните баланс",
+      action: "billing",
+      button: null,
+    },
+    {
+      code: "LLM_BUDGET_EXHAUSTED",
+      message_ru: "cap reached",
+      words: "лимит работы моделей исчерпан",
+      action: "none",
+      button: null,
+    },
+    {
+      code: "SOMETHING_NEW",
+      message_ru: "TypeError: x is undefined",
+      words: "Что-то пошло не так во время сборки",
+      action: "retry",
+      button: "Повторить",
+    },
+  ] as const)
+    test(`${c.code}: words without the code, ${c.action}`, async () => {
+      h.mock.opts.canvasFailAfter = "compile";
+      h.mock.opts.canvasFail = { code: c.code, message_ru: c.message_ru };
+      const page = await h.page({ viewport: { width: 390, height: 844 } });
+      await startClinic(page);
+      await page.getByTestId("canvas-question").waitFor();
+      await page.getByTestId("canvas-rest").click();
+      await page.getByTestId("canvas-approve").click();
+      const fail = page.getByTestId("canvas-failure");
+      await fail.waitFor({ timeout: 15_000 });
+      expect(await fail.getAttribute("data-action")).toBe(c.action);
+      const text = (await fail.locator("p").allTextContents()).join(" ");
+      expect(text).toContain(c.words);
+      expect(text).not.toContain(c.code);
+      expect(text).not.toMatch(/[A-Z]{2,}_[A-Z]/);
+      if (c.button) expect(await page.getByTestId("canvas-retry").textContent()).toContain(c.button);
+      else expect(await page.getByTestId("canvas-retry").count()).toBe(0);
+      expect(await page.getByTestId("canvas-topup").count()).toBe(c.action === "billing" ? 1 : 0);
+      // No endless spinner: the build indicator is gone, the island's ring says it failed.
+      expect(await page.getByTestId("canvas-eta").count()).toBe(0);
+      expect(await page.getByTestId("canvas-island-build").getAttribute("data-failed")).toBe("");
+      await shot(page, `390-failed-${c.code.toLowerCase()}`);
+      h.mock.opts.canvasFailAfter = undefined;
+      h.mock.opts.canvasFail = undefined;
+      await page.context().close();
+    });
 });
