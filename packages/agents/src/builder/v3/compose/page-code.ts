@@ -34,7 +34,15 @@ export const SDK_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /** Props that bind a section to data (V3-08): such a section is an SDK component whatever its type. */
-const BINDING_KEYS = ["entity", "booking", "categoryEntity", "fields", "itemAction", "preview", "dates"] as const;
+const BINDING_KEYS = [
+  "entity",
+  "booking",
+  "categoryEntity",
+  "fields",
+  "itemAction",
+  "preview",
+  "dates",
+] as const;
 
 /** Sections the model keeps as they are: SDK components, the owner's contacts (exact phone and address). */
 export function isKeptSection(s: SiteSection): boolean {
@@ -83,7 +91,10 @@ export function pageCodeSchema(kept: readonly string[]) {
     props: z.record(z.string(), z.unknown()).optional(),
   });
   return z.strictObject({
-    sections: z.array(z.discriminatedUnion("kind", [code, keep])).min(1).max(12),
+    sections: z
+      .array(z.discriminatedUnion("kind", [code, keep]))
+      .min(1)
+      .max(12),
     seo: z.strictObject({ title: z.string().min(10).max(70), description: z.string().min(50).max(160) }),
   });
 }
@@ -140,7 +151,11 @@ export function applyPageCode(
   };
 }
 
-const code = (i: number, c: string, message: string, path = `sections.${i}`): ToolIssue => ({ path, code: c, message });
+const code = (i: number, c: string, message: string, path = `sections.${i}`): ToolIssue => ({
+  path,
+  code: c,
+  message,
+});
 
 /**
  * Checks of submit_page_code: the first section is the hero written as code, ids unique, every SDK component kept with
@@ -182,7 +197,9 @@ export function pageCodeIssues(
   });
   const first = v.sections[0];
   if (!first || first.kind !== "code" || first.id !== "hero")
-    out.push(code(0, "HERO_FIRST", "Первая секция — первый экран кодом: kind code, id hero, с единственным h1"));
+    out.push(
+      code(0, "HERO_FIRST", "Первая секция — первый экран кодом: kind code, id hero, с единственным h1"),
+    );
   for (const [k, text] of [
     ["seo.title", v.seo.title],
     ["seo.description", v.seo.description],
@@ -199,7 +216,11 @@ export function pageCodeIssues(
     const at = i.section ? body.findIndex((s) => s.id === i.section) : -1;
     const item = at >= 0 ? v.sections[at] : undefined;
     const where =
-      item?.kind === "code" ? (i.code === "untraced-number" || i.code === "weak-alt" ? "props" : "source") : "";
+      item?.kind === "code"
+        ? i.code === "untraced-number" || i.code === "weak-alt"
+          ? "props"
+          : "source"
+        : "";
     return {
       path: at >= 0 ? `sections.${at}${where ? `.${where}` : ""}` : "",
       code: i.code.toUpperCase().replace(/-/g, "_"),
@@ -276,7 +297,8 @@ export function designBlock(ds: DesignSystemV3): string {
 
 /** Library patterns shown as examples of the level (never a list to choose from): a hero and a content section. */
 export function codeExamples(library: readonly PatternMeta[], archetype: string, n = 2): PatternMeta[] {
-  const fit = (p: PatternMeta) => (p.archetypes as readonly string[] | undefined)?.includes(archetype) ?? false;
+  const fit = (p: PatternMeta) =>
+    (p.archetypes as readonly string[] | undefined)?.includes(archetype) ?? false;
   const pick = (type: string) =>
     library.find((p) => p.sectionType === type && !p.needs && fit(p)) ??
     library.find((p) => p.sectionType === type && !p.needs);
@@ -361,8 +383,7 @@ export function pageCodeRequest(o: {
     name: PAGE_CODE_TOOL,
     description: "The public page as free code: code sections and the kept SDK components in order, SEO.",
     input: pageCodeSchema(sdkSections(o.page).map((s) => s.id)),
-    check: (v) =>
-      pageCodeIssues(v, { site: o.site, page: o.page, facts: o.facts, library, signatures }),
+    check: (v) => pageCodeIssues(v, { site: o.site, page: o.page, facts: o.facts, library, signatures }),
   });
   return {
     tool,

@@ -1,5 +1,5 @@
 // V3-12 acceptance (browser): a public site composed by the page composer — three pages from library patterns, a page
-// written for a scenario with a signature section in free code, a form bound to the headless hook — built by
+// written for a scenario as free code (V4-06: the first screen and a section), a form bound to the headless hook — built by
 // buildSystem (Tailwind over the client's design system, React and Motion in the bundle) and checked in Chromium at
 // 390 px (light) and 1280 px (dark): no errors, no horizontal overflow, contrast AA, named controls, alt texts, one h1
 // and heading order, touch targets ≥ 44 px on phones. Every page carries its title, description and Open Graph tags;
@@ -12,13 +12,14 @@ import { PATTERNS } from "@wizard/ui-kit/v3/patterns";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import {
   createPageComposer,
-  type PageComposeAnswer,
+  PAGE_CODE_TOOL,
+  type PageCodeAnswer,
   readSite,
   type SiteModel,
   withSitePages,
 } from "../../agents/src/builder/v3/compose/index.js";
 import type { V3BuildContext, V3ComposeResult } from "../../agents/src/builder/v3/contract.js";
-import { BRIEF, composeContext, SIGNATURE_OK } from "../../agents/test/v3-compose-fixtures.js";
+import { BRIEF, composeContext, HERO_CODE, SIGNATURE_OK } from "../../agents/test/v3-compose-fixtures.js";
 import { type BuildResult, buildSystem } from "../src/index.js";
 import { PKG_ROOT } from "./helpers.js";
 import { V3_CHECKS_SCRIPT, type V3CheckResult } from "./v3-checks.js";
@@ -35,23 +36,22 @@ const hasChromium = (() => {
 const SHOTS = join(PKG_ROOT, "test/artifacts/compose-v3");
 const TOP = "/_wizard/photos/00000000-0000-4000-8000-000000000000/1600";
 
-const HOME: PageComposeAnswer & { signature: { after: string; title: string; idea: string } } = {
+/** V4-06: the home page written as code — the first screen and a section of the model, the SDK components kept. */
+const HOME: PageCodeAnswer = {
   sections: [
+    { kind: "code", id: "hero", title: HERO_CODE.title, source: HERO_CODE.source, props: HERO_CODE.props },
     {
-      id: "hero",
-      pattern: "hero-full-bleed",
-      props: {
-        title: "Лечим зубы без боли и очередей",
-        lead: "Оставьте заявку на сайте — администратор перезвонит за 15 минут и подберёт время приёма.",
-        action: { label: "Записаться на приём", href: "#form" },
-        image: { src: TOP, alt: "Светлый кабинет клиники с креслом у окна" },
-      },
+      kind: "code",
+      id: "first-visit",
+      title: SIGNATURE_OK.title,
+      source: SIGNATURE_OK.source,
+      props: SIGNATURE_OK.props,
     },
     // V3-18: the preview of the catalog on home is bound to the module — the model keeps it, writes its texts.
-    { id: "catalog", pattern: "catalog-list", props: { title: "Услуги и цены" } },
+    { kind: "keep", id: "catalog", props: { title: "Услуги и цены" } },
     {
+      kind: "keep",
       id: "form",
-      pattern: "form-centered",
       props: {
         title: "Запишитесь на приём",
         text: "Оставьте имя и телефон — перезвоним за 15 минут.",
@@ -59,30 +59,23 @@ const HOME: PageComposeAnswer & { signature: { after: string; title: string; ide
         sent: { title: "Заявка отправлена" },
       },
     },
+    { kind: "keep", id: "contacts" },
   ],
   seo: {
     title: "Белая линия — лечение зубов без боли",
     description:
       "Стоматологическая клиника «Белая линия»: оставьте заявку на сайте, администратор перезвонит за 15 минут.",
   },
-  signature: {
-    after: "hero",
-    title: "Как проходит первый приём",
-    idea: "Путь пациента по шагам из брифа: заявка на сайте, звонок администратора, приём у врача.",
-  },
 };
 
-/** Recorded answers of the two model calls (page_compose, signature_section), no network. */
+/** The recorded answer of the page model (page_compose), no network. */
 type Route = V3BuildContext["route"];
-const route: Route = async (input) => {
-  const page = input.callType === "page_compose";
+const route: Route = async () => {
   return {
     tier: "T1",
-    model: "glm-5.3",
+    model: "kimi-k3",
     result: {
-      toolCalls: [
-        { id: "c1", name: page ? "submit_page" : "submit_section", args: page ? HOME : SIGNATURE_OK },
-      ],
+      toolCalls: [{ id: "c1", name: PAGE_CODE_TOOL, args: HOME }],
       finishReason: "tool-calls",
     },
     usage: { inputTokens: 6000, cachedTokens: 0, outputTokens: 1500 },
@@ -120,6 +113,7 @@ beforeAll(async () => {
   const composer = createPageComposer({
     patterns: PATTERNS,
     verify: async () => ({ ok: true, problems: [] }),
+    firstScreen: false,
   });
   const skeleton = await composer.skeleton(base);
   const ctx: V3BuildContext = { ...base, files: apply(base.files, skeleton), route };

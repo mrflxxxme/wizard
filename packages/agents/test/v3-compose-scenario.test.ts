@@ -1,40 +1,31 @@
-// V3-12 acceptance 1: a scenario of the brief brought to its page by the models (WIZARD_LLM_MODE=fixture: recorded
-// answers through the fixture router or a scripted route, no live calls) — page_compose chooses library variants and
-// writes the texts as tool-shaped JSON checked by the slot schemas and the anti-slop linter (repairs go back to the
-// model); signature_section writes ≤ 2 signature sections in free code, checked by the linter and G0 (imports,
-// forbidden API, types, build); a signature section that fails gets a library pattern in its place. Every call fits
-// the step's budget; owner and staff scenarios do not touch the public pages.
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+// V3-12 / V4-06 acceptance: a scenario of the brief brought to its page by the models (scripted routes, no live calls).
+// The model writes the page as free code — sections of React + Tailwind on the tokens — and keeps the SDK components
+// (the catalog, the request form, the contacts); the page passes the pattern and page lint, the SDK gate (a required
+// component removed — the answer goes back) and G0 (real build in two tests); the home page's first screen gets a
+// rival of another family and a judge by screenshots. Every call fits the step's budget; owner scenarios do not
+// touch the public pages.
 import type { BriefScenario } from "@wizard/appspec";
-import { runG0 } from "@wizard/gates";
-import {
-  createRegistry,
-  createRouter,
-  type FixtureLine,
-  type RouteInput,
-  type RouteOutput,
-} from "@wizard/llm";
+import { createRegistry, type RouteInput, type RouteOutput } from "@wizard/llm";
 import { PATTERNS } from "@wizard/ui-kit/v3/patterns";
 import { describe, expect, test } from "vitest";
 import {
-  COMPOSE_CALL_TYPES,
   createPageComposer,
   lintErrors,
   lintSitePage,
-  type PageComposeAnswer,
-  pageComposeRequest,
+  PAGE_CODE_TOOL,
+  type PageCodeAnswer,
+  pageCodeMessages,
+  pageCodeRequest,
+  RIVAL_TOOL,
   readSite,
   type SiteModel,
-  signatureOffer,
-  signatureRequest,
+  type SitePage,
+  sdkGate,
   siteFacts,
-  withSitePages,
 } from "../src/builder/v3/compose/index.js";
 import type { V3BuildContext, V3ComposeResult } from "../src/builder/v3/contract.js";
-import { fixtureLine } from "./build-v2-fixtures.js";
-import { BRIEF, composeContext, SIGNATURE_OK } from "./v3-compose-fixtures.js";
+import type { CriticInspectInput } from "../src/builder/v3/critic/types.js";
+import { BRIEF, composeContext, HERO_CODE, SIGNATURE_OK } from "./v3-compose-fixtures.js";
 
 const llm = createRegistry({ buildDefaultTier: "T1" });
 const LEAD = BRIEF.scenarios[0] as BriefScenario;
@@ -54,36 +45,24 @@ function apply(files: ReadonlyMap<string, string>, out: V3ComposeResult): Map<st
 async function prepared() {
   const base = composeContext();
   const out = await createPageComposer({ patterns: PATTERNS }).skeleton(base);
-  const ctx: V3BuildContext = { ...base, files: apply(base.files, out) };
+  const ctx: V3BuildContext = { ...base, files: apply(base.files, out), budgetRub: 200 };
   return { ctx, site: readSite(ctx.files) as SiteModel, facts: siteFacts(ctx) };
 }
 
-const TOP = "/_wizard/photos/00000000-0000-4000-8000-000000000000/1600";
-
-const HOME: PageComposeAnswer = {
+/** The home page as code: the first screen and a section written by the model, the SDK components kept. */
+const HOME: PageCodeAnswer = {
   sections: [
+    { kind: "code", id: "hero", title: HERO_CODE.title, source: HERO_CODE.source, props: HERO_CODE.props },
     {
-      id: "hero",
-      pattern: "hero-full-bleed",
-      props: {
-        title: "Лечим зубы без боли и очередей",
-        lead: "Оставьте заявку на сайте — администратор перезвонит за 15 минут и подберёт время приёма.",
-        action: { label: "Записаться на приём", href: "#form" },
-        image: { src: TOP, alt: "Светлый кабинет клиники с креслом у окна" },
-      },
+      kind: "code",
+      id: "first-visit",
+      title: SIGNATURE_OK.title,
+      source: SIGNATURE_OK.source,
+      props: SIGNATURE_OK.props,
     },
-    // V3-18: the preview of the catalog on home is bound to the module — the model keeps it, writes its texts.
-    { id: "catalog", pattern: "catalog-list", props: { title: "Услуги и цены" } },
-    {
-      id: "form",
-      pattern: "form-centered",
-      props: {
-        title: "Запишитесь на приём",
-        text: "Оставьте имя и телефон — перезвоним за 15 минут.",
-        submit: "Записаться на приём",
-        sent: { title: "Заявка отправлена" },
-      },
-    },
+    { kind: "keep", id: "catalog", props: { title: "Услуги и цены" } },
+    { kind: "keep", id: "form" },
+    { kind: "keep", id: "contacts" },
   ],
   seo: {
     title: "Белая линия — лечение зубов без боли",
@@ -92,457 +71,265 @@ const HOME: PageComposeAnswer = {
   },
 };
 
-const IDEA = {
-  after: "hero",
-  title: "Как проходит первый приём",
-  idea: "Путь пациента по шагам из брифа: заявка на сайте, звонок администратора, приём у врача.",
+const RIVAL = {
+  title: "Первый экран: крупный заголовок",
+  props: { ...HERO_CODE.props, title: "Запись к стоматологу за 15 минут" },
+  source: HERO_CODE.source.replace("md:grid-cols-[1.2fr_1fr]", "md:grid-cols-[1fr_1.4fr]"),
 };
 
-/** A scripted model: each call of a callType gets its next answer (Error — thrown). */
-function scripted(answers: Partial<Record<string, (Record<string, unknown> | Error)[]>>) {
+const answer = (tool: string, args: unknown, model: string, n: number): RouteOutput =>
+  ({
+    tier: "T1",
+    model,
+    result: { toolCalls: [{ id: `c${n}`, name: tool, args }], finishReason: "tool-calls" },
+    usage: { inputTokens: 6000, cachedTokens: 0, outputTokens: 1500 },
+    creditsCharged: 0.6,
+    creditsMilli: 600,
+    routeReason: "default_T1",
+    scrubbed: false,
+    ruFallback: false,
+  }) as RouteOutput;
+
+/** A scripted model: each call of a callType gets its next answer (Error — thrown); models as in the v4 route. */
+function scripted(answers: Partial<Record<string, unknown[]>>) {
   const calls: RouteInput[] = [];
   const n = new Map<string, number>();
+  const MODEL: Record<string, string> = {
+    page_compose: "kimi-k3",
+    signature_section: "glm-5.3",
+    critic_visual: "qwen3.6-35b",
+  };
   const route = async (input: RouteInput): Promise<RouteOutput> => {
     calls.push(input);
     const i = n.get(input.callType) ?? 0;
     n.set(input.callType, i + 1);
     const list = answers[input.callType] ?? [];
     const a = list[Math.min(i, list.length - 1)];
-    if (!a) throw new Error(`no answer for ${input.callType}`);
+    if (a === undefined) throw new Error(`no answer for ${input.callType}`);
     if (a instanceof Error) throw a;
-    const name = input.callType === COMPOSE_CALL_TYPES.page ? "submit_page" : "submit_section";
-    return {
-      tier: "T1",
-      model: "glm-5.3",
-      result: { toolCalls: [{ id: `c${calls.length}`, name, args: a }], finishReason: "tool-calls" },
-      usage: { inputTokens: 6000, cachedTokens: 0, outputTokens: 1500 },
-      creditsCharged: 0.6,
-      creditsMilli: 600,
-      routeReason: "default_T1",
-      scrubbed: true,
-      ruFallback: false,
-    } as RouteOutput;
+    return answer(input.tools?.[0]?.name ?? "", a, MODEL[input.callType] ?? "glm-5.3", calls.length);
   };
   return { route, calls };
 }
 
-/** A fixture router over recorded lines (suite unit — by request key; demo — by order of each callType). */
-function recorded(suite: "unit" | "demo", lines: FixtureLine[]) {
-  const dir = mkdtempSync(join(tmpdir(), "wz-compose-"));
-  mkdirSync(join(dir, suite), { recursive: true });
-  writeFileSync(join(dir, suite, "compose.jsonl"), lines.map((l) => JSON.stringify(l)).join("\n"));
-  const router = createRouter({
-    mode: "fixture",
-    fixture: { suite, name: "compose", dir },
-    registry: llm,
-    sink: { write: async () => {} },
-    env: {},
-  });
-  const seen: { callType: string; scrubbed: boolean }[] = [];
-  const route = async (input: RouteInput) => {
-    const out = await router.route({
-      ...input,
-      orgPolicy: { ruOnly: false, t1Restricted: false },
-      ctx: { orgId: "org" },
-    } as RouteInput);
-    seen.push({ callType: input.callType, scrubbed: out.scrubbed });
-    return out;
-  };
-  return { route, seen };
-}
-
 const noVerify = async () => ({ ok: true, problems: [] as string[] });
+const composer = (o: Parameters<typeof createPageComposer>[0] = {}) =>
+  createPageComposer({ patterns: PATTERNS, registry: llm, verify: noVerify, firstScreen: false, ...o });
 
-describe("page_compose", () => {
-  test("recorded answer (by request key): library variants and texts of the scenario, SEO, the budget counted", async () => {
+describe("V4-06: the page as free code", () => {
+  test("the model writes the sections as code, keeps the SDK components; files, site model, SEO, budget", async () => {
+    const { ctx, facts } = await prepared();
+    const { route, calls } = scripted({ page_compose: [HOME] });
+    const r = await composer().scenario({ ...ctx, route }, LEAD);
+    expect(calls.map((c) => c.callType)).toEqual(["page_compose"]);
+    expect(calls[0]?.tools?.[0]?.name).toBe(PAGE_CODE_TOOL);
+    const files = apply(ctx.files, r);
+    expect(files.get("ui/sections/home-hero.tsx")).toBe(HERO_CODE.source);
+    expect(files.get("ui/sections/home-first-visit.tsx")).toBe(SIGNATURE_OK.source);
+    const site = readSite(files) as SiteModel;
+    const home = site.pages[0] as SitePage;
+    expect(home.sections.map((s) => `${s.id}:${s.type === "signature" ? "code" : s.pattern}`)).toEqual([
+      "header:header-floating",
+      "hero:code",
+      "first-visit:code",
+      "catalog:catalog-list",
+      "form:form-inline",
+      "contacts:contacts-cards",
+      "footer:footer-contact-first",
+    ]);
+    expect(home.sections.find((s) => s.id === "catalog")?.props.title).toBe("Услуги и цены");
+    expect(home.seo.title).toBe(HOME.seo.title);
+    expect(files.get(home.file)).toContain('from "../../sections/home-hero"');
+    expect(lintErrors(lintSitePage(site, home, facts, PATTERNS, files))).toEqual([]);
+    expect(r.spentRub).toBeCloseTo(3, 5);
+    expect(r.notes.join("\n")).toContain("написана кодом");
+  });
+
+  test("the prompt: taste rules, code rules, library patterns as examples, the SDK components with their schemas", async () => {
     const { ctx, site, facts } = await prepared();
-    const home = site.pages[0];
-    if (!home) throw new Error("home");
-    const req = pageComposeRequest({
+    const [system, user] = pageCodeMessages({
       facts,
       site,
-      page: home,
+      page: site.pages[0] as SitePage,
       scenario: LEAD,
-      library: PATTERNS,
-      offer: true,
+      design: ctx.design,
     });
-    const line = fixtureLine("page_compose", req.messages, [req.tool.definition], {
-      name: "submit_page",
-      args: HOME,
-    });
-    const { route, seen } = recorded("unit", [line]);
-    const out = await createPageComposer({ patterns: PATTERNS, registry: llm }).scenario(
-      { ...ctx, route },
-      LEAD,
-    );
-    expect(seen).toEqual([{ callType: "page_compose", scrubbed: false }]);
-    expect(out.pages.map((p) => p.route)).toEqual(["/"]);
-    expect(out.pages[0]?.sections.map((s) => [s.id, s.pattern])).toEqual([
-      ["header", home.sections[0]?.pattern],
-      ["hero", "hero-full-bleed"],
-      ["catalog", "catalog-list"],
-      ["form", "form-centered"],
-      // V3-18: the owner's contacts are not the model's: they stay where they were.
-      ["contacts", home.sections.find((s) => s.id === "contacts")?.pattern],
-      ["footer", home.sections.at(-1)?.pattern],
-    ]);
-    // The binding to the module's entity stays even though the model did not repeat it.
-    expect(out.pages[0]?.sections[3]?.props).toMatchObject({ entity: "lead", title: "Запишитесь на приём" });
-    // …and the preview of the catalog stays a preview (V3-18).
-    expect(out.pages[0]?.sections[2]?.props).toMatchObject({ entity: "service", preview: true });
-    const files = apply(ctx.files, out);
-    const next = readSite(files) as SiteModel;
-    expect(next.pages[0]?.seo).toEqual({ ...HOME.seo, image: TOP });
-    expect(JSON.parse(files.get("ui/seo.json") as string).pages["/"].title).toBe(HOME.seo.title);
-    expect(files.get("ui/patterns/hero-full-bleed.tsx")).toBeDefined();
-    expect(out.spentRub).toBeGreaterThan(0);
-    expect(out.spentRub).toBeLessThanOrEqual(ctx.budgetRub);
-    for (const p of next.pages) expect(lintErrors(lintSitePage(next, p, facts, PATTERNS))).toEqual([]);
-    console.info(`V3-12 page_compose на записанном ответе: ${out.spentRub.toFixed(2)} ₽`);
+    expect(system?.content).toContain("Интересно, но никогда не уродливо");
+    expect(system?.content).toContain("фиолетовых");
+    expect(system?.content).toContain("Пример уровня — паттерн библиотеки hero-");
+    expect(system?.content).not.toMatch(/Для каждой секции выбери вариант/);
+    expect(user?.content).toContain("- form (form, компонент form-inline");
+    expect(user?.content).toContain("схема props");
+    expect(user?.content).toContain(ctx.design.fonts.display.family);
   });
 
-  test("V3-18: a first screen without a picture keeps the place of the owner's photo (GS-landing-2)", async () => {
-    const { ctx, site } = await prepared();
-    expect(site.pages[0]?.sections.find((s) => s.type === "hero")?.photos?.image).toBe("top");
-    // The model chose the typographic first screen («Фото: нет» → variants without photos).
-    const { image: _image, ...text } = HOME.sections[0]?.props ?? {};
-    const typographic = {
-      ...HOME,
-      sections: [{ id: "hero", pattern: "hero-typographic", props: text }, ...HOME.sections.slice(1)],
-    };
-    const { route, calls } = scripted({ page_compose: [typographic] });
-    const out = await createPageComposer({ patterns: PATTERNS, registry: llm }).scenario(
-      { ...ctx, route },
-      LEAD,
-    );
-    expect(JSON.stringify(calls[0]?.messages)).toContain("Место для фото владельца");
-    const next = readSite(apply(ctx.files, out)) as SiteModel;
-    const hero = next.pages[0]?.sections.find((s) => s.type === "hero");
-    expect(hero?.pattern).not.toBe("hero-typographic");
-    expect(hero?.props.title).toBe(text.title);
-    expect(apply(ctx.files, out).get(next.pages[0]?.file as string)).toContain('photo.one("top"');
-  });
-
-  test("V3-18: the model may not drop a section with a place of the owner's photo", async () => {
-    const { ctx } = await prepared();
-    const dropped = { ...HOME, sections: HOME.sections.filter((s) => s.id !== "hero") };
-    const { route, calls } = scripted({ page_compose: [dropped, HOME] });
-    await createPageComposer({ patterns: PATTERNS, registry: llm }).scenario({ ...ctx, route }, LEAD);
+  test("SDK gate: a removed component is refused and goes back to the model", async () => {
+    const { ctx, site, facts } = await prepared();
+    const home = site.pages[0] as SitePage;
+    const req = pageCodeRequest({ facts, site, page: home, scenario: LEAD, design: ctx.design });
+    const noForm = { ...HOME, sections: HOME.sections.filter((s) => s.id !== "form") };
+    const issues = (await req.tool.check?.(noForm)) ?? [];
+    expect(issues.map((i) => i.code)).toContain("SDK_REQUIRED");
+    // The gate itself: the page without its form fails, the same page passes.
+    const without = { ...home, sections: home.sections.filter((s) => s.id !== "form") };
+    expect(sdkGate(home, without)).toEqual([expect.stringContaining("«form»")]);
+    expect(sdkGate(home, home)).toEqual([]);
+    // Through the step: the first answer drops the form, the repair keeps it.
+    const { route, calls } = scripted({ page_compose: [noForm, HOME] });
+    const r = await composer().scenario({ ...ctx, route }, LEAD);
     expect(calls).toHaveLength(2);
-    expect(JSON.stringify(calls[1]?.messages.at(-1))).toContain("REQUIRED");
+    expect(JSON.stringify(calls[1]?.messages)).toContain("SDK_REQUIRED");
+    expect(readSite(apply(ctx.files, r))?.pages[0]?.sections.some((s) => s.id === "form")).toBe(true);
   });
 
-  test("repairs: invented facts, a superlative and a variant of another type go back to the model", async () => {
+  test("lint: raw colours, the default palette and a missing hero go back; a page that never passes stays", async () => {
     const { ctx } = await prepared();
-    const bad = {
+    const hero = HOME.sections[0] as PageCodeAnswer["sections"][number];
+    const loud = {
       ...HOME,
       sections: [
-        {
-          id: "hero",
-          pattern: "hero-full-bleed",
-          props: {
-            ...(HOME.sections[0]?.props ?? {}),
-            title: "Лучшая клиника Казани: более 1000 довольных пациентов",
-          },
-        },
-        { id: "form", pattern: "hero-split", props: { title: "Запишитесь" } },
+        { ...hero, source: HERO_CODE.source.replace("bg-background", "bg-[#7c3aed] text-blue-500") },
+        ...HOME.sections.slice(1),
       ],
     };
-    const { route, calls } = scripted({ page_compose: [bad, HOME] });
-    const out = await createPageComposer({ patterns: PATTERNS, registry: llm }).scenario(
-      { ...ctx, route },
-      LEAD,
-    );
-    expect(calls).toHaveLength(2);
-    const repair = JSON.stringify(calls[1]?.messages.at(-1));
-    for (const code of ["SUPERLATIVE", "UNTRACED_NUMBER", "WRONG_VARIANT"]) expect(repair).toContain(code);
-    expect(out.pages[0]?.sections[1]?.props).toMatchObject({ title: "Лечим зубы без боли и очередей" });
+    const noHero = { ...HOME, sections: HOME.sections.slice(1) };
+    const never = scripted({ page_compose: [loud, noHero, loud] });
+    const r = await composer().scenario({ ...ctx, route: never.route }, LEAD);
+    expect(never.calls).toHaveLength(3);
+    const repairs = JSON.stringify(never.calls.slice(1).map((c) => c.messages.at(-1)));
+    expect(repairs).toMatch(/ARBITRARY_COLOR|PALETTE|RAW_COLOR/);
+    expect(repairs).toContain("HERO_FIRST");
+    expect(r.files.size).toBe(0);
+    expect(r.notes.join("\n")).toContain("осталась прежней");
   });
 
-  test("an answer that never passes keeps the skeleton; owner scenarios and an empty budget call no model", async () => {
+  test("owner scenarios and an empty budget call no model", async () => {
     const { ctx } = await prepared();
-    const bad = {
-      ...HOME,
-      sections: [{ id: "hero", pattern: "hero-full-bleed", props: { title: "№ 1 в городе" } }],
-    };
-    const never = scripted({ page_compose: [bad] });
-    const kept = await createPageComposer({ patterns: PATTERNS, registry: llm }).scenario(
-      { ...ctx, route: never.route },
-      LEAD,
-    );
-    expect(never.calls).toHaveLength(3);
-    expect(kept.notes.join("\n")).toContain("не прошли проверку");
-    expect(kept.files.size).toBe(0);
-
     const owner = scripted({});
-    const r1 = await createPageComposer({ patterns: PATTERNS }).scenario(
-      { ...ctx, route: owner.route },
-      OWNER,
-    );
+    const r1 = await composer().scenario({ ...ctx, route: owner.route }, OWNER);
     expect(owner.calls).toHaveLength(0);
     expect(r1).toMatchObject({ pages: [], spentRub: 0 });
-    expect(r1.notes[0]).toContain("в кабинетах");
-
     const poor = scripted({ page_compose: [HOME] });
-    const r2 = await createPageComposer({ patterns: PATTERNS, registry: llm }).scenario(
-      { ...ctx, route: poor.route, budgetRub: 0.05 },
-      LEAD,
-    );
+    const r2 = await composer().scenario({ ...ctx, route: poor.route, budgetRub: 0.05 }, LEAD);
     expect(poor.calls).toHaveLength(0);
-    expect(r2.spentRub).toBe(0);
     expect(r2.notes.join("\n")).toContain("Бюджет шага исчерпан");
   });
 
-  test("a scenario of the catalog module works on its page", async () => {
+  test("a scenario of the catalog module writes its page and keeps the catalog component", async () => {
     const { ctx } = await prepared();
-    const answer: PageComposeAnswer = {
+    const services: PageCodeAnswer = {
       sections: [
         {
+          kind: "code",
           id: "hero",
-          pattern: "hero-centered",
-          props: { title: "Цены на лечение", action: { label: "Оставить заявку", href: "/#form" } },
+          title: HERO_CODE.title,
+          source: HERO_CODE.source,
+          // Another page: the action leads to the form of the home page.
+          props: { ...HERO_CODE.props, action: { label: "Записаться на приём", href: "/#form" } },
         },
-        {
-          id: "catalog",
-          pattern: "catalog-list",
-          props: { title: "Услуги и цены", empty: "В каталоге пока нет позиций" },
-        },
-        {
-          id: "cta",
-          pattern: "cta-card",
-          props: { title: "Запишитесь на приём", action: { label: "Оставить заявку", href: "/#form" } },
-        },
+        { kind: "keep", id: "catalog" },
       ],
       seo: {
-        title: "Цены на лечение — Белая линия",
-        description: "Каталог услуг стоматологической клиники «Белая линия» с ценами и заявкой на приём.",
+        title: "Услуги и цены клиники «Белая линия»",
+        description:
+          "Услуги стоматологии «Белая линия» с ценами: выберите и оставьте заявку на сайте за минуту.",
       },
     };
-    // The catalog showcase is bound to the module: the model may not drop it, nor take a variant without the items'
-    // action (a price list): the items lead to the request form of the site (GS-catalog-4).
-    const dropped = { ...answer, sections: answer.sections.filter((s) => s.id !== "catalog") };
-    const priceList = {
-      ...answer,
-      sections: answer.sections.map((s) =>
-        s.id === "catalog" ? { ...s, pattern: "catalog-price-list" } : s,
-      ),
-    };
-    const { route, calls } = scripted({ page_compose: [dropped, priceList, answer] });
-    const out = await createPageComposer({ patterns: PATTERNS, registry: llm }).scenario(
-      { ...ctx, route },
-      PRICES,
-    );
-    expect(calls).toHaveLength(3);
-    expect(JSON.stringify(calls[1]?.messages.at(-1))).toContain("Секцию catalog убирать нельзя");
-    // The variants the tool offers for the showcase keep the items' action: no price list among them.
-    const refused = JSON.stringify(calls[2]?.messages.at(-1));
-    expect(refused).toContain("sections.1.pattern");
-    expect(refused).toContain("catalog-list");
-    expect(refused).not.toContain("catalog-price-list");
-    expect(out.pages.map((p) => p.route)).toEqual(["/services"]);
-    expect(out.pages[0]?.sections[1]?.props).toMatchObject({ title: "Цены на лечение" });
-    // The binding stays the module's: the entity, the sections entity and the items' action are not the model's.
-    expect(out.pages[0]?.sections[2]).toMatchObject({
-      pattern: "catalog-list",
-      props: {
-        entity: "service",
-        title: "Услуги и цены",
-        itemAction: { label: "Оставить заявку", path: "/#form" },
-      },
-    });
-  });
-
-  test("the site's action rules hold over the model's page: the hero leads to the form, the form says «sent»", async () => {
-    const { ctx } = await prepared();
-    // The model points the first screen elsewhere and rewrites the «sent» heading — both valid answers of the tool.
-    const answer: PageComposeAnswer = {
-      ...HOME,
-      sections: HOME.sections.map((s) =>
-        s.id === "hero"
-          ? { ...s, props: { ...s.props, action: { label: "Записаться на приём", href: "/services" } } }
-          : {
-              ...s,
-              props: { ...s.props, sent: { title: "Спасибо, мы перезвоним", text: "В течение часа." } },
-            },
-      ),
-    };
-    const { route } = scripted({ page_compose: [answer] });
-    const out = await createPageComposer({ patterns: PATTERNS, registry: llm }).scenario(
-      { ...ctx, route },
-      LEAD,
-    );
-    const files = apply(ctx.files, out);
-    const home = readSite(files)?.pages.find((p) => p.route === "/");
-    const hero = home?.sections.find((s) => s.type === "hero");
-    const form = home?.sections.find((s) => s.type === "form");
-    expect(hero?.props.action).toEqual({ label: "Записаться на приём", href: "#form" });
-    expect(form?.props.sent).toEqual({ title: "Заявка отправлена", text: "В течение часа." });
-    // The page file carries the same: the anchor of the form section and the hero's link to it.
-    const source = files.get(home?.file ?? "") ?? "";
-    expect(source).toContain('<div id="form">');
-    expect(source).toContain('"action":{"label":"Записаться на приём","href":"#form"}');
-    expect(source).toContain('"sent":{"title":"Заявка отправлена","text":"В течение часа."}');
+    const { route } = scripted({ page_compose: [services] });
+    const r = await composer().scenario({ ...ctx, route }, PRICES);
+    const page = readSite(apply(ctx.files, r))?.pages.find((p) => p.route === "/services");
+    const ids = page?.sections.map((s) => s.id) ?? [];
+    // The site's action rules may add the way to the main action after the catalog (siteRules).
+    expect(ids.slice(0, 3)).toEqual(["header", "hero", "catalog"]);
+    expect(ids.at(-1)).toBe("footer");
+    expect(apply(ctx.files, r).get("ui/sections/services-hero.tsx")).toBe(HERO_CODE.source);
   });
 });
 
-describe("signature sections", () => {
-  test("recorded answers: the signature section is written as code, passes the linter and G0 and joins the page", async () => {
-    const { ctx, site, facts } = await prepared();
-    const home = site.pages[0];
-    if (!home) throw new Error("home");
-    const page = pageComposeRequest({
-      facts,
-      site,
-      page: home,
-      scenario: LEAD,
-      library: PATTERNS,
-      offer: true,
+describe("V4-06: the first screen — two candidates of different families and a judge", () => {
+  const fakeInspect = (seen: CriticInspectInput[]) => async (input: CriticInspectInput) => {
+    seen.push(input);
+    return {
+      ok: true,
+      problems: [],
+      shots: input.shots.map((s) => ({
+        ...s,
+        mime: "image/png" as const,
+        data: "iVBORw0KGgo=",
+        px: { width: s.maxWidth, height: s.maxHeight },
+        sections: ["hero 0–800"],
+      })),
+    };
+  };
+
+  test("the rival comes from another family; the judge of a third family picks it by the screenshots", async () => {
+    const { ctx } = await prepared();
+    const seen: CriticInspectInput[] = [];
+    const { route, calls } = scripted({
+      page_compose: [HOME],
+      signature_section: [RIVAL],
+      critic_visual: [{ pick: "B", why: "Заголовок крупнее и оффер читается сразу." }],
     });
-    const sig = signatureRequest({
-      facts,
-      site,
-      page: home,
-      idea: IDEA,
-      design: ctx.design,
-      library: PATTERNS,
-    });
-    const { route, seen } = recorded("demo", [
-      fixtureLine("page_compose", page.messages, [page.tool.definition], {
-        name: "submit_page",
-        args: { ...HOME, signature: IDEA },
-      }),
-      fixtureLine("signature_section", sig.messages, [sig.tool.definition], {
-        name: "submit_section",
-        args: SIGNATURE_OK,
-      }),
-    ]);
-    const out = await createPageComposer({ patterns: PATTERNS, registry: llm }).scenario(
+    const r = await composer({ firstScreen: true, inspect: fakeInspect(seen) }).scenario(
       { ...ctx, route },
       LEAD,
     );
-    expect(seen.map((s) => s.callType)).toEqual(["page_compose", "signature_section"]);
-    // V4-05 (D79 (3)): build stages go abroad as is.
-    expect(seen.every((s) => !s.scrubbed)).toBe(true);
-    const files = apply(ctx.files, out);
-    expect(files.get("ui/sections/first-visit.tsx")).toBe(SIGNATURE_OK.source);
-    const next = readSite(files) as SiteModel;
-    const ids = next.pages[0]?.sections.map((s) => s.id);
-    expect(ids).toEqual(["header", "hero", "first-visit", "catalog", "form", "contacts", "footer"]);
-    expect(files.get(next.pages[0]?.file as string)).toContain('from "../../sections/first-visit"');
-    expect(out.notes.join("\n")).toContain("Фирменная секция «Как проходит первый приём»");
-    for (const p of next.pages)
-      expect(
-        lintErrors(
-          lintSitePage(
-            next,
-            p,
-            facts,
-            PATTERNS,
-            new Map([["ui/sections/first-visit.tsx", SIGNATURE_OK.source]]),
-          ),
-        ),
-      ).toEqual([]);
-    const report = await runG0(
-      {
-        spec: withSitePages(ctx.spec, next),
-        prevSpec: null,
-        specVersion: 0,
-        files,
-        env: "draft",
-        systemKey: "v3_sig",
-        db: undefined as never,
-      },
-      { only: ["G0-IMP-01", "G0-SEC-01", "G0-TS-01", "G0-BUILD-01", "G0-SPEC-04"] },
-    );
-    expect(report.checks.filter((c) => c.status === "fail" || c.status === "error")).toEqual([]);
-    // The site now has one of its two signature sections: the next page may still get one, a third — never.
-    expect(signatureOffer(next, next.pages[1] as never)).toBe(true);
-    const two = {
-      ...next,
-      pages: next.pages.map((p, i) =>
-        i === 1
-          ? {
-              ...p,
-              sections: [
-                ...p.sections,
-                { id: "x", type: "signature" as const, pattern: "signature", props: {} },
-              ],
-            }
-          : p,
-      ),
-    };
-    expect(signatureOffer(two, two.pages[2] as never)).toBe(false);
-    // A later scenario on the same page rewrites its texts and keeps the signature section in place.
-    const again = scripted({ page_compose: [HOME] });
-    const later = await createPageComposer({ patterns: PATTERNS, registry: llm }).scenario(
-      { ...ctx, files, route: again.route },
-      LEAD,
-    );
-    expect(again.calls).toHaveLength(1);
-    expect(JSON.stringify(again.calls[0]?.tools)).not.toContain('"signature"');
-    expect(later.pages[0]?.sections.map((s) => s.id)).toEqual([
-      "header",
-      "hero",
-      "first-visit",
-      "catalog",
-      "form",
-      "contacts",
-      "footer",
+    expect(calls.map((c) => c.callType)).toEqual(["page_compose", "signature_section", "critic_visual"]);
+    expect(calls[1]?.tools?.[0]?.name).toBe(RIVAL_TOOL);
+    expect(calls[1]?.avoidFamilies).toEqual(["kimi"]);
+    expect(calls[2]?.avoidFamilies).toEqual(["kimi", "glm"]);
+    expect(calls[2]?.messages.filter((m) => m.role === "user" && m.attachments?.length)).toHaveLength(2);
+    expect(seen.map((s) => s.shots.map((x) => x.width))).toEqual([
+      [390, 1440],
+      [390, 1440],
     ]);
-    expect(later.notes.join("\n")).not.toContain("Проверка страницы");
-    console.info(`V3-12 страница и фирменная секция на записанных ответах: ${out.spentRub.toFixed(2)} ₽`);
-  }, 120_000);
-
-  test("a signature section that fails the linter gets a library pattern in its place", async () => {
-    const { ctx, facts } = await prepared();
-    const loud = {
-      ...SIGNATURE_OK,
-      source: SIGNATURE_OK.source.replace(
-        "bg-background",
-        "bg-linear-to-r from-purple-500 to-indigo-500 text-[#fff]",
-      ),
-    };
-    const { route, calls } = scripted({
-      page_compose: [{ ...HOME, signature: IDEA }],
-      signature_section: [loud],
-    });
-    const out = await createPageComposer({
-      patterns: PATTERNS,
-      registry: llm,
-      verify: noVerify,
-    }).scenario({ ...ctx, route }, LEAD);
-    expect(calls.filter((c) => c.callType === "signature_section")).toHaveLength(3);
-    const files = apply(ctx.files, out);
-    const next = readSite(files) as SiteModel;
-    const placed = next.pages[0]?.sections.find((s) => s.id === "signature-fallback");
-    expect(placed?.pattern).toMatch(/^cta-/);
-    expect(placed?.props.title).toBe(IDEA.title);
-    expect([...files.keys()].some((p) => p.startsWith("ui/sections/"))).toBe(false);
-    expect(out.notes.join("\n")).toMatch(
-      /Фирменная секция «Как проходит первый приём» не прошла проверки кода — на её месте паттерн/,
+    const files = apply(ctx.files, r);
+    expect(files.get("ui/sections/home-hero.tsx")).toBe(RIVAL.source);
+    expect(readSite(files)?.pages[0]?.sections.find((s) => s.id === "hero")?.props.title).toBe(
+      RIVAL.props.title,
     );
-    for (const p of next.pages) expect(lintErrors(lintSitePage(next, p, facts, PATTERNS))).toEqual([]);
+    expect(r.notes.join("\n")).toContain("судья выбрал вариант B");
   });
 
-  test("a signature section that passes the linter but not G0 (build) gets one fix round, then a pattern", async () => {
+  test("without a browser the first candidate stays; a failed rival changes nothing", async () => {
     const { ctx } = await prepared();
+    const a = scripted({ page_compose: [HOME], signature_section: [RIVAL] });
+    const r = await composer({ firstScreen: true }).scenario({ ...ctx, route: a.route }, LEAD);
+    expect(apply(ctx.files, r).get("ui/sections/home-hero.tsx")).toBe(HERO_CODE.source);
+    expect(r.notes.join("\n")).toContain("остался первый");
+    const b = scripted({ page_compose: [HOME], signature_section: [new Error("провайдер недоступен")] });
+    const r2 = await composer({ firstScreen: true }).scenario({ ...ctx, route: b.route }, LEAD);
+    expect(apply(ctx.files, r2).get("ui/sections/home-hero.tsx")).toBe(HERO_CODE.source);
+  });
+});
+
+describe("V4-06: G0 of the system decides (real build)", () => {
+  test("code that does not build gets one fix round with the G0 problems, then the page stays", async () => {
+    const { ctx } = await prepared();
+    const brokenSource = `import { Step } from "./first-visit-steps";\n${SIGNATURE_OK.source.replace(/^type Step = .*$/m, "")}`;
     const broken = {
-      ...SIGNATURE_OK,
-      source: `import { Step } from "./first-visit-steps";\n${SIGNATURE_OK.source.replace(/^type Step = .*$/m, "")}`,
+      ...HOME,
+      sections: HOME.sections.map((s) => (s.id === "first-visit" ? { ...s, source: brokenSource } : s)),
     };
-    const { route, calls } = scripted({
-      page_compose: [{ ...HOME, signature: IDEA }],
-      signature_section: [broken],
-    });
-    const out = await createPageComposer({ patterns: PATTERNS, registry: llm }).scenario(
+    const { route, calls } = scripted({ page_compose: [broken] });
+    const r = await createPageComposer({ patterns: PATTERNS, registry: llm, firstScreen: false }).scenario(
       { ...ctx, route },
       LEAD,
     );
-    const sigCalls = calls.filter((c) => c.callType === "signature_section");
-    expect(sigCalls).toHaveLength(2);
-    expect(JSON.stringify(sigCalls[1]?.messages.at(-1))).toContain("G0-");
-    const next = readSite(apply(ctx.files, out)) as SiteModel;
-    expect(next.pages[0]?.sections.some((s) => s.id === "signature-fallback")).toBe(true);
-    expect(out.notes.join("\n")).toContain("не собралась");
-  }, 120_000);
+    expect(calls).toHaveLength(2);
+    expect(JSON.stringify(calls[1]?.messages.at(-1))).toContain("G0-");
+    expect(r.notes.join("\n")).toContain("не собрался");
+    expect(apply(ctx.files, r).has("ui/sections/home-first-visit.tsx")).toBe(false);
+  }, 180_000);
+
+  test("good code builds: the page with its code sections passes G0", async () => {
+    const { ctx } = await prepared();
+    const { route, calls } = scripted({ page_compose: [HOME] });
+    const r = await createPageComposer({ patterns: PATTERNS, registry: llm, firstScreen: false }).scenario(
+      { ...ctx, route },
+      LEAD,
+    );
+    expect(calls).toHaveLength(1);
+    expect(apply(ctx.files, r).get("ui/sections/home-hero.tsx")).toBe(HERO_CODE.source);
+  }, 180_000);
 });

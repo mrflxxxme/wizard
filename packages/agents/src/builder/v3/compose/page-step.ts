@@ -82,7 +82,10 @@ function systemWith(
   sources: ReadonlyMap<string, string>,
 ) {
   const site = { ...s.site, pages: s.site.pages.map((p) => (p.route === page.route ? page : p)) };
-  const files = mergedFiles(ctx.files, siteFiles(site, s.facts.copy.site, ctx.design, ctx.files, sources, s.library));
+  const files = mergedFiles(
+    ctx.files,
+    siteFiles(site, s.facts.copy.site, ctx.design, ctx.files, sources, s.library),
+  );
   return { site, files, spec: withSitePages(ctx.spec, site) };
 }
 
@@ -90,7 +93,9 @@ function systemWith(
 const avoiding =
   (route: RouteFn, families: readonly string[]): RouteFn =>
   (input) =>
-    route(families.length ? { ...input, avoidFamilies: [...(input.avoidFamilies ?? []), ...families] } : input);
+    route(
+      families.length ? { ...input, avoidFamilies: [...(input.avoidFamilies ?? []), ...families] } : input,
+    );
 
 /** A route that remembers the model of the last answer (the author's family for the rival and the judge). */
 function tracking(route: RouteFn): { route: RouteFn; model: () => string | null } {
@@ -244,8 +249,16 @@ export function judgeMessages(facts: SiteFacts, a: CriticShot[], b: CriticShot[]
         `Отвечай только вызовом ${JUDGE_TOOL}: pick — A или B, why — одно-два предложения по-русски.`,
       ].join("\n\n"),
     },
-    { role: "user", content: `Бизнес: ${facts.copy.home}. Вариант A — снимки 390 и 1440.`, attachments: att(a) },
-    { role: "user", content: "Вариант B — снимки 390 и 1440. Какой первый экран лучше?", attachments: att(b) },
+    {
+      role: "user",
+      content: `Бизнес: ${facts.copy.home}. Вариант A — снимки 390 и 1440.`,
+      attachments: att(a),
+    },
+    {
+      role: "user",
+      content: "Вариант B — снимки 390 и 1440. Какой первый экран лучше?",
+      attachments: att(b),
+    },
   ];
 }
 
@@ -328,7 +341,11 @@ async function firstScreen(
       s.notes.push("Первый экран: снимки не получились — остался первый вариант.");
       return a;
     }
-    const judge = defineTool({ name: JUDGE_TOOL, description: "Pick the better first screen.", input: judgeSchema });
+    const judge = defineTool({
+      name: JUDGE_TOOL,
+      description: "Pick the better first screen.",
+      input: judgeSchema,
+    });
     const avoid = [famA, famB].filter((x): x is string => !!x);
     const r = await callTool({
       ...base,

@@ -5,7 +5,14 @@
 // gets a rival of another family and a judge by the screenshots (page-step.ts). Every call fits ctx.budgetRub first.
 import type { AppSpec, BriefScenario } from "@wizard/appspec";
 import { runG0 } from "@wizard/gates";
-import { type CallType, createRegistry, type OrgPolicy, type Registry, type RouteContext, type RouteInput } from "@wizard/llm";
+import {
+  type CallType,
+  createRegistry,
+  type OrgPolicy,
+  type Registry,
+  type RouteContext,
+  type RouteInput,
+} from "@wizard/llm";
 import { PATTERNS, patternById } from "@wizard/ui-kit/v3/patterns";
 import type { RunStepFn } from "../../../core/events.js";
 import type { RouteFn } from "../../../core/loop.js";
