@@ -396,7 +396,7 @@ export const ROUTES: Record<CallType, RouteDef> = {
   art_direction: r(
     "designer",
     "T1",
-    { T1: ["kimi-k3", "glm-5.3"], T0: ["kimi-k2.6", "glm-5.1"] },
+    { T1: ["glm-5.3", "kimi-k3"], T0: ["kimi-k2.6", "glm-5.1"] },
     0.4,
     6000,
     240000,

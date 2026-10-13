@@ -42,7 +42,7 @@ const CALL_PROFILE = {
   build_texts: { reasoning: 800, latencyMs: 40_000 },
   build_design: { reasoning: 500, latencyMs: 18_000 },
   // V4-05 (plan v4 §3): Kimi K3 heads the art director and the page code.
-  art_direction: { reasoning: 500, latencyMs: 18_000, model: "kimi-k3" },
+  art_direction: { reasoning: 500, latencyMs: 18_000, model: "glm-5.3" },
   build_custom: { reasoning: 1500, latencyMs: 90_000 },
   // V4-05: the brief is a build stage (D79 (3)) — GLM-5.3 on T1, no scrub.
   brief_extract: { reasoning: 0, latencyMs: 25_000 },

@@ -26,6 +26,7 @@ import { scrub } from "@wizard/pii";
 import {
   archetype as archetypeById,
   type DesignSystemV3,
+  designFromProposal,
   designSystemV3,
   isArchetypeId,
 } from "@wizard/ui-kit/v3/design";
@@ -35,7 +36,7 @@ import { modelPhotoPicker } from "../../stock/pick.js";
 import { erroredBlockers, failedBlockers } from "../v2/blockers.js";
 import { runPhotosStage } from "../v2/photos.js";
 import { withOwnerFields } from "../v2/run.js";
-import { runArtDirector } from "./art-director.js";
+import { runArtDirector, storedProposal } from "./art-director.js";
 import { readSite, withSitePages } from "./compose/index.js";
 import type { V3BuildContext, V3ComposeResult } from "./contract.js";
 import { type BackendBuilt, compileBackend, DESIGN_CSS_FILE, designCss } from "./harness/backend.js";
@@ -699,6 +700,12 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
       fingerprint: designFp,
       budgetRub: budgets.design,
       run: async (w) => {
+        // V4-07: the direction the owner chose was designed by the art director's model — its system as is.
+        const own = storedProposal(brief.design.system, { seed, niche });
+        if (own) {
+          const ds = designFromProposal(own, { seed, niche });
+          return { data: { niche, archetype: own.base, source: "brief", styleName: own.name, design: ds } };
+        }
         const chosen = brief.design.archetype;
         if (isArchetypeId(chosen)) {
           const ds = designSystemV3({ archetype: chosen, seed, niche });

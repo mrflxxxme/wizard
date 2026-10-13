@@ -33,7 +33,7 @@ export const PROBE_HEADS = {
   // V4-05 (plan v4 §3): the role heads; build stages go abroad as is (D79 (3)), images included.
   interview_v3: { model: "glm-5.3", tier: "T1", price: { input: 162, output: 510 } },
   brief_extract: { model: "glm-5.3", tier: "T1", price: { input: 162, output: 510 } },
-  art_direction: { model: "kimi-k3", tier: "T1", price: { input: 348, output: 1739 } },
+  art_direction: { model: "glm-5.3", tier: "T1", price: { input: 162, output: 510 } },
   page_compose: { model: "kimi-k3", tier: "T1", price: { input: 348, output: 1739 } },
   signature_section: { model: "glm-5.3", tier: "T1", price: { input: 162, output: 510 } },
   critic_visual: { model: "glm-5v-turbo", tier: "T1", price: { input: 139.08, output: 463.6 } },

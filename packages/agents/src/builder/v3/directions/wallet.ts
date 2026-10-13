@@ -3,17 +3,22 @@
 // is made only when its worst case still fits: attempts × the ceiling of one attempt ≤ what is left.
 import type { RouteFn } from "../../../core/loop.js";
 
-/** Ceiling of the step: the three directions and the refinements of one proposal. */
-export const DIRECTIONS_BUDGET_RUB = 40;
+/** Ceiling of the step: the three directions and the refinements of one proposal (V4-07: Kimi K3 designs them). */
+export const DIRECTIONS_BUDGET_RUB = 70;
 /** models.yaml#credits.rub_per_credit. */
 export const RUB_PER_CREDIT = 5;
 /**
- * Worst case of one art_direction attempt: 8 000 input + 4 000 output tokens (route max_tokens) on the dearest model
- * of the chain (glm-5.1 T0: 198.86 / 829.6 ₽ per million) ≈ 4.9 ₽.
+ * Worst case of one art_direction attempt: 8 000 input + 6 000 output tokens (route max_tokens) on the dearest model
+ * of the chain (kimi-k3: 348 / 1 739 ₽ per million) ≈ 13.2 ₽.
  */
-export const ATTEMPT_CEILING_RUB = 5;
+export const ATTEMPT_CEILING_RUB = 14;
 /** Deadline of one model call of the step; past it the texts come from the brief. */
 export const DIRECTIONS_CALL_DEADLINE_MS = 75_000;
+/**
+ * Deadline of the design call (V4-07: the model writes five design systems); past it — the archetypes of code. The
+ * route's own timeout: Kimi K3 thinks 60–130 s on it (stage probe 13.10.2026), a shorter cut leaves no answer at all.
+ */
+export const DESIGN_CALL_DEADLINE_MS = 240_000;
 
 export class RubWallet {
   #spent = 0;
