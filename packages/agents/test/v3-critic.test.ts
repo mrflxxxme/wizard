@@ -273,7 +273,7 @@ describe("V3-13 critic", () => {
     ]);
     // At most CRITIC_MAX_IMAGES per call (Cloud.ru: kimi-k2.6 ≤ 4 vision chunks, qwen3.6-35b ≤ 2 images).
     expect(calls[0]?.shots.map((s) => `${s.route}@${s.width}:${s.kind}`)).toEqual([
-      "/@390:screen",
+      "/@390:page",
       "/@1440:page",
     ]);
     expect(calls[0]?.fonts).toEqual([ctx.design.fonts.display.family, ctx.design.fonts.text.family]);
