@@ -505,7 +505,7 @@ export async function buildByBrief(
   }).catch(async (e: unknown) => {
     await report.finish({
       status: "failed",
-      code: "INTERNAL",
+      code: typeof (e as { code?: unknown })?.code === "string" ? (e as { code: string }).code : "INTERNAL",
       message: String((e as Error)?.message ?? e).slice(0, 300),
     });
     throw e;
