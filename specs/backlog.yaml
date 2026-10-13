@@ -2377,8 +2377,8 @@ tasks:
     owner: agents
     parallel_group: v4-b
     estimate_days: 2
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: session_01G2aRP3L1VgXctxShsFmu58
     description: >
       Модель пишет все публичные страницы свободным TSX (React 19, Tailwind на токенах, Motion). Форма заявки, запись, корзина и вход —
       компоненты SDK, которые страница обязана импортировать (их логика и привязки к данным не меняются моделью). 150 паттернов ui-kit —
