@@ -135,7 +135,7 @@ export async function routeByok(a: RouteByokArgs): Promise<RouteOutput | null> {
       step: input.ctx.step ?? null,
       callType,
       agentRole: route.role,
-      // Outside the platform's RF contour, scrubbed (db.yaml#llm_calls: tier = 'T0' or scrubbed).
+      // Outside the platform's RF contour, always scrubbed (db.yaml#llm_calls: llm_calls_byok_free).
       tier: "T1",
       provider: `${BYOK_PREFIX}${r.providerId}`,
       modelId: `${BYOK_PREFIX}${r.model}`,
