@@ -39,6 +39,7 @@ import {
 } from "@wizard/gates";
 import { buildRoleSpec, type FileStorage, libraryPhotoFile, type RoleSpec } from "@wizard/runtime";
 import { PATTERNS } from "@wizard/ui-kit/v3/patterns";
+import { withoutDemoArticles } from "../agents/draft.js";
 import type { GoalBrowserProvider } from "../agents/goal-browser.js";
 
 /** Origin the pages open at: *.localhost is a secure context (crypto.randomUUID of the SDK), no request leaves. */
@@ -105,7 +106,10 @@ export type CriticDemoRows = Readonly<Record<string, readonly Readonly<Record<st
  */
 export function draftDemoRows(spec: AppSpec, systemKey: string, hints: readonly SeedHint[]): CriticDemoRows {
   const key = createHash("sha256").update(systemKey).digest("hex");
-  return generateSeed(spec, key, { showcase: true, ...(hints.length ? { hints } : {}) }).rows;
+  return withoutDemoArticles(
+    generateSeed(spec, key, { showcase: true, ...(hints.length ? { hints } : {}) }).rows,
+    hints,
+  );
 }
 
 export interface CriticInspectorOptions {

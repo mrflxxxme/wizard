@@ -133,7 +133,9 @@ export async function draftSeedHints(
        where c.system_id = ${systemId} and c.key = 'photos'`.execute(db);
     const photos = r.rows[0]?.photos;
     const library = storage ? parseLibraryIndex(await readLibraryIndex(storage).catch(() => null)) : null;
-    out = [...out, ...photoSeedHints(spec, Array.isArray(photos) ? photos : [], library)];
+    // V4-23: the draft has no demo articles unless the brief names them — their covers take no photos then.
+    const skip = new Set(out.some((h) => h.entity === "article" && h.field === "title") ? [] : ["article"]);
+    out = [...out, ...photoSeedHints(spec, Array.isArray(photos) ? photos : [], library, skip)];
   } catch {}
   return out;
 }
@@ -156,6 +158,7 @@ export function photoSeedHints(
   spec: AppSpec,
   photos: readonly unknown[],
   library?: LibraryIndex | null,
+  skip: ReadonlySet<string> = new Set(),
 ): SeedHint[] {
   const plan = photos.filter((p): p is { slot: string; file: string } => {
     const x = p as { slot?: unknown; file?: unknown };
@@ -192,7 +195,7 @@ export function photoSeedHints(
   const fields: { entity: string; field: string }[] = [];
   for (const e of spec.entities) {
     // The owner's replacements of the site's own photos (landing «Фото сайта») keep the plan's photos in their places.
-    if (e.name === SITE_PHOTO_ENTITY) continue;
+    if (e.name === SITE_PHOTO_ENTITY || skip.has(e.name)) continue;
     const readable = spec.permissions.some(
       (p) => p.entity === e.name && publicRoles.has(p.role) && p.ops.includes("read"),
     );
