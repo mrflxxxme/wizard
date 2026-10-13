@@ -39,7 +39,8 @@ jobs:
       - name: Measure
         env:
           WIZARD_STAGE_PROBE: stream
-          WIZARD_PROBE_MODEL: ${{ inputs.model }}
+          # A push measures the route and, for comparison, glm-5.3-flash at its head (orchestrator 13.10.2026).
+          WIZARD_PROBE_MODEL: ${{ inputs.model || ',glm-5.3-flash' }}
           WIZARD_LLM_MODE: live
           CLOUDRU_API_KEY: ${{ secrets.CLOUDRU_API_KEY }}
           CLOUDRU_BASE_URL: ${{ vars.CLOUDRU_BASE_URL }}
