@@ -343,7 +343,7 @@ export async function runAcceptance(o: { out: string; capRub: number; briefs?: r
         const sc = r.systemId ? screens.get(r.systemId) : undefined;
         const row: Row = {
           brief: r.id,
-          status: rowStatus(r),
+          status: rowStatus(r as Parameters<typeof rowStatus>[0]),
           screensSec: sc?.sec ?? null,
           screensFromStartSec: sc && r.startedAt ? round((sc.at - Date.parse(r.startedAt)) / 1000) : null,
           systemMin: typeof r.minutes === "number" ? round(r.minutes) : null,
