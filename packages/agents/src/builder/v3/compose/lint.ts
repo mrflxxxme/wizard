@@ -383,7 +383,9 @@ export function lintPage(input: LintPageInput): PageLintIssue[] {
       if (cards) out.push(issue("three-cards", "error", cards, s.id));
     }
     for (const c of propsIssues(s.props, input.numbers)) out.push({ ...c, section: s.id });
-    if (threeCardsInProps(s.props) && (signature || ["card", "grid", "columns"].includes(s.layout ?? "")))
+    // A section written as code is judged by its markup (threeCardsInSource above): three steps or three facts are
+    // content, three equal cards in a row are layout. A pattern's layout is known only by its name.
+    if (!signature && threeCardsInProps(s.props) && ["card", "grid", "columns"].includes(s.layout ?? ""))
       out.push(issue("three-cards", "error", s.pattern, s.id));
     for (const l of linkProblems(s.props, input, anchors)) out.push(issue("broken-link", "error", l, s.id));
     if (
