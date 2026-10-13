@@ -238,14 +238,21 @@ export const STAGES: Record<string, Stage> = {
             }),
           ),
         });
-        const scores: number[] = [];
+        // Score and model of each answer: the spread is judged among the answers of one model (a fallback model
+        // under the provider's rate limit is another critic, shown apart).
+        const answers: { model: string; score: number }[] = [];
         const ms: number[] = [];
         const repeats = Math.max(1, Math.min(3, Number(input.repeats ?? 3)));
         for (let i = 0; i < repeats; i++) {
           const t0 = Date.now();
+          let model = "";
           const r = await callTool({
             // As on the platform: the critic is never of the page writer's family.
-            route: (ri) => route({ ...ri, avoidFamilies: defaultAuthorFamilies(createRegistry()) }),
+            route: async (ri) => {
+              const out = await route({ ...ri, avoidFamilies: defaultAuthorFamilies(createRegistry()) });
+              model = out.model;
+              return out;
+            },
             callType: CRITIC_CALL_TYPE,
             orgPolicy: OPEN,
             ctx,
@@ -255,13 +262,17 @@ export const STAGES: Record<string, Stage> = {
             maxRepairs: 1,
           });
           ms.push(Date.now() - t0);
-          if (r.ok) scores.push(critiqueScore(r.value));
+          if (r.ok) answers.push({ model, score: critiqueScore(r.value) });
         }
-        const spread = scores.length ? Math.max(...scores) - Math.min(...scores) : 0;
+        const byModel = new Map<string, number[]>();
+        for (const a of answers) byModel.set(a.model, [...(byModel.get(a.model) ?? []), a.score]);
+        const main = [...byModel.values()].sort((a, b) => b.length - a.length)[0] ?? [];
+        const spread = main.length ? Math.max(...main) - Math.min(...main) : 0;
         const slowest = Math.max(...ms);
+        const scores = [...byModel].map(([m, xs]) => `${m}: ${xs.join(", ")}`).join("; ");
         return {
-          fallback: scores.length < repeats || spread > 10 || slowest > 90_000,
-          summary: `оценки ${scores.join(", ") || "—"} (разброс ${spread}); самый долгий вызов ${Math.round(slowest / 1000)} с`,
+          fallback: answers.length < repeats || main.length < 2 || spread > 10 || slowest > 90_000,
+          summary: `оценки ${scores || "—"} (разброс у одной модели ${spread}); самый долгий вызов ${Math.round(slowest / 1000)} с`,
         };
       } finally {
         await browser.close();
