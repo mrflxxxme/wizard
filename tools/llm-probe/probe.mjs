@@ -9,10 +9,10 @@ const TIMEOUT_MS = 45_000;
 /** Candidates: env var with the key, base URLs to try in order, model preference regexes (first match wins). */
 const TARGETS = [
   { name: "DeepSeek", keyEnv: "DEEPSEEK_API_KEY", bases: ["https://api.deepseek.com/v1"], prefer: [/v4.*flash/i, /chat/i, /./] },
-  { name: "Kimi", keyEnv: "KIMI_API_KEY", bases: ["https://api.moonshot.ai/v1", "https://api.moonshot.cn/v1"], prefer: [/k3/i, /k2\.?6/i, /kimi/i, /./] },
+  { name: "Kimi", keyEnv: "KIMI_API_KEY", bases: ["https://api.moonshot.ai/v1", "https://api.moonshot.cn/v1"], prefer: [/k3/i, /k2\.?6/i, /kimi/i, /./], temperature: 1, vision: ["kimi-k3"] },
   { name: "MiMo (MIMO_API_KEY)", keyEnv: "MIMO_API_KEY", bases: ["https://api.xiaomimimo.com/v1"], prefer: [/v2\.?6.*pro/i, /pro/i, /flash/i, /./] },
   { name: "MiMo (MIMO_SECOND_API_KEY)", keyEnv: "MIMO_SECOND_API_KEY", bases: ["https://api.xiaomimimo.com/v1"], prefer: [/v2\.?6.*pro/i, /pro/i, /flash/i, /./] },
-  { name: "Z.ai", keyEnv: "ZAI_API_KEY", bases: [process.env.ZAI_BASE_URL || "https://api.z.ai/api/paas/v4"], prefer: [/glm-5\.3$/i, /glm-5/i, /./], vision: [/5v|5\.\d*v/i, /4\.6v/i, /v$/i] },
+  { name: "Z.ai", keyEnv: "ZAI_API_KEY", bases: [process.env.ZAI_BASE_URL || "https://api.z.ai/api/paas/v4"], prefer: [/glm-5\.3$/i, /glm-5/i, /./], vision: ["glm-5v", "glm-5v-turbo", "glm-5.3v", "glm-4.6v", "glm-4.5v"] },
 ];
 
 async function call(url, key, body) {
@@ -69,12 +69,17 @@ for (const t of TARGETS) {
     if (models.status === 401 || models.status === 403) { out(`| ${t.name} | есть | ${base} | ${models.status} (${reply(models).slice(0, 80)}) | — | — | — |`); continue; }
     const model = ids.length ? pick(ids, t.prefer) : "";
     const chatModel = model || (t.keyEnv === "DEEPSEEK_API_KEY" ? "deepseek-chat" : t.keyEnv.startsWith("MIMO") ? "mimo-v2-flash" : t.keyEnv === "ZAI_API_KEY" ? "glm-5.3" : "kimi-k2-turbo-preview");
-    const chat = await call(`${base}/chat/completions`, key, { model: chatModel, max_tokens: 16, temperature: 0, messages: [{ role: "user", content: "Ответь одним словом по-русски: столица России?" }] });
+    const chat = await call(`${base}/chat/completions`, key, { model: chatModel, max_tokens: 64, temperature: t.temperature ?? 0, messages: [{ role: "user", content: "Ответь одним словом по-русски: столица России?" }] });
     let vision = "—";
     if (t.vision) {
-      const vModel = pick(ids.length ? ids : ["glm-5v", "glm-4.6v"], t.vision);
-      const v = await call(`${base}/chat/completions`, key, { model: vModel, max_tokens: 16, temperature: 0, messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: redPng() } }, { type: "text", text: "Какого цвета картинка? Одно слово." }] }] });
-      vision = `${vModel}: ${v.status} ${String(reply(v)).replace(/\s+/g, " ").slice(0, 60)}`;
+      // Vision models are not always listed by /models: try the candidates until one answers 200.
+      const tried = [];
+      for (const vModel of t.vision) {
+        const v = await call(`${base}/chat/completions`, key, { model: vModel, max_tokens: 64, temperature: t.temperature ?? 0, messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: redPng() } }, { type: "text", text: "Какого цвета картинка? Одно слово." }] }] });
+        tried.push(`${vModel}: ${v.status} ${String(reply(v)).replace(/\s+/g, " ").slice(0, 50)}`);
+        if (v.status === 200) break;
+      }
+      vision = tried.join("; ");
     }
     const shown = ids.length ? `${models.status}, ${ids.length} шт.: ${ids.slice(0, 12).join(", ")}` : `${models.status}`;
     out(`| ${t.name} | есть | ${base} | ${shown} | ${chatModel} | ${chat.status} ${String(reply(chat)).replace(/\s+/g, " ").slice(0, 60)} (${chat.ms} мс) | ${vision} |`);
