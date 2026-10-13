@@ -70,6 +70,17 @@ export function parseWhere(where: string): { route: string; width: CriticWidth; 
 
 const axisScore = z.number().int().min(0).max(4);
 
+/** V4-09: a code edit of the critic: a unique fragment of a page or section file and its replacement. */
+export const codePatchSchema = z.object({
+  file: z
+    .string()
+    .trim()
+    .regex(/^ui\/[A-Za-z0-9_/.-]+\.tsx$/),
+  find: z.string().min(3).max(1500),
+  replace: z.string().max(3000),
+});
+export type CodePatch = z.output<typeof codePatchSchema>;
+
 /** A finding: the observed sign, where, how bad, the evidence, the replacement and the edit that applies it. */
 export const findingSchema = z.object({
   sign: z.string().trim().min(3).max(200),
@@ -79,6 +90,11 @@ export const findingSchema = z.object({
   replace: z.string().trim().min(3).max(300),
   /** The closed operation that applies the replacement; null — only a person can apply it (a note). */
   edit: editOpSchema.nullable().optional(),
+  /**
+   * V4-09: a code edit of a page or section file instead of a closed operation: `find` occurs exactly once in the file,
+   * `replace` takes its place (the deterministic checks decide whether it stays).
+   */
+  patch: codePatchSchema.nullable().optional(),
 });
 export type Finding = z.output<typeof findingSchema>;
 
