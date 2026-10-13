@@ -40,7 +40,7 @@ export const V3_RECORDS = "e2e-v3";
 /** One line of V3_RECORDS_LOG: what each call of the run took. */
 export interface V3RecordUse {
   callType: string;
-  outcome: "hit" | "miss" | "recorded";
+  outcome: "hit" | "miss" | "beyond" | "recorded";
   model?: string;
   message?: string;
 }
@@ -122,6 +122,7 @@ export function v3Router(opts: RouterOptions): Router {
         books: [book],
         scopes,
         onHit: (l) => use({ callType: l.callType, outcome: "hit", model: l.model }),
+        onBeyond: (m) => use({ callType: m.callType, outcome: "beyond", message: m.message }),
         onMiss: (m) => {
           use({ callType: m.callType, outcome: "miss", message: m.message });
           console.error(`::error::[v3-stand] ${m.message} — перезапишите записи e2e: stage-probe с e2e=v3`);

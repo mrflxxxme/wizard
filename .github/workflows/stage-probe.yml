@@ -4,7 +4,7 @@
 # the branch (never to main: there they stay an artifact). 5–15 ₽ a stage, the cap of each stage stops it (≤ 30 ₽).
 # Starts: by hand (workflow_dispatch: stages, inputs, a model forced at the head of the stage's routes) and on a push to
 # claude/** or task/** that changed a stage's prompt sources (tools/fixtures/records/prompts.json) or saved inputs.
-# e2e_v3 (by hand): the Playwright spec of the v3 stand runs on live models (WIZARD_V3_RECORDS=record) and its build's
+# e2e_v3 (by hand, and on a push that changed a prompt source of its callTypes): the Playwright spec of the v3 stand runs on live models (WIZARD_V3_RECORDS=record) and its build's
 # calls become tools/fixtures/records/e2e-v3.jsonl — what CI's e2e replays (packages/e2e/stand/v3-models.ts).
 # A push by this job's token starts no workflow: pull the records commit, then push your next commit for CI.
 name: stage-probe
@@ -54,6 +54,8 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      e2e: ${{ steps.stages.outputs.e2e }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -71,19 +73,24 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           STAGE: ${{ inputs.stage }}
+          E2E: ${{ inputs.e2e_v3 }}
           BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
+          e2e=false
           if [ "$EVENT" = workflow_dispatch ]; then
             stages="$STAGE"
+            e2e="$E2E"
           else
             if [ -z "$BEFORE" ] || [ "$BEFORE" = 0000000000000000000000000000000000000000 ]; then
               BEFORE=$(git merge-base origin/main HEAD)
             fi
             git diff --name-only "$BEFORE" HEAD > "$RUNNER_TEMP/changed.txt"
             stages=$(node tools/fixtures/probe.mjs --stages-for="$RUNNER_TEMP/changed.txt")
+            e2e=$(node tools/fixtures/probe.mjs --e2e-for="$RUNNER_TEMP/changed.txt")
           fi
           echo "stages=$stages" >> "$GITHUB_OUTPUT"
+          echo "e2e=$e2e" >> "$GITHUB_OUTPUT"
           if [ -z "$stages" ]; then
             echo "Промпты этапов не менялись — проба не нужна." >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -152,7 +159,7 @@ jobs:
           exit 1
 
   e2e-v3:
-    if: github.event_name == 'workflow_dispatch' && inputs.e2e_v3
+    if: ${{ !cancelled() && needs.probe.outputs.e2e == 'true' }}
     needs: probe
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -215,7 +222,7 @@ jobs:
           path: tools/fixtures/records/e2e-v3.jsonl
           if-no-files-found: ignore
       - name: Commit the records to the branch
-        if: success() && github.ref != 'refs/heads/main' && inputs.commit
+        if: success() && github.ref != 'refs/heads/main' && (github.event_name == 'push' || inputs.commit)
         env:
           BRANCH: ${{ github.ref_name }}
         run: |

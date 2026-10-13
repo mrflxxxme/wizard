@@ -235,7 +235,9 @@ test("v3: интервью → бриф → три направления → «
   // real answers.
   const uses = recordUses();
   expect(uses.filter((u) => u.outcome === "miss").map((u) => u.message)).toEqual([]);
-  const answered = new Set(uses.filter((u) => u.outcome !== "miss").map((u) => u.callType));
+  const answered = new Set(
+    uses.filter((u) => u.outcome === "hit" || u.outcome === "recorded").map((u) => u.callType),
+  );
   for (const callType of ["art_direction", "page_compose", "critic_visual", "techreview"])
     expect([...answered]).toContain(callType);
 });

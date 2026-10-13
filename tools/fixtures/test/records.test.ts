@@ -20,7 +20,7 @@ import {
   toolsHash,
 } from "../../../packages/llm/src/index.ts";
 import { root } from "./helpers.ts";
-import { forceModel, renderProbe, runProbe, stageInputs } from "../probe/run.ts";
+import { e2eFor, forceModel, renderProbe, runProbe, stageInputs } from "../probe/run.ts";
 import { STAGES } from "../probe/stages.ts";
 
 const registry = createRegistry({ buildDefaultTier: "T1" });
@@ -137,6 +137,26 @@ describe("records (V4-03)", () => {
     expect(misses).toHaveLength(1);
   });
 
+  test("a refusal is recorded and replayed; a call past the recorded run fails as unavailable, not as a miss", async () => {
+    const p = project();
+    const book = new RecordBook(join(p.root, "e2e.jsonl"));
+    const rec = recordingRouter(
+      fakeInner((_i, n) => (n === 1 ? new LlmError("LLM_UNAVAILABLE", "нет") : out("submit", { a: "1" }))),
+      { book, source: "e2e", versions: p.versions() },
+    );
+    await rec.route(call("a"));
+    await expect(rec.route(call("a"))).rejects.toThrow("нет");
+    expect(book.all().map((l) => l.error?.code ?? "ok")).toEqual(["ok", "LLM_UNAVAILABLE"]);
+
+    const beyond: string[] = [];
+    const replay = replayRouter({ registry, books: [book], versions: p.versions(), onBeyond: (m) => beyond.push(m.message) });
+    await replay.route(call("a"));
+    await expect(replay.route(call("a"))).rejects.toMatchObject({ code: "LLM_UNAVAILABLE" });
+    await expect(replay.route(call("a"))).rejects.toMatchObject({ code: "LLM_UNAVAILABLE" });
+    expect(beyond).toHaveLength(1);
+    expect(replay.misses).toEqual([]);
+  });
+
   test("an edited prompt source is a new version: its old records no longer answer", async () => {
     const p = project();
     const book = new RecordBook(join(p.root, "e2e.jsonl"));
@@ -242,4 +262,21 @@ describe("stage probe (V4-03)", () => {
     },
     60_000,
   );
+
+  // The fast lane of CI runs e2e on main only: a prompt edit that outdates the e2e v3 records fails here, on the PR
+  // (this file imports the stages, so `vitest --changed` picks it up with any edit of their prompt sources).
+  test("the e2e v3 records are of the current prompt sources", () => {
+    const versions = new PromptVersions();
+    const stale = RecordBook.named("e2e-v3", root)
+      .all()
+      .filter((l) => l.promptVersion.split(".")[0] !== versions.sources(l.callType))
+      .map((l) => `${l.callType}@${l.promptVersion}`);
+    expect(stale, "записи e2e v3 устарели: запустите stage-probe с e2e_v3 (или запушьте правку в claude/**, task/**)").toEqual([]);
+  });
+
+  test("a changed prompt source of an e2e callType asks for a new e2e recording", () => {
+    const manifest = { critic_visual: ["packages/agents/src/builder/v3/critic/prompt.ts"], interview_v3: ["x.ts"] };
+    expect(e2eFor(["packages/agents/src/builder/v3/critic/prompt.ts"], manifest)).toBe(true);
+    expect(e2eFor(["x.ts", "README.md"], manifest)).toBe(false);
+  });
 });
