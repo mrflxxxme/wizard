@@ -68,7 +68,7 @@ function model(o: { delay?: Record<string, number>; fail?: string[]; noIdeas?: b
     await sleep(o.delay?.[base] ?? 20);
     if (o.fail?.includes(base)) throw new Error("timeout");
     const d = FIVE.find((x) => x.base === base) ?? FIVE[0];
-    return answer(tool, { ...d, texts: TEXTS }, calls.length);
+    return answer(tool, { ...d, base, texts: TEXTS }, calls.length);
   };
   return { route, calls };
 }
@@ -113,6 +113,36 @@ describe("V4-17 directions in parallel", () => {
     // Each direction's call names its idea and the others to stay away from; the ideas call carries no font lists.
     expect(JSON.stringify(calls[1]?.messages)).toContain("Другие направления");
     expect(JSON.stringify(calls[0]?.messages)).not.toContain("fonts.display");
+  });
+
+  test("what code can mend is mended, not refused: cream page, no why, a face outside the catalog, AI violet", async () => {
+    const calls: RouteInput[] = [];
+    const route = async (input: RouteInput): Promise<RouteOutput> => {
+      calls.push(input);
+      const tool = input.tools?.[0]?.name ?? "";
+      if (tool === DIRECTION_IDEAS_TOOL) return answer(tool, { ideas: IDEAS }, calls.length);
+      const base = baseOf(input) as string;
+      const d = FIVE.find((x) => x.base === base) ?? FIVE[0];
+      const { why: _w, name: _n, probability: _p, ...rest } = d as typeof d;
+      return answer(
+        tool,
+        {
+          ...rest,
+          base,
+          scheme: "light",
+          colors: { bg: "#F7F1E6", ink: "#2A211B", accent: "#8B5CF6" },
+          fonts: { display: "Playfair Display", text: "Inter", why: "x".repeat(400) },
+          texts: TEXTS,
+        },
+        calls.length,
+      );
+    };
+    const p = await proposeDirections(INPUT, { route }, { onDirection: () => {} });
+    expect(calls).toHaveLength(4);
+    expect(p.directions.every((d) => d.system && d.textsSource === "model")).toBe(true);
+    // The idea's words where the model left them out.
+    expect(p.directions.map((d) => d.name)).toEqual(["Тёплая витрина", "Газетная колонка", "Ночная пекарня"]);
+    expect(p.notes).toEqual([]);
   });
 
   test("a failed direction falls back alone: its archetype and the brief's texts; the others are the model's", async () => {

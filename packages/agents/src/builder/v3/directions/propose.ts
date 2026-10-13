@@ -433,8 +433,10 @@ async function proposeInParallel(
     seed,
     archetypes.map(() => tuning),
   );
-  // One repair per direction only when the wallet holds it for all three.
-  const repairs = wallet.attempts() >= PARALLEL_CALLS - 1 + 3 * 2 ? 1 : 0;
+  // One repair per direction, in parallel (orchestrator 13.10.2026: ≥ 2 of 3 directions from the model). The wallet's
+  // worst case (14 ₽ an attempt of Kimi K3) still has to hold the three first attempts; the repairs are cheap on the
+  // route's head (GLM-5.3: ≈ 0,4 ₽ a call, live measure 13.10.2026).
+  const repairs = wallet.attempts() >= PARALLEL_CALLS - 1 ? 1 : 0;
   let fromModel = 0;
   const directions = await Promise.all(
     chosen.map(async (idea, i): Promise<StoredDirection> => {

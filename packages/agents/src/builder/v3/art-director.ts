@@ -13,6 +13,7 @@ import {
   type ArchetypeId,
   archetype as archetypeById,
   archetypeFit,
+  autofixProposal,
   type DesignProposal,
   type DesignSystemV3,
   type DesignVoice,
@@ -528,6 +529,9 @@ export async function runArtDirector(o: {
 export const DIRECTION_IDEAS_TOOL = "submit_direction_ideas";
 export const DESIGN_DIRECTION_TOOL = "submit_design_direction";
 
+/** Words clipped to `n` with an ellipsis (a long answer is clipped, not refused). */
+const clipWords = (s: string, n: number) => (s.length <= n ? s : `${s.slice(0, n - 1).trimEnd()}…`);
+
 /** An idea of a direction: its name, why, base archetype, voice and how typical it is for the niche. */
 export interface DirectionIdea {
   name: string;
@@ -539,8 +543,9 @@ export interface DirectionIdea {
 
 const ideaSchema = () =>
   z.strictObject({
-    name: text(2, 40),
-    why: text(10, 240),
+    // Lenient lengths, clipped by code (pickIdeas): a long «why» is no reason to lose the idea.
+    name: text(2, 120),
+    why: text(10, 1200),
     probability: z.number().min(0).max(1),
     base: z.enum(ARCHETYPE_IDS),
     voice: z.enum(DESIGN_VOICES),
@@ -586,7 +591,9 @@ export function directionIdeasIssues(v: DirectionIdeasAnswer): ToolIssue[] {
 
 /** Three ideas of an answer on different bases: the most typical one, then the rarest (the owner's surprise). */
 export function pickIdeas(v: DirectionIdeasAnswer): DirectionIdea[] {
-  const valid = v.ideas.filter((d) => wordsIssues(d, "").length === 0);
+  const valid = v.ideas
+    .filter((d) => wordsIssues(d, "").length === 0)
+    .map((d) => ({ ...d, name: clipWords(d.name, 40), why: clipWords(d.why, 240) }));
   const byProb = [...valid].sort((a, b) => b.probability - a.probability);
   const out: DirectionIdea[] = [];
   const take = (d: DirectionIdea | undefined) => {
@@ -638,9 +645,19 @@ const line = (min: number, max: number) =>
     .max(max)
     .regex(/^[^\n]*$/);
 
-/** submit_design_direction input: one direction's system (as in submit_design_directions) and its first screen. */
+/**
+ * submit_design_direction input: one direction's system and its first screen. Lenient where code can mend (live
+ * measure 13.10.2026: most refusals were a missing or long `why` and faces outside the catalog): the name, why and
+ * probability default to the idea's, long words are clipped, a face is any name — autofixProposal maps it to the
+ * catalog's nearest.
+ */
 export function designDirectionSchema() {
+  const loose = (max: number) => z.string().trim().max(max);
   return designProposalSchema().extend({
+    name: loose(120).optional(),
+    why: loose(1200).optional(),
+    probability: z.number().min(0).max(1).optional(),
+    fonts: z.strictObject({ display: loose(60), text: loose(60), why: loose(1200).optional() }),
     texts: z.strictObject({
       title: line(8, TEXT_LIMITS.title),
       lead: line(20, TEXT_LIMITS.lead),
@@ -650,6 +667,19 @@ export function designDirectionSchema() {
 }
 export type DesignDirectionOneAnswer = z.output<ReturnType<typeof designDirectionSchema>>;
 
+/** The answer as a direction of the idea: the idea's name and why where the model left them out, words clipped. */
+function oneDirection(v: DesignDirectionOneAnswer, idea: DirectionIdea): DesignDirectionAnswer {
+  const { texts: _t, ...d } = v;
+  const why = d.fonts.why ? clipWords(d.fonts.why, 200) : undefined;
+  return {
+    ...d,
+    name: d.name && d.name.length >= 2 ? clipWords(d.name, 40) : idea.name,
+    why: d.why && d.why.length >= 10 ? clipWords(d.why, 240) : idea.why,
+    probability: d.probability ?? idea.probability,
+    fonts: { display: d.fonts.display, text: d.fonts.text, ...(why && why.length >= 10 ? { why } : {}) },
+  };
+}
+
 /** Checks of one direction: its base kept, proposalIssues, words without colours, texts only from the brief's facts. */
 export function designDirectionIssues(
   v: DesignDirectionOneAnswer,
@@ -658,8 +688,11 @@ export function designDirectionIssues(
   facts: DirectionFacts,
 ): ToolIssue[] {
   const brandColor = normalizeBrand(input.brandColor);
-  const { texts, ...d } = v;
-  const issues: ToolIssue[] = proposalIssues(toProposal(d), {
+  const { texts } = v;
+  const d = oneDirection(v, idea);
+  // Code mends what it can (fonts, scheme, cream, AA, violet, the brand colour); the rest goes back to the model.
+  const fixed = autofixProposal(toProposal(d), brandColor ? { brandColor } : {}).proposal;
+  const issues: ToolIssue[] = proposalIssues(fixed, {
     seed: input.seed,
     niche: input.niche,
     ...(brandColor ? { brandColor } : {}),
@@ -767,8 +800,10 @@ export async function proposeDirectionIdeas(
     });
     const answer = r.ok ? r.value : last;
     const ideas = answer ? pickIdeas(answer) : [];
-    if (ideas.length < ART_DIRECTIONS)
-      return { ideas: null, stats: r.stats, note: "идеи модели не прошли проверку" };
+    if (ideas.length < ART_DIRECTIONS) {
+      const why = r.ok ? "" : [...new Set(r.issues.map((i) => `${i.code}@${i.path}`))].slice(0, 4).join(", ");
+      return { ideas: null, stats: r.stats, note: `идеи модели не прошли проверку${why ? ` (${why})` : ""}` };
+    }
     return { ideas, stats: r.stats };
   } catch (e) {
     if (o.signal?.aborted) throw e;
@@ -820,10 +855,11 @@ export async function designOneDirection(
         note: `ответ модели не прошёл проверку${why ? ` (${why})` : ""}`,
       };
     }
-    const { texts, ...d } = r.value;
+    const { texts } = r.value;
+    const d = oneDirection(r.value, o.idea);
     const brandColor = normalizeBrand(o.input.brandColor);
     const opts = { seed: o.input.seed, niche: o.input.niche, ...(brandColor ? { brandColor } : {}) };
-    const proposal = toProposal(d);
+    const proposal = autofixProposal(toProposal(d), brandColor ? { brandColor } : {}).proposal;
     return {
       direction: {
         proposal,
