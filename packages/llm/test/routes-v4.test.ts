@@ -68,7 +68,7 @@ describe("plan v4 §3: every role on its model with a reserve", () => {
   const ROLES: [CallType, string, string][] = [
     ["interview_v3", "glm-5.3", "kimi-k2.6"],
     ["brief_extract", "glm-5.3", "kimi-k2.6"],
-    ["art_direction", "kimi-k3", "glm-5.3"],
+    ["art_direction", "glm-5.3", "kimi-k3"],
     ["page_compose", "kimi-k3", "glm-5.3"],
     ["page_edit", "deepseek-v4.1-flash", "mimo-v2.6-flash"],
     ["critic_visual", "glm-5v-turbo", "kimi-k2.6"],
@@ -120,6 +120,29 @@ describe("plan v4 §3: every role on its model with a reserve", () => {
     expect(kimi?.body.temperature).toBe(1);
     expect(kimi?.headers.authorization).toBe("Bearer test-kimi");
     expect(stub.requests.find((r) => r.provider === "zai")?.body.temperature).toBe(0.2);
+  });
+  test("art direction with images (a logo, references) skips the models that do not see them", async () => {
+    const { router } = mk();
+    const plain = await router.route({
+      callType: "art_direction",
+      messages: msgs("Пекарня"),
+      orgPolicy: OPEN,
+      ctx,
+    });
+    const withLogo = await router.route({
+      callType: "art_direction",
+      messages: [
+        { role: "system", content: "Арт-директор" },
+        {
+          role: "user",
+          content: "Логотип клиента",
+          attachments: [{ mime: "image/png", data: "iVBORw0KGgo=" }],
+        },
+      ],
+      orgPolicy: OPEN,
+      ctx,
+    });
+    expect([plain.model, withLogo.model]).toEqual(["glm-5.3", "kimi-k3"]);
   });
 });
 

@@ -29,6 +29,7 @@ import { type Env, LiveCallError, liveCall, providerBaseUrl } from "./providers.
 import {
   createRegistry,
   HIGH_REASONING,
+  isBuildCallType,
   type ModelDef,
   modelFamily,
   type ProviderId,
@@ -340,10 +341,18 @@ export function createRouter(opts: RouterOptions = {}): Router {
           : (["T0"] as const);
     const chain: ModelDef[] = [];
     const avoid = new Set(input.avoidFamilies ?? []);
+    // Images in the input of a build stage (a logo, references, screenshots): a model that does not see them is
+    // skipped. Runtime chains keep their own multimodal models (models.yaml#routes, runtime_ai_*).
+    const images =
+      isBuildCallType(callType) &&
+      input.messages.some(
+        (m) => m.role === "user" && (m.attachments ?? []).some((a) => a.mime.startsWith("image/")),
+      );
     for (const tier of tiers) {
       for (const id of routeDef.chain[tier] ?? []) {
         const model = usable(id);
-        if (model && model.tier === tier && !avoid.has(modelFamily(model))) chain.push(model);
+        if (model && model.tier === tier && !avoid.has(modelFamily(model)) && (!images || model.vision))
+          chain.push(model);
       }
     }
 
