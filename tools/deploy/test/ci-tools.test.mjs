@@ -15,6 +15,15 @@ describe("images.mjs", () => {
       "public.ecr.aws/nginx/nginx-unprivileged:1.29-alpine",
     );
     expect(mirrorRef("ghcr.io/x/y:1", "public.ecr.aws")).toBe("ghcr.io/x/y:1");
+    // The GHCR copy of the mirror (mirror-images.yml) keeps ECR Public's layout under a path.
+    expect(mirrorRef("node:22.22-bookworm-slim", "ghcr.io/acme/mirror")).toBe(
+      "ghcr.io/acme/mirror/docker/library/node:22.22-bookworm-slim",
+    );
+    expect(mirrorRef("nginxinc/nginx-unprivileged:1.29-alpine", "ghcr.io/acme/mirror")).toBe(
+      "ghcr.io/acme/mirror/nginx/nginx-unprivileged:1.29-alpine",
+    );
+    expect(parseArgs(["build", "--mirror", "ghcr.io/acme/mirror"]).mirror).toBe("ghcr.io/acme/mirror");
+    expect(() => parseArgs(["build", "--mirror", "ghcr.io/acme/mirror;rm"])).toThrow(/bad --mirror/);
     expect(mirrorRef("node:22", "")).toBe("node:22");
     for (const img of IMAGES) {
       const args = baseImageArgs(img.dockerfile, "public.ecr.aws");
@@ -28,7 +37,7 @@ describe("images.mjs", () => {
       lines.push(s),
     );
     expect(lines[0]).toContain("--build-arg NGINX_IMAGE=public.ecr.aws/nginx/nginx-unprivileged:1.29-alpine");
-    expect(() => parseArgs(["build", "--mirror", "bad/host"])).toThrow(/mirror/);
+    expect(() => parseArgs(["build", "--mirror", "bad host"])).toThrow(/mirror/);
   });
 
   it("one buildx call per image, loaded locally; push goes through the Docker daemon", () => {
