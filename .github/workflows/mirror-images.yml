@@ -26,15 +26,15 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      # <path on Docker Hub>:<tag>; official images are library/<name>.
+      # <path on ECR Public and on the mirror>=<path on Docker Hub>:<tag> — the layout of images.mjs mirrorRef.
       IMAGES: >-
-        library/postgres:16
-        library/postgres:16.13-bookworm
-        library/busybox:1.36.1
-        library/alpine:3.22
-        library/node:22.22-bookworm-slim
-        library/debian:bookworm-slim
-        nginxinc/nginx-unprivileged:1.29-alpine
+        docker/library/postgres=library/postgres:16
+        docker/library/postgres=library/postgres:16.13-bookworm
+        docker/library/busybox=library/busybox:1.36.1
+        docker/library/alpine=library/alpine:3.22
+        docker/library/node=library/node:22.22-bookworm-slim
+        docker/library/debian=library/debian:bookworm-slim
+        nginx/nginx-unprivileged=nginxinc/nginx-unprivileged:1.29-alpine
     steps:
       - name: Copy into GHCR
         env:
@@ -44,19 +44,17 @@ jobs:
           echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           failed=0
           for img in $IMAGES; do
-            path="${img%%:*}"; tag="${img#*:}"
-            # Official images live under docker/library/ on ECR Public and on the mirror (images.mjs mirrorRef).
-            case "$path" in library/*) mpath="docker/$path"; ecr="public.ecr.aws/docker/$path" ;; *) mpath="$path"; ecr="public.ecr.aws/$path" ;; esac
+            mpath="${img%%=*}"; rest="${img#*=}"; hub="${rest%%:*}"; tag="${rest#*:}"
             dest="ghcr.io/$owner/mirror/$mpath:$tag"
             ok=0
-            for src in "$ecr:$tag" "docker.io/$path:$tag"; do
+            for src in "public.ecr.aws/$mpath:$tag" "docker.io/$hub:$tag"; do
               for attempt in 1 2 3; do
                 if docker pull --platform linux/amd64 "$src" >/dev/null; then ok=1; break; fi
                 sleep $((attempt * 20))
               done
               [ "$ok" = 1 ] && break
             done
-            if [ "$ok" != 1 ]; then echo "::warning title=mirror::$img — источник недоступен (429?), копия в GHCR не обновлена"; failed=1; continue; fi
+            if [ "$ok" != 1 ]; then echo "::warning title=mirror::$mpath:$tag — источник недоступен (429?), копия в GHCR не обновлена"; failed=1; continue; fi
             docker tag "$src" "$dest"
             docker push "$dest" >/dev/null
             echo "mirror: $src → $dest"
