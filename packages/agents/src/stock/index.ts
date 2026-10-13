@@ -12,6 +12,20 @@ export {
 } from "./catalog.js";
 /** One CSS filter for every photo of a site from the direction's treatment and accent. */
 export { GRADED_PHOTOS, type PhotoGrade, photoGrade, photoGradeCss } from "./grade.js";
+/** The photos of a site from the library: per-kind search, the vision pick, no repeats, backfill; the platform source. */
+export {
+  BACKFILL_MIN_LIBRARY,
+  createSemanticSource,
+  fitsPhotoSlot,
+  type PhotoPicker,
+  PICK_CANDIDATES,
+  type PickInput,
+  photoQueryText,
+  SEMANTIC_TTL_MS,
+  type SemanticPhotoSource,
+  type SemanticPhotosResult,
+  semanticPhotos,
+} from "./photos.js";
 /** Shards, manifest and requests in the file storage; SemanticLibrary.search — candidates by cosine. */
 export {
   type Candidate,
