@@ -114,7 +114,12 @@ export function EditPanel(p: EditPanelProps): ReactNode {
   useEffect(() => {
     const m = p.incoming?.msg;
     if (!m) return;
-    if (m.type === "literal-selected") {
+    if (m.type === "literal-selected" && m.payload.ambiguous) {
+      setNote(null);
+      setSelected(null);
+      setPicking(false);
+      setError(T.text.ambiguous);
+    } else if (m.type === "literal-selected") {
       setNote(null);
       setError(null);
       setSelected({ refs: m.payload.refs, kind: m.payload.kind });
