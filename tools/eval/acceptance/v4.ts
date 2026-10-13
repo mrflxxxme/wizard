@@ -28,6 +28,7 @@ import { loadBriefs } from "../lib/briefs.mjs";
 import { platformClient } from "../server/client.mjs";
 import { evalCredits, evalIdentity, newEvalSession, newRunId, parseSeedOutput, seedSql } from "../server/seed.mjs";
 import { runV3Eval } from "../server/v3.mjs";
+import { storageEnv } from "../../stock/fill.mjs";
 
 /** The platform's origin as the cabinet sends it (the session's CSRF checks the Origin). */
 const ORIGIN = "http://localhost:5173";
@@ -98,6 +99,22 @@ export class ReadThroughStorage implements FileStorage {
     const [a, b] = await Promise.all([this.local.list(prefix), this.remote.list(prefix).catch(() => [])]);
     return [...new Set([...a, ...b])].sort();
   }
+}
+
+/** The outcome of a brief for the table: ready, or not ready with the build's status and its failed must scenarios. */
+export function rowStatus(r: {
+  ready?: boolean;
+  status: string;
+  build?: { status?: string; scenarios?: { list?: { id: string; priority?: string; status?: string }[] } } | null;
+}): string {
+  if (r.ready === true) return "готова";
+  const failed = (r.build?.scenarios?.list ?? [])
+    .filter((s) => s.priority === "must" && s.status === "failed")
+    .map((s) => s.id);
+  const why = [r.build?.status ? `сборка ${r.build.status}` : "", failed.length ? `must ✗ ${failed.join(", ")}` : ""]
+    .filter(Boolean)
+    .join("; ");
+  return `не готова (${r.status}${why ? `; ${why}` : ""})`;
 }
 
 interface Row {
@@ -210,7 +227,11 @@ export async function runAcceptance(o: { out: string; capRub: number; briefs?: r
   const local = createFileStorage({ WIZARD_FILES_STORAGE: "fs", WIZARD_FILES_DIR: filesDir }, { defaultDir: filesDir });
   const files: FileStorage =
     process.env.WIZARD_FILES_STORAGE === "s3"
-      ? new ReadThroughStorage(local, createFileStorage(process.env, { defaultDir: filesDir }))
+      ? new ReadThroughStorage(
+          local,
+          // The bucket of prod by the account key when the job gives none (as the photo library runner finds it).
+          createFileStorage(await storageEnv({ DEPLOY_ENV: "prod", ...process.env }), { defaultDir: filesDir }),
+        )
       : local;
   delete process.env.WIZARD_FILES_STORAGE;
   mkdirSync(artifactsDir, { recursive: true });
@@ -328,7 +349,7 @@ export async function runAcceptance(o: { out: string; capRub: number; briefs?: r
         const sc = r.systemId ? screens.get(r.systemId) : undefined;
         const row: Row = {
           brief: r.id,
-          status: r.build?.status ?? r.status,
+          status: rowStatus(r as Parameters<typeof rowStatus>[0]),
           screensSec: sc?.sec ?? null,
           screensFromStartSec: sc && r.startedAt ? round((sc.at - Date.parse(r.startedAt)) / 1000) : null,
           systemMin: typeof r.minutes === "number" ? round(r.minutes) : null,

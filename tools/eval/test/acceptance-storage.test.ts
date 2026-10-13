@@ -1,7 +1,7 @@
 // V4 acceptance: the job reads prod's photo library through, writes only its own files (prod's bucket is only read).
 import { describe, expect, test } from "vitest";
 import { MemoryFileStorage } from "../../../apps/runtime/src/files/storage.ts";
-import { ReadThroughStorage } from "../acceptance/v4.ts";
+import { ReadThroughStorage, rowStatus } from "../acceptance/v4.ts";
 
 const meta = { name: "x", mime: "image/webp", size: 1, entity: "e", field: "f", uploadedBy: null, uploadedAt: "now" } as const;
 const KEY = "wz_photos/00000000-0000-4000-8000-000000000001";
@@ -21,5 +21,20 @@ describe("acceptance storage: read through, write local", () => {
     expect(await s.list("wz_photos/")).toEqual([KEY]);
     await s.delete(KEY);
     expect(await remote.get(KEY)).not.toBeNull();
+  });
+});
+
+describe("acceptance table: the outcome of a brief", () => {
+  test("ready, or not ready with the build's status and its failed must scenarios", () => {
+    expect(rowStatus({ ready: true, status: "ready", build: { status: "succeeded" } })).toBe("готова");
+    const list = [
+      { id: "s1", priority: "must", status: "failed" },
+      { id: "s2", priority: "should", status: "failed" },
+      { id: "s3", priority: "must", status: "passed" },
+    ];
+    expect(rowStatus({ ready: false, status: "not_ready", build: { status: "succeeded", scenarios: { list } } })).toBe(
+      "не готова (not_ready; сборка succeeded; must ✗ s1)",
+    );
+    expect(rowStatus({ status: "failed", build: null })).toBe("не готова (failed)");
   });
 });
