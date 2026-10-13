@@ -1,0 +1,8 @@
+{
+  "repeats": 2,
+  "avoid": false,
+  "shots": [
+    { "file": "tools/fixtures/probe/shots/clinic-rehearsal-390.jpg", "width": 390, "kind": "screen", "px": { "width": 390, "height": 844 } },
+    { "file": "tools/fixtures/probe/shots/clinic-rehearsal-1440.jpg", "width": 1440, "kind": "page", "px": { "width": 720, "height": 1006 } }
+  ]
+}

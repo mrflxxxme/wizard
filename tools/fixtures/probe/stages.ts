@@ -1,6 +1,8 @@
 // V4-03 stage adapters of the probe (tools/fixtures/probe.mjs): each runs one real stage of the build — its current
 // prompt code in packages/agents — on a saved input (tools/fixtures/probe/inputs/<stage>/*.json) with the given route.
 // A stage owner adds the adapter of a new stage here. `raw` sends a saved RouteInput as is (any callType).
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   type BriefScenario,
   type SystemBrief,
@@ -39,6 +41,8 @@ import { siteFacts } from "../../../packages/agents/src/builder/v3/compose/index
 import { readSite } from "../../../packages/agents/src/builder/v3/compose/site.ts";
 import { callTool } from "../../../packages/agents/src/core/loop.ts";
 import { defaultAuthorFamilies } from "../../../packages/agents/src/builder/v3/critic/hook.ts";
+import type { Critique } from "../../../packages/agents/src/builder/v3/critic/rubric.ts";
+import type { CriticShot } from "../../../packages/agents/src/builder/v3/critic/types.ts";
 import { chromiumProvider } from "../../../apps/platform-api/src/agents/goal-browser.ts";
 import { criticInspector } from "../../../apps/platform-api/src/builds-v3/critic.ts";
 import { CRITIC_VIEWPORTS } from "../../../packages/agents/src/builder/v3/critic/checks.ts";
@@ -46,6 +50,8 @@ import {
   createInterviewV3,
   newInterviewV3Session,
 } from "../../../packages/agents/src/interview-v3/index.ts";
+
+const REPO_ROOT = join(import.meta.dirname, "..", "..", "..");
 
 export type RouteFn = (input: RouteInput) => Promise<RouteOutput>;
 
@@ -105,6 +111,94 @@ async function builtClinic(
     else files.set(p, v);
   }
   return { ...base, files };
+}
+
+/** A saved screenshot of a real build (the acceptance rehearsal): the critic judges it instead of the probe clinic. */
+interface SavedShot {
+  file: string;
+  width: 390 | 1440;
+  kind: "screen" | "page";
+  px: { width: number; height: number };
+}
+
+/** Critic messages over the clinic's live screenshots (the shot plan of the critic hook). */
+async function liveShotMessages(
+  built: V3BuildContext,
+  site: NonNullable<ReturnType<typeof readSite>>,
+  browser: ReturnType<typeof chromiumProvider>,
+): Promise<LlmMessage[]> {
+  const shots = shotPlan(site);
+  const insp = await criticInspector({ browser })({
+    // As the critic hook: the spec routes the site's pages (without them every route is «не найдена»).
+    spec: withSitePages(built.spec, site),
+    files: built.files,
+    routes: [...new Set(shots.map((x) => x.route))],
+    viewports: CRITIC_VIEWPORTS,
+    shots,
+    fonts: [built.design.fonts.display.family, built.design.fonts.text.family],
+  });
+  if (!insp.ok) throw new Error(`снимки не сняты: ${insp.error ?? ""}`);
+  return critiqueMessages({
+    facts: siteFacts(built),
+    brief: built.brief,
+    site,
+    design: built.design,
+    library: PATTERNS,
+    shots: insp.shots,
+    found: insp.problems,
+    stubPhotos: insp.stubPhotos === true,
+    history: [],
+    code: new Map(
+      [...new Set(shots.map((x) => x.route))].flatMap((rt) => {
+        const file = site.pages.find((pg) => pg.route === rt)?.file;
+        const src = file ? built.files.get(file) : undefined;
+        return file && src !== undefined ? [[file, src] as const] : [];
+      }),
+    ),
+  });
+}
+
+/** Critic messages over saved screenshots: the clinic gives the brief and the site, not its code (another page). */
+function savedShotMessages(
+  built: V3BuildContext,
+  site: NonNullable<ReturnType<typeof readSite>>,
+  saved: readonly SavedShot[],
+): LlmMessage[] {
+  const shots: CriticShot[] = saved.map((x) => ({
+    route: "/",
+    width: x.width,
+    kind: x.kind,
+    maxWidth: x.px.width,
+    maxHeight: x.px.height,
+    mime: "image/jpeg",
+    data: readFileSync(join(REPO_ROOT, x.file)).toString("base64"),
+    px: x.px,
+    sections: [],
+  }));
+  return critiqueMessages({
+    facts: siteFacts(built),
+    brief: built.brief,
+    site,
+    design: built.design,
+    library: PATTERNS,
+    shots,
+    found: [],
+    stubPhotos: false,
+    history: [],
+    code: new Map(),
+  });
+}
+
+/** What a critique of the rehearsal clinic caught: placeholders, the empty section, the brand in the menu; its findings. */
+function caught(c: Critique): string {
+  const text = c.findings.map((f) => `${f.evidence} ${f.replace ?? ""}`).join(" ");
+  const marks = [
+    /Услуга\s*\d|заглушк|плейсхолдер/i.test(text) ? "заглушки ✓" : "заглушки ✗",
+    /пуст|только заголов|одна кнопка|без содержан/i.test(text) ? "пустая секция ✓" : "пустая секция ✗",
+    /бренд|название.{0,40}(меню|навигац|шапк)|логотип/i.test(text) ? "бренд в меню ✓" : "бренд в меню ✗",
+  ];
+  const top = c.findings.map((f) => `${f.severity} ${f.sign} ${f.where}`).join(", ");
+  return `${marks.join(", ")} [${top}]`;
 }
 
 export const STAGES: Record<string, Stage> = {
@@ -222,38 +316,13 @@ export const STAGES: Record<string, Stage> = {
       if (!site) throw new Error("в клинике нет модели сайта");
       const browser = chromiumProvider({ slots: 1 });
       try {
-        const shots = shotPlan(site);
-        const insp = await criticInspector({ browser })({
-          // As the critic hook: the spec routes the site's pages (without them every route is «не найдена»).
-          spec: withSitePages(built.spec, site),
-          files: built.files,
-          routes: [...new Set(shots.map((x) => x.route))],
-          viewports: CRITIC_VIEWPORTS,
-          shots,
-          fonts: [built.design.fonts.display.family, built.design.fonts.text.family],
-        });
-        if (!insp.ok) throw new Error(`снимки не сняты: ${insp.error ?? ""}`);
-        const messages = critiqueMessages({
-          facts: siteFacts(built),
-          brief: built.brief,
-          site,
-          design: built.design,
-          library: PATTERNS,
-          shots: insp.shots,
-          found: insp.problems,
-          stubPhotos: insp.stubPhotos === true,
-          history: [],
-          code: new Map(
-            [...new Set(shots.map((x) => x.route))].flatMap((rt) => {
-              const file = site.pages.find((pg) => pg.route === rt)?.file;
-              const src = file ? built.files.get(file) : undefined;
-              return file && src !== undefined ? [[file, src] as const] : [];
-            }),
-          ),
-        });
+        const messages = input.shots
+          ? savedShotMessages(built, site, input.shots as SavedShot[])
+          : await liveShotMessages(built, site, browser);
         // Score and model of each answer: the spread is judged among the answers of one model (a fallback model
         // under the provider's rate limit is another critic, shown apart).
         const answers: { model: string; score: number }[] = [];
+        const seen: string[] = [];
         const ms: number[] = [];
         const repeats = Math.max(1, Math.min(3, Number(input.repeats ?? 3)));
         for (let i = 0; i < repeats; i++) {
@@ -262,7 +331,9 @@ export const STAGES: Record<string, Stage> = {
           const r = await callTool({
             // As on the platform: the critic is never of the page writer's family.
             route: async (ri) => {
-              const out = await route({ ...ri, avoidFamilies: defaultAuthorFamilies(createRegistry()) });
+              const out = await route(
+                input.avoid === false ? ri : { ...ri, avoidFamilies: defaultAuthorFamilies(createRegistry()) },
+              );
               model = out.model;
               return out;
             },
@@ -275,7 +346,10 @@ export const STAGES: Record<string, Stage> = {
             maxRepairs: 1,
           });
           ms.push(Date.now() - t0);
-          if (r.ok) answers.push({ model, score: critiqueScore(r.value) });
+          if (r.ok) {
+            answers.push({ model, score: critiqueScore(r.value) });
+            if (input.shots) seen.push(caught(r.value));
+          }
         }
         const byModel = new Map<string, number[]>();
         for (const a of answers) byModel.set(a.model, [...(byModel.get(a.model) ?? []), a.score]);
@@ -287,7 +361,7 @@ export const STAGES: Record<string, Stage> = {
         // The score only stops the cycles (the checks accept edits): a model's noise up to CRITIC_SPREAD is tolerated.
         return {
           fallback: answers.length < repeats || main.length < 2 || spread > CRITIC_SPREAD || median > 90_000,
-          summary: `оценки ${scores || "—"} (разброс у одной модели ${spread}); вызов: медиана ${Math.round(median / 1000)} с, самый долгий ${Math.round(slowest / 1000)} с`,
+          summary: `оценки ${scores || "—"} (разброс у одной модели ${spread}); вызов: медиана ${Math.round(median / 1000)} с, самый долгий ${Math.round(slowest / 1000)} с${seen.length ? `; ${seen.join(" | ")}` : ""}`,
         };
       } finally {
         await browser.close();
