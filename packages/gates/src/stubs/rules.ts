@@ -79,7 +79,8 @@ export const PLACEHOLDER_PATTERNS: readonly { re: RegExp; what: string }[] = [
   { re: /\(?(?:000|111|999|123)\)?[\s-]*123[\s-]?45[\s-]?67(?!\d)/, what: "телефон 123-45-67" },
   { re: /\+?[78][\s(-]*9{3}[\s)-]*9{3}[\s-]*9{2}[\s-]*9{2}\b/, what: "телефон из девяток" },
   {
-    re: /скоро\s+(?:здесь|тут)|скоро\s+появ|здесь\s+будет|coming\s+soon|under\s+construction/i,
+    // Not «… скоро появятся»: the empty state of a data list (catalog, blog) the owner has not filled yet.
+    re: /скоро\s+(?:здесь|тут)|здесь\s+будет|coming\s+soon|under\s+construction/i,
     what: "«скоро здесь»",
   },
   {
@@ -142,7 +143,7 @@ export function strangeContacts(text: string, known: KnownContacts): string[] {
   return out;
 }
 
-/** Routes every site has besides its pages (runtime and platform pages). */
+/** Routes every site has besides its pages (runtime and platform pages; the shop's terms of runtime privacy/shop-terms). */
 export const SYSTEM_ROUTES: readonly string[] = [
   "/login",
   "/logout",
@@ -150,6 +151,9 @@ export const SYSTEM_ROUTES: readonly string[] = [
   "/photos",
   "/account",
   "/cabinet",
+  "/offer",
+  "/delivery",
+  "/returns",
 ];
 
 /** Why a link is dead; null — it goes somewhere. `routes` — the site's pages, `anchors` — ids by route. */

@@ -237,7 +237,8 @@ export function stubFindings(o: { files: ReadonlyMap<string, string>; known: Kno
             });
       }
       const withPhoto = props.filter((m) => [...CARD_PHOTO].some((k) => m.has(k))).length;
-      if (withPhoto > 0 && withPhoto < items.length)
+      // Three cards at least, as on the page (two items are as often a split: text and photo).
+      if (withPhoto > 0 && withPhoto < items.length && items.length >= 3)
         add({
           code: "S03",
           ...base(arr),

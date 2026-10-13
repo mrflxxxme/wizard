@@ -165,6 +165,8 @@ describe("rules", () => {
       "Описание",
       "Лечим зубы без боли",
       "Наш адрес: Казань, ул. Баумана, 1",
+      // The empty state of a data list the owner has not filled yet (ui-kit catalog) is not a stub.
+      "Позиции каталога скоро появятся.",
     ])
       expect(placeholderOf(t), t).toBeNull();
   });
@@ -184,6 +186,8 @@ describe("rules", () => {
       "/login?next=/",
       "/services/7",
       "/_wizard/photos/a/960",
+      "/offer",
+      "/returns",
     ])
       expect(deadLink(h, at), h).toBeNull();
     expect(deadLink("/blog", at)).toBe("страницы /blog на сайте нет");

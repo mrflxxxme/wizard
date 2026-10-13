@@ -14,6 +14,8 @@ export interface StubPageOptions {
   routes: string[];
   /** Contacts the owner gave (rules.ts knownContacts). */
   contacts: { phones: string[]; emails: string[] };
+  /** Sections bound to the owner's data (catalog, blog, cart): empty while there is none — not a stub. */
+  dataSections?: string[];
 }
 
 /** What the page script returns. */
@@ -153,7 +155,7 @@ export const STUB_CHECKS_SCRIPT = String.raw`
       const main = document.querySelector("main");
       for (const sec of main ? [...main.children] : []) {
         // An empty section has no height: only display none skips it.
-        if (!sec.id || getComputedStyle(sec).display === "none") continue;
+        if (!sec.id || (opts.dataSections || []).includes(sec.id) || getComputedStyle(sec).display === "none") continue;
         const text = (sec.innerText || "").replace(/\s+/g, " ").trim();
         const media = sec.querySelector("img, svg, video, iframe, canvas, form, input, select, textarea, picture");
         if (text.length < 15 && !media) add("S03", sec, "пустая секция", text || "(пусто)");
@@ -168,7 +170,8 @@ export const STUB_CHECKS_SCRIPT = String.raw`
         for (const ps of paras) for (const p of new Set(ps)) counts.set(p, (counts.get(p) || 0) + 1);
         for (const [p, n] of counts) if (n >= 2) add("S03", group, "одна фраза в " + n + " карточках из " + kids.length, p);
         const withImg = kids.filter((c) => c.querySelector("img")).length;
-        if (withImg > 0 && withImg < kids.length && kids.length <= 12)
+        // Three cards at least: two siblings of one class are as often the columns of a split (text | photo).
+        if (withImg > 0 && withImg < kids.length && kids.length >= 3 && kids.length <= 12)
           add("S03", group, "карточки без фото: " + (kids.length - withImg) + " из " + kids.length + ", у остальных фото есть", (kids.length - withImg) + " из " + kids.length);
       }
       return { problems };
