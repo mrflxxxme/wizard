@@ -49,7 +49,7 @@ describe.skipIf(!ON)("Kimi K3: thinking on and off", () => {
             },
             body: JSON.stringify({
               model: "kimi-k3",
-              temperature: 1,
+              temperature: mode === "disabled" ? 0.6 : 1,
               max_tokens: 16000,
               messages,
               tools: [tool],
