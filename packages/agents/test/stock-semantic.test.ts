@@ -297,13 +297,15 @@ describe("SigLIP input", () => {
 });
 
 describe("photo grade", () => {
-  test("a cast toward the accent hue on top of the treatment's tone", () => {
-    const g = photoGrade({ treatment: "warm-grade", accent: "#1f6feb" });
-    expect(g.hue).toBe(216);
-    expect(g.filter).toBe(
-      "contrast(1.03) saturate(1.02) brightness(1.02) sepia(0.2) hue-rotate(-179deg) saturate(1.04)",
+  test("a colour photo keeps its colours: a cool accent gives the tone only, a warm one a light sepia, never hue-rotate", () => {
+    // V4-22: hue-rotate turned every hue of the picture (skin green under a teal accent), not the cast.
+    const cool = photoGrade({ treatment: "warm-grade", accent: "#1f6feb" });
+    expect(cool.hue).toBe(216);
+    expect(cool.filter).toBe("contrast(1.03) saturate(1.02) brightness(1.02)");
+    expect(photoGrade({ treatment: "natural", accent: "#0f766e" }).filter).not.toContain("hue-rotate");
+    expect(photoGrade({ treatment: "natural", accent: "#e8590c" }).filter).toBe(
+      "contrast(1.04) saturate(0.94) sepia(0.1)",
     );
-    expect(photoGrade({ treatment: "natural", accent: "#e8590c" }).filter).toContain("hue-rotate(-14deg)");
   });
 
   test("an oklch accent of the palette; a neutral accent gets no cast", () => {

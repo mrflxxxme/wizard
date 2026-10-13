@@ -27,6 +27,7 @@ import {
   type V3StageHook,
 } from "@wizard/agents/builder";
 import type { ModuleRegistry } from "@wizard/agents/planner";
+import type { SemanticPhotoSource } from "@wizard/agents/stock";
 import type { AppSpec } from "@wizard/appspec";
 import {
   type GateReport,
@@ -43,6 +44,7 @@ import { PostgresJSDialect } from "kysely-postgres-js";
 import type postgres from "postgres";
 import type { GoalBrowserProvider } from "../agents/goal-browser.js";
 import { loadBuildQuestions } from "../agents/interview-v3-store.js";
+import { semanticPhotoSource } from "../agents/stock.js";
 import type { Mailer } from "../auth/mailer.js";
 import { getLatestBrief } from "../briefs/store.js";
 import { buildPipelineOf } from "../config.js";
@@ -120,6 +122,7 @@ export async function draftSeedHints(
   systemId: string,
   spec: AppSpec,
   storage?: FileStorage | null,
+  semanticSource: ((s: FileStorage) => Pick<SemanticPhotoSource, "search">) | null = semanticPhotoSource,
 ): Promise<SeedHint[]> {
   let out: SeedHint[] = [];
   try {
@@ -132,9 +135,76 @@ export async function draftSeedHints(
         from platform.system_build_checkpoints c
        where c.system_id = ${systemId} and c.key = 'photos'`.execute(db);
     const photos = r.rows[0]?.photos;
+    const plan = Array.isArray(photos) ? photos : [];
     const library = storage ? parseLibraryIndex(await readLibraryIndex(storage).catch(() => null)) : null;
-    out = [...out, ...photoSeedHints(spec, Array.isArray(photos) ? photos : [], library)];
+    const fromIndex = photoSeedHints(spec, plan, library);
+    out = [...out, ...fromIndex];
+    // V4-22: the semantic library (V4-10) is not in the index: the image fields still without photos get the library's
+    // photos found by each row's name (the brief's «Терапия» → a photo of it), never a photo already on the site.
+    if (storage && semanticSource) {
+      const covered = new Set(fromIndex.map((h) => `${h.entity}.${h.field}`));
+      const used = new Set(plan.map((p) => String((p as { file?: unknown })?.file ?? "")));
+      out = [...out, ...(await semanticSeedHints(spec, out, used, covered, semanticSource(storage)))];
+    }
   } catch {}
+  return out;
+}
+
+/** Image fields of the entities a public role reads (goods, catalog items, article covers); never the site's own photos. */
+function publicImageFields(spec: AppSpec): { entity: string; field: string }[] {
+  const publicRoles = new Set(spec.roles.filter((r) => r.access === "public").map((r) => r.name));
+  const fields: { entity: string; field: string }[] = [];
+  for (const e of spec.entities) {
+    if (e.name === SITE_PHOTO_ENTITY) continue;
+    const readable = spec.permissions.some(
+      (p) => p.entity === e.name && publicRoles.has(p.role) && p.ops.includes("read"),
+    );
+    if (!readable) continue;
+    for (const f of e.fields) if (f.type === "image") fields.push({ entity: e.name, field: f.name });
+  }
+  return fields;
+}
+
+/** Rows a field without name hints gets photos for. */
+const UNNAMED_ROWS = 6;
+
+/**
+ * V4-22: image hints from the semantic library — one photo per row, searched by the site's name and the row's name
+ * (the name hints of the same entity, in row order), else by the site's name alone; landscape, never twice, never one
+ * of `used` (the plan's photos). [] — no library or nothing fits.
+ */
+export async function semanticSeedHints(
+  spec: AppSpec,
+  hints: readonly SeedHint[],
+  used: ReadonlySet<string>,
+  covered: ReadonlySet<string>,
+  source: Pick<SemanticPhotoSource, "search">,
+): Promise<SeedHint[]> {
+  const site = spec.app.name.trim();
+  const taken = new Set(used);
+  const out: SeedHint[] = [];
+  for (const f of publicImageFields(spec)) {
+    if (covered.has(`${f.entity}.${f.field}`)) continue;
+    const names = hints.find((h) => h.entity === f.entity && h.field === "name")?.values.map(String) ?? [];
+    const queries = names.length ? names.map((n) => `${site}, ${n}`) : [site];
+    const values: string[] = [];
+    for (const q of queries) {
+      const want = names.length ? 1 : UNNAMED_ROWS;
+      const found = await source
+        .search(q.slice(0, 200), {
+          limit: want + 4,
+          filter: (e) => e.width >= e.height * 1.15 && !taken.has(e.file),
+        })
+        .catch(() => []);
+      for (const c of found.filter((x) => !taken.has(x.entry.file)).slice(0, want)) {
+        taken.add(c.entry.file);
+        values.push(`/_wizard/photos/${c.entry.file}/960`);
+      }
+      if (names.length && values.length < queries.indexOf(q) + 1) break;
+    }
+    const ok = values.filter((v) => LIBRARY_PHOTO_HINT.test(v)).slice(0, SEED_HINT_MAX_VALUES);
+    if (ok.length) out.push({ ...f, values: ok });
+  }
   return out;
 }
 
