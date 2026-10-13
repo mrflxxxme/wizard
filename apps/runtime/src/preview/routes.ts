@@ -1,4 +1,5 @@
-// Draft-only service routes of a system host: /_wizard/bridge.js, /_wizard/wz-map.json, /_wizard/pay-mock
+// Draft-only service routes of a system host: /_wizard/bridge.js, /_wizard/wz-map.json, /_wizard/source-map.json (V4-15),
+// /_wizard/pay-mock
 // (platform-screens.yaml#preview_contract, runtime.yaml#service_endpoints). POST /api/pay — routes/pay.ts.
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -43,6 +44,21 @@ export function previewRoutes(host: ConnectorHost): Hono<RuntimeHonoEnv> {
     if (!isDraft(c) || !dir) return notFoundPage();
     try {
       const body = await readFile(join(dir, "wz-map.json"));
+      return c.body(new Uint8Array(body), 200, {
+        "Content-Type": "application/json",
+        "Cache-Control": NO_CACHE,
+      });
+    } catch {
+      return notFoundPage();
+    }
+  });
+
+  // V4-15: the page literals of the draft (packages/build source-map) — the bridge finds the elements by them.
+  app.get("/source-map.json", async (c) => {
+    const dir = c.get("system").artifactDir;
+    if (!isDraft(c) || !dir) return notFoundPage();
+    try {
+      const body = await readFile(join(dir, "source-map.json"));
       return c.body(new Uint8Array(body), 200, {
         "Content-Type": "application/json",
         "Cache-Control": NO_CACHE,

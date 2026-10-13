@@ -31,11 +31,15 @@ import { openSupport } from "../../features/support/SupportWidget.js";
 import { canvas } from "../../i18n/ru/canvas.js";
 import { demo } from "../../i18n/ru/demo.js";
 import { ru } from "../../i18n/ru.js";
-import { type Device, openPreviewTab, SystemFrame } from "../../preview/SystemFrame.js";
+import type { FromPreview } from "../../preview/bridge.js";
+import { type Device, type FrameBridge, openPreviewTab, SystemFrame } from "../../preview/SystemFrame.js";
 import { subscribeRun } from "../../run/stream.js";
 import { useCanvasBrief } from "../brief/CanvasBrief.js";
+import { EditPanel } from "../edit/EditPanel.js";
 import { useBriefUpload } from "../v3/BriefUpload.js";
 import { lastReportRun, useV3Live } from "../v3/build/index.js";
+import { FirstScreens, useFirstScreens } from "../v3/first/FirstScreens.js";
+import { firstRu } from "../v3/first/ru.js";
 import { useKeyWindows } from "../v3/keys/index.js";
 import { publishRunState, V3PublishCard } from "../v3/publish/index.js";
 import { DELEGATE_OPTION_ID, v3Question } from "../v3/question.js";
@@ -51,7 +55,7 @@ export interface CanvasProps {
   initial: SystemView;
 }
 
-type PanelId = "chat" | "build" | "publish";
+type PanelId = "chat" | "build" | "publish" | "edit";
 
 interface Line {
   id: string;
@@ -448,6 +452,17 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
     setMoreOpen(false);
     setOpenError(!(await openPreviewTab(api, systemId, route.current)));
   }
+  // V4-12: the bridge of the shown frame and its messages (the «Правка» panel picks texts, photos and blocks on it).
+  const [bridge, setBridge] = useState<FrameBridge | null>(null);
+  const [incoming, setIncoming] = useState<{ seq: number; msg: FromPreview } | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const onBridgeMessage = useCallback((m: FromPreview) => {
+    setIncoming((x) => ({ seq: (x?.seq ?? 0) + 1, msg: m }));
+    if (m.type === "literal-selected" || m.type === "element-selected") {
+      setPanel("edit");
+      setHidden(false);
+    }
+  }, []);
   const onRoute = useCallback((r: string) => {
     route.current = r;
   }, []);
@@ -693,6 +708,59 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
     );
   }
 
+  // V3-04: a v3 system (it has a brief, or its question is a v3 one) offers «Приложить ТЗ» until the build.
+  const v3 = brief.available || questions.some((q) => v3Question(q) !== null);
+  // V4-08 «Сначала показать»: before the build of a v3 system its three first screens fill the canvas.
+  const firstActive =
+    v3 && shownRevision === null && !building && !plan && (stage === "interview" || stage === "card");
+  const first = useFirstScreens({
+    systemId,
+    enabled: firstActive && editable,
+    briefVersion: brief.current?.version ?? null,
+  });
+  // «Собрать в этом стиле»: open blocking questions are closed by the recommendations first (the interview writes the
+  // brief), then the pick goes into the brief and the build starts from that version.
+  const [styleBuild, setStyleBuild] = useState<{ n: number; finishing: boolean } | null>(null);
+  const [styleError, setStyleError] = useState<string | null>(null);
+  const styleStep = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the steps follow the stage and the runs only
+  useEffect(() => {
+    if (!styleBuild || runActive || styleStep.current) return;
+    if (stage === "interview") {
+      if (styleBuild.finishing) {
+        // The finishing turn failed (its reason is in the chat): the owner presses again.
+        if (turnFailure) setStyleBuild(null);
+        return;
+      }
+      styleStep.current = true;
+      setStyleBuild({ ...styleBuild, finishing: true });
+      void submitAnswers(answers, true).then((ok) => {
+        styleStep.current = false;
+        if (!ok) setStyleBuild(null);
+      });
+      return;
+    }
+    if (stage !== "card") return;
+    const proposalId = first.proposal?.id;
+    if (!proposalId) return setStyleBuild(null);
+    styleStep.current = true;
+    void (async () => {
+      try {
+        await first.api.pick(systemId, proposalId, styleBuild.n);
+        const version = (await api.getBrief(systemId)).brief?.version;
+        if (version === undefined) throw new Error(firstRu.buildFailed);
+        const r = await api.approveBrief(systemId, version);
+        started(r.run.id);
+        reloadBrief();
+        await reload().catch(() => {});
+      } catch (e) {
+        setStyleError(e instanceof Error && e.message ? e.message : firstRu.buildFailed);
+      } finally {
+        styleStep.current = false;
+        setStyleBuild(null);
+      }
+    })();
+  }, [styleBuild, stage, runActive, turnFailure]);
   // The chat opens by itself when it asks something new of the owner.
   const seenAttention = useRef<string | null>(null);
   useEffect(() => {
@@ -753,8 +821,6 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
     return () => clearTimeout(t);
   }, [news]);
 
-  // V3-04: a v3 system (it has a brief, or its question is a v3 one) offers «Приложить ТЗ» until the build.
-  const v3 = brief.available || questions.some((q) => v3Question(q) !== null);
   const composerState = building ? "building" : thinking || busy === "answers" ? "thinking" : "idle";
   const placeholder = building
     ? canvas.chat.building
@@ -768,6 +834,21 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
   const canType = !building && !thinking && question?.allowCustom !== false;
   const hasBuild = building || v3live.live !== null || progress.phase !== "idle";
 
+  // V4-08: the interview's non-blocking questions, asked during the build with the default it builds on meanwhile.
+  const buildQuestions =
+    runKind === "build"
+      ? events
+          .filter(
+            (e) =>
+              e.type === "agent_message" &&
+              typeof e.payload.messageId === "string" &&
+              e.payload.messageId.startsWith("v3q_") &&
+              typeof e.payload.text === "string",
+          )
+          .map((e) => ({ id: String(e.payload.messageId), text: String(e.payload.text) }))
+      : [];
+  // V4-12: a built v3 system is edited in the «Правка» panel (texts, photos, style, «Укажи и измени»).
+  const canEditSite = editable && v3 && built && shownRevision !== null;
   const placeholderNode =
     shownRevision !== null ? (
       <p className={s.emptyText}>{stageRu.loading}</p>
@@ -823,6 +904,13 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
               </p>
             )}
             {dock}
+            {buildQuestions.map((q) => (
+              <div key={q.id} className={s.bq} data-testid="canvas-build-question">
+                <p className={s.bqTitle}>{firstRu.buildQuestion}</p>
+                <p className={s.bqText}>{q.text}</p>
+                <p className={s.note}>{firstRu.buildAnswerLater}</p>
+              </div>
+            ))}
             {building && (
               <div className={s.bRow} data-testid="canvas-build-row" aria-live="polite">
                 <span className={s.spark} aria-hidden="true" />
@@ -896,8 +984,10 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
       ),
     },
     publish: { title: stageRu.publishPanel, body: publishCard },
+    // The «Правка» panel stays mounted (its picking goes on while it is closed on a phone): rendered on its own below.
+    edit: { title: islandRu.edit, body: null },
   };
-  const current = panel && (panel !== "publish" || publishCard) ? panelBody[panel] : null;
+  const current = panel && panel !== "edit" && (panel !== "publish" || publishCard) ? panelBody[panel] : null;
 
   return (
     <ThemeRoot theme="auto" className={s.root} testId="canvas-root">
@@ -906,15 +996,31 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
           <h1 className={s.srOnly} data-testid="canvas-name">
             {view.system.name || canvas.brand}
           </h1>
-          <SystemFrame
-            systemId={systemId}
-            revision={shownRevision}
-            device={device}
-            batching={building}
-            title={view.system.name ? `${stageRu.frame}: ${view.system.name}` : stageRu.frame}
-            placeholder={placeholderNode}
-            onRoute={onRoute}
-          />
+          {firstActive && (first.proposal || first.loading || first.error) ? (
+            <FirstScreens
+              state={first}
+              editable={editable}
+              building={styleBuild !== null}
+              buildError={styleError}
+              onBuild={(n) => {
+                setStyleError(null);
+                setStyleBuild({ n, finishing: false });
+              }}
+            />
+          ) : (
+            <SystemFrame
+              systemId={systemId}
+              revision={shownRevision}
+              device={device}
+              batching={building}
+              title={view.system.name ? `${stageRu.frame}: ${view.system.name}` : stageRu.frame}
+              placeholder={placeholderNode}
+              onRoute={onRoute}
+              onBridgeMessage={onBridgeMessage}
+              bridgeRef={setBridge}
+              reloadKey={reloadKey}
+            />
+          )}
         </main>
 
         {building && (
@@ -963,6 +1069,50 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
               </button>
             </header>
             <div className={s.panelBody}>{current.body}</div>
+          </Glass>
+        )}
+
+        {canEditSite && (
+          <Glass
+            as="aside"
+            className={s.panel}
+            testId="canvas-panel-edit"
+            aria-label={islandRu.edit}
+            hidden={panel !== "edit"}
+          >
+            <header className={s.panelHead}>
+              <h2 className={s.panelTitle}>{islandRu.edit}</h2>
+              <button
+                type="button"
+                className={s.ibtn}
+                aria-label={islandRu.close}
+                title={islandRu.close}
+                data-testid="canvas-panel-close"
+                onClick={closePanels}
+              >
+                <Icon d={ICONS.close} />
+              </button>
+            </header>
+            <div className={s.panelBody}>
+              <EditPanel
+                systemId={systemId}
+                editable={editable}
+                locked={building || runActive}
+                bridge={bridge}
+                incoming={incoming}
+                onSaved={() => void reload().catch(() => {})}
+                onRun={(id) => setRunId(id)}
+                onReloadFrame={() => setReloadKey((k) => k + 1)}
+                onPick={() => {
+                  // On a phone the site is under the panel: it steps aside while the owner picks.
+                  if (
+                    typeof window.matchMedia === "function" &&
+                    window.matchMedia("(max-width: 720px)").matches
+                  )
+                    setPanel(null);
+                }}
+              />
+            </div>
           </Glass>
         )}
 
@@ -1058,8 +1208,9 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
                 aria-label={islandRu.edit}
                 title={islandRu.edit}
                 data-testid="canvas-island-edit"
+                aria-pressed={panel === "edit"}
                 disabled={building}
-                onClick={() => (v3Ready ? setStyleOpen(true) : focusInput())}
+                onClick={() => (v3Ready ? setStyleOpen(true) : canEditSite ? toggle("edit") : focusInput())}
               >
                 <Icon d={ICONS.edit} />
               </button>

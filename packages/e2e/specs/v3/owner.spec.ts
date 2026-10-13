@@ -88,6 +88,11 @@ test("v3: интервью → бриф → три направления → «
   const question = page.getByTestId("canvas-question");
   await expect(question).toContainText("Что пациент должен сделать сам", { timeout: 30_000 });
   await expect(question).toContainText("Вопрос 1");
+  // V4-08 «Сначала показать»: the three first screens fill the canvas while the questions go on in the chat.
+  await expect(page.getByTestId("first-screens")).toHaveAttribute("data-state", "ready", {
+    timeout: 90_000 * SLOW,
+  });
+  await expect(page.getByTestId("first-screens-count")).toHaveText("Вариант 1 из 3");
   await expect(page.getByTestId("p-question-delegate")).toBeVisible();
   await page.getByTestId("p-question-option-o1").click();
 
@@ -114,11 +119,11 @@ test("v3: интервью → бриф → три направления → «
   await page.getByTestId("p-brief-close").click();
   await expect(panel).toHaveCount(0);
 
-  // Three directions of the site: three real first screens, the owner picks the second.
+  // Three directions of the site: the first screens already proposed (V4-08) in the style drawer; the owner picks the
+  // second.
   await page.getByTestId("canvas-v3-style-open").click();
   const drawer = page.getByTestId("canvas-v3-style-drawer");
   await expect(drawer).toBeVisible();
-  await drawer.getByTestId("directions-propose").click();
   for (const n of [1, 2, 3]) {
     await expect(drawer.getByTestId(`direction-${n}`)).toBeVisible({ timeout: 60_000 * SLOW });
     await expect(drawer.getByTestId(`direction-preview-${n}`)).toHaveAttribute("srcdoc", /<html/i);
@@ -172,6 +177,20 @@ test("v3: интервью → бриф → три направления → «
   await page.getByTestId("canvas-v3-live-look").click();
   await expect(frame).toBeVisible();
   await expect(page.getByTestId("canvas-sheet")).toHaveCount(0);
+
+  // V4-12 over V4-15: the heading picked on the real draft (bridge edit-mode) is edited without a model; the frame shows
+  // the new revision with it.
+  await page.getByTestId("canvas-island-edit").click();
+  await page.getByTestId("edit-text-pick").click();
+  const draft = page.frameLocator('[data-testid="canvas-frame-site"]');
+  await draft.locator("h1").first().click();
+  const field = page.getByTestId("edit-text-field").first();
+  await expect(field).toBeVisible({ timeout: 15_000 });
+  await field.fill("Стоматология рядом с домом");
+  await page.getByTestId("edit-text-save").click();
+  await expect(page.getByTestId("edit-note")).toContainText("Готово за", { timeout: 15_000 });
+  await expect(draft.locator("h1").first()).toHaveText("Стоматология рядом с домом", { timeout: 30_000 });
+  await page.getByTestId("canvas-panel-close").click();
 
   // An edit by words after the build: the wish goes into the brief, «Собрать» is offered again.
   await page.getByTestId("canvas-island-chat").click();

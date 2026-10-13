@@ -32,6 +32,7 @@ import {
 } from "@wizard/ui-kit/v3/design";
 import { stripScrubTokens } from "../../interview-v3/scrub-tokens.js";
 import { DEFAULT_REGISTRY } from "../../planner/catalog.js";
+import { modelPhotoPicker } from "../../stock/pick.js";
 import { erroredBlockers, failedBlockers } from "../v2/blockers.js";
 import { runPhotosStage } from "../v2/photos.js";
 import { withOwnerFields } from "../v2/run.js";
@@ -420,7 +421,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
    * reused while the niche and the places are the same. No host, no stock, an error — no photos (the skeleton keeps
    * its text first screens), and the next build tries again.
    */
-  const stockPhotos = async (): Promise<PlanPhoto[]> => {
+  const stockPhotos = async (w?: V3Wallet): Promise<PlanPhoto[]> => {
     const plan = bp.plan;
     const fingerprint = sha256({
       niche: plan.niche,
@@ -433,9 +434,21 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
     if (!host.photos) return [];
     const started = now();
     try {
+      // V4-10: the vision model picks among the library candidates (photo_pick), paid from the stage's wallet.
+      const photoHost =
+        host.photos.semantic && w && !host.photos.picker
+          ? {
+              ...host.photos,
+              picker: modelPhotoPicker({
+                route: w.route(host, llm),
+                runStep: host.runStep,
+                ...(host.signal ? { signal: host.signal } : {}),
+              }),
+            }
+          : host.photos;
       const r = await runPhotosStage({
         plan,
-        host: host.photos,
+        host: photoHost,
         now,
         ...(p.photosTimeMs !== undefined ? { budgetMs: p.photosTimeMs } : {}),
         ...(host.signal ? { signal: host.signal } : {}),
@@ -669,10 +682,12 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
     await stage("backend", {
       fingerprint: sha256({ plan: bp.plan, ext: p.extensions ?? [], design: designFp }),
       reuse: false,
-      run: async () => {
+      budgetRub: budgets.photos,
+      run: async (w) => {
         // The stock answers differently on a replay (new copies, a timeout under load): durable, so a restarted
         // worker takes the same skeleton path.
-        photos = host.once ? await host.once("v3_photos", stockPhotos) : await stockPhotos();
+        const pick = () => stockPhotos(w);
+        photos = host.once ? await host.once("v3_photos", pick) : await pick();
         await buildBackend();
         return {
           data: {

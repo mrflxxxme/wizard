@@ -45,6 +45,7 @@ import {
 import type postgres from "postgres";
 import { platformMailer } from "../auth/smtp-mailer.js";
 import { phoneOtpAllowed } from "../billing/plans.js";
+import { pointEditBuild } from "../builds-v3/edit/point.js";
 import {
   buildByBrief,
   draftSeedHints,
@@ -553,6 +554,13 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
       }
       // V3-11: a system with a brief and without a card or plan, WIZARD_BUILD_PIPELINE=v3 — the harness v3.
       if (v3?.enabled) {
+        // V4-15: «Укажи и измени» of a v3 system rewrites only the clicked element's file (no rebuild).
+        if (
+          params.mode === "point_edit" &&
+          params.target &&
+          (await isV3Build(db(), host.run.systemId, { card: params.card, mode: "change" }, true))
+        )
+          return pointEditBuild(host, params.target);
         if (await isV3Build(db(), host.run.systemId, params, true))
           return buildByBrief(host, {
             pg: o.pg,

@@ -14,8 +14,11 @@ export const RUB_PER_CREDIT = 5;
 export const ATTEMPT_CEILING_RUB = 14;
 /** Deadline of one model call of the step; past it the texts come from the brief. */
 export const DIRECTIONS_CALL_DEADLINE_MS = 75_000;
-/** Deadline of the design call (V4-07: the model writes five design systems); past it — the archetypes of code. */
-export const DESIGN_CALL_DEADLINE_MS = 100_000;
+/**
+ * Deadline of the design call (V4-07: the model writes five design systems); past it — the archetypes of code. The
+ * route's own timeout: Kimi K3 thinks 60–130 s on it (stage probe 13.10.2026), a shorter cut leaves no answer at all.
+ */
+export const DESIGN_CALL_DEADLINE_MS = 240_000;
 
 export class RubWallet {
   #spent = 0;
