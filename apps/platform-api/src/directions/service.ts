@@ -400,6 +400,8 @@ export class DirectionsService {
     try {
       const recent = reroll ? await this.#recentArchetypes(sys.id) : [];
       const model = await this.#model(sys, new RubWallet(DIRECTIONS_BUDGET_RUB, RUB_PER_CREDIT));
+      // V4-17: the directions in parallel; each one's preview is built as soon as the direction is ready.
+      const building: Promise<void>[] = [];
       const proposal = await proposeDirections(
         { brief: latest.brief, name: sys.name, niche, seed: sys.id, recent },
         {
@@ -407,13 +409,19 @@ export class DirectionsService {
           signal: AbortSignal.timeout(STREAM_DEADLINE_MS),
           // The model's steps name the stage the canvas words («подбираю палитру», «пишу заголовок»).
           runStep: (name, fn) => {
-            job.stage = name === "direction_texts" ? "texts" : "design";
+            if (job.stage !== "screens") job.stage = name === "direction_ideas" ? "design" : "texts";
             return fn();
+          },
+        },
+        {
+          onDirection: (d, base) => {
+            job.stage = "screens";
+            building.push(this.#ready(job, base, d));
           },
         },
       );
       job.stage = "screens";
-      await Promise.all(proposal.directions.map((d) => this.#ready(job, proposal, d)));
+      await Promise.all(building);
       await this.#announce(sys, proposal, latest.version);
       if (this.#jobs.get(sys.id) === job) this.#jobs.delete(sys.id);
     } catch (e) {
