@@ -20,4 +20,11 @@ if (!loader) {
 const { register } = await import(pathToFileURL(join(dirname(loader), "esm", "api", "index.mjs")).href);
 register();
 const { probeCli } = await import(pathToFileURL(join(import.meta.dirname, "probe", "run.ts")).href);
-process.exitCode = await probeCli(process.argv.slice(2));
+// A long model call (Kimi K3, 150 s and more) leaves no referenced handle in the loop at times: Node then exits mid-await
+// («unsettled top-level await», exit 13 — stage-probe on task/V4-07, 13.10.2026). A timer keeps the process up.
+const keep = setInterval(() => {}, 60_000);
+try {
+  process.exitCode = await probeCli(process.argv.slice(2));
+} finally {
+  clearInterval(keep);
+}
