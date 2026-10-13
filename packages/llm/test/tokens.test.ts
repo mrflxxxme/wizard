@@ -110,6 +110,7 @@ describe("tokens of an attachment by the model's rule", () => {
       "glm-4.6v:28",
       "glm-5v-turbo:28",
       "kimi-k3:28",
+      "kimi-k3-fast:28",
     ]);
     expect(MODELS.filter((m) => !m.vision).every((m) => m.image === undefined)).toBe(true);
   });

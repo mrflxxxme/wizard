@@ -53,6 +53,8 @@ export interface ModelDef {
   image?: ImageTokenRule;
   /** The only temperature the provider accepts for this model (kimi-k3: 1); the route's temperature is replaced by it. */
   temperature?: number;
+  /** "off" — the request turns the model's reasoning off (kimi-k3-fast: `thinking: {type: disabled}`, tools required). */
+  thinking?: "off";
 }
 
 export interface RouteDef {
@@ -278,6 +280,29 @@ export const MODELS: ModelDef[] = [
     { px: 28, max: 16384 },
     1,
   ),
+  // V4-06 speed probe 13.10.2026: K3 without reasoning — 18 s instead of 42–81 s for a first screen; the provider then
+  // takes only temperature 0.6, and with tool_choice auto it answers in text, so its tool calls are required.
+  {
+    ...m(
+      "kimi-k3-fast",
+      "moonshot",
+      "kimi-k3",
+      "T1",
+      "external",
+      256000,
+      348,
+      34.8,
+      1739,
+      true,
+      true,
+      {
+        px: 28,
+        max: 16384,
+      },
+      0.6,
+    ),
+    thinking: "off",
+  },
   m("deepseek-v4.1-flash", "deepseek", "deepseek-flash", "T1", "external", 1000000, 34.77, 0.7, 139.08),
   m("deepseek-v4-pro-0813", "deepseek", "deepseek-v4-pro", "T1", "external", 1000000, 152.99, 5.1, 458.96),
   m("mimo-v2.6-pro", "xiaomi", "mimo-v2.6-pro", "T1", "external", 256000, 50.42, 0.42, 100.83),
@@ -296,7 +321,7 @@ const r = (
 const ORCH_T0 = ["glm-5.1", "kimi-k2.6", "deepseek-v4-pro", "yandex-qwen3-235b"];
 const CODE_T0 = ["deepseek-v4-pro", "glm-5.1", "kimi-k2.6", "qwen3-coder-next"];
 const ORCH_V4_T0 = ["kimi-k2.6", "glm-5.1", "deepseek-v4-pro", "yandex-qwen3-235b"];
-const PAGE_T1 = ["kimi-k3", "glm-5.3", "deepseek-v4-pro-0813"];
+const PAGE_T1 = ["kimi-k3-fast", "glm-5.3", "deepseek-v4-pro-0813"];
 const PAGE_T0 = ["kimi-k2.6", "deepseek-v4-pro", "glm-5.1", "qwen3-coder-next", "yandex-deepseek-v4-flash"];
 
 /**
@@ -396,7 +421,7 @@ export const ROUTES: Record<CallType, RouteDef> = {
   art_direction: r(
     "designer",
     "T1",
-    { T1: ["kimi-k3", "glm-5.3"], T0: ["kimi-k2.6", "glm-5.1"] },
+    { T1: ["kimi-k3-fast", "glm-5.3"], T0: ["kimi-k2.6", "glm-5.1"] },
     0.4,
     6000,
     240000,
@@ -406,7 +431,7 @@ export const ROUTES: Record<CallType, RouteDef> = {
   signature_section: r(
     "builder",
     "T1",
-    { T1: ["glm-5.3", "kimi-k3", "deepseek-v4-pro-0813"], T0: PAGE_T0 },
+    { T1: ["glm-5.3", "kimi-k3-fast", "deepseek-v4-pro-0813"], T0: PAGE_T0 },
     0.4,
     16000,
     480000,

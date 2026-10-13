@@ -66,6 +66,7 @@ export function transformBody(
   providerId: ProviderDef["id"] | "byok",
   body: Record<string, unknown>,
   reasoning: "low" | "high" = "high",
+  thinking?: "off",
 ): Record<string, unknown> {
   const out: Record<string, unknown> = { ...body };
   delete out.response_format;
@@ -106,6 +107,8 @@ export function transformBody(
     // error: Unimplemented keys: ["propertyNames"]» (shape probe 2026-10-09). The answer is checked by our schema anyway.
     out.tools = out.tools.map((t) => withoutSchemaKeys(t, UNSUPPORTED_SCHEMA_KEYS));
   }
+  // Moonshot: a model with reasoning off (kimi-k3-fast) says so in every request.
+  if (providerId === "moonshot" && thinking === "off") out.thinking = { type: "disabled" };
   return out;
 }
 
@@ -252,6 +255,7 @@ export async function liveCall(i: LiveCallInput): Promise<{ result: LlmResult; u
     signal: i.signal,
     ...(i.fetch ? { fetch: i.fetch } : {}),
     ...(i.reasoning ? { reasoning: i.reasoning } : {}),
+    ...(i.model.thinking === "off" ? { thinking: "off" as const } : {}),
   });
 }
 
@@ -271,6 +275,8 @@ export interface ChatCallInput {
   signal: AbortSignal;
   fetch?: typeof globalThis.fetch;
   reasoning?: "low" | "high";
+  /** The model's reasoning is turned off (ModelDef.thinking). */
+  thinking?: "off";
 }
 
 /**
@@ -286,7 +292,7 @@ export async function chatCall(i: ChatCallInput): Promise<{ result: LlmResult; u
     fetch: i.fetch ?? defaultFetch(),
     includeUsage: true,
     supportsStructuredOutputs: false,
-    transformRequestBody: (body) => transformBody(i.bodyProfile, body, i.reasoning ?? "high"),
+    transformRequestBody: (body) => transformBody(i.bodyProfile, body, i.reasoning ?? "high", i.thinking),
   });
   const tools: ToolSet | undefined = i.tools?.length
     ? Object.fromEntries(

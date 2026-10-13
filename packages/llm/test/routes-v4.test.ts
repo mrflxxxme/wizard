@@ -68,8 +68,8 @@ describe("plan v4 §3: every role on its model with a reserve", () => {
   const ROLES: [CallType, string, string][] = [
     ["interview_v3", "glm-5.3", "kimi-k2.6"],
     ["brief_extract", "glm-5.3", "kimi-k2.6"],
-    ["art_direction", "kimi-k3", "glm-5.3"],
-    ["page_compose", "kimi-k3", "glm-5.3"],
+    ["art_direction", "kimi-k3-fast", "glm-5.3"],
+    ["page_compose", "kimi-k3-fast", "glm-5.3"],
     ["page_edit", "deepseek-v4.1-flash", "mimo-v2.6-flash"],
     ["critic_visual", "glm-5v-turbo", "kimi-k2.6"],
     ["techreview", "mimo-v2.6-pro", "gpt-oss-120b"],
@@ -100,11 +100,18 @@ describe("plan v4 §3: every role on its model with a reserve", () => {
     expect(isBuildCallType("repo_code")).toBe(false);
   });
 
-  test("live: page code goes to Kimi K3 with temperature 1, the second candidate (avoid kimi) to GLM-5.3", async () => {
+  test("live: page code goes to Kimi K3 without reasoning (temperature 0.6, tools required), the second candidate (avoid kimi) to GLM-5.3", async () => {
     const { router } = mk();
     const a = await router.route({
       callType: "page_compose",
       messages: msgs("Сайт пекарни"),
+      tools: [
+        {
+          name: "submit_page_code",
+          description: "Код страницы",
+          parameters: { type: "object", properties: {} },
+        },
+      ],
       orgPolicy: OPEN,
       ctx,
     });
@@ -115,9 +122,12 @@ describe("plan v4 §3: every role on its model with a reserve", () => {
       orgPolicy: OPEN,
       ctx,
     });
-    expect([a.model, b.model]).toEqual(["kimi-k3", "glm-5.3"]);
+    expect([a.model, b.model]).toEqual(["kimi-k3-fast", "glm-5.3"]);
     const kimi = stub.requests.find((r) => r.provider === "moonshot");
-    expect(kimi?.body.temperature).toBe(1);
+    expect(kimi?.body.model).toBe("kimi-k3");
+    expect(kimi?.body.temperature).toBe(0.6);
+    expect(kimi?.body.thinking).toEqual({ type: "disabled" });
+    expect(kimi?.body.tool_choice).toBe("required");
     expect(kimi?.headers.authorization).toBe("Bearer test-kimi");
     expect(stub.requests.find((r) => r.provider === "zai")?.body.temperature).toBe(0.2);
   });

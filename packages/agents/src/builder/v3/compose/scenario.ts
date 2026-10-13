@@ -33,6 +33,8 @@ export const COMPOSE_CALL_TYPES = {
   page: "page_compose",
   /** The rival author of the first screen (another family). */
   signature: "signature_section",
+  /** V4-06 speed: the pages after the home page, on the fast models. */
+  fast: "page_edit",
 } as const satisfies Record<string, CallType>;
 
 /** G0 of the system with a new section: problems of the files in `focus` (or without a file); ok when none. */
@@ -174,34 +176,46 @@ export async function composeScenario(
       if (s.file && src !== undefined) signatures.set(s.file, src);
     }
   const targets = scenarioPages(site, scenario, ctx);
-  const stop = (e: unknown): boolean => {
-    if (ctx.signal?.aborted) throw e;
-    if (e instanceof BudgetStop) {
-      notes.push(`Бюджет шага исчерпан (нужно ≈ ${e.needRub} ₽): оставил тексты из брифа.`);
+  const stopper =
+    (out: string[]) =>
+    (e: unknown): boolean => {
+      if (ctx.signal?.aborted) throw e;
+      if (e instanceof BudgetStop) {
+        out.push(`Бюджет шага исчерпан (нужно ≈ ${e.needRub} ₽): оставил тексты из брифа.`);
+        return true;
+      }
+      out.push(
+        `Модель не ответила (${e instanceof Error ? e.message.slice(0, 120) : String(e)}): оставил каркас страницы.`,
+      );
       return true;
-    }
-    notes.push(
-      `Модель не ответила (${e instanceof Error ? e.message.slice(0, 120) : String(e)}): оставил каркас страницы.`,
-    );
-    return true;
-  };
+    };
 
-  for (const target of targets) {
-    const page = site.pages.find((p) => p.route === target.route) as SitePage;
-    const done = await pageCode(ctx, base, {
-      site,
-      page,
-      scenario,
-      facts,
-      library,
-      verify,
-      signatures,
-      notes,
-      stop,
-      registry,
-      ...(opts.inspect ? { inspect: opts.inspect } : {}),
-      firstScreen: opts.firstScreen !== false && page.route === "/",
-    });
+  // V4-06 speed: the pages of a scenario are written at once (each sees the site as the scenario found it); the home
+  // page keeps the strong model and its two first screens, the other pages go to the fast route (page_edit).
+  const runs = await Promise.all(
+    targets.map(async (target) => {
+      const page = site.pages.find((p) => p.route === target.route) as SitePage;
+      const own: string[] = [];
+      const done = await pageCode(ctx, base, {
+        site,
+        page,
+        scenario,
+        facts,
+        library,
+        verify,
+        signatures,
+        notes: own,
+        stop: stopper(own),
+        registry,
+        ...(opts.inspect ? { inspect: opts.inspect } : {}),
+        firstScreen: opts.firstScreen !== false && page.route === "/",
+        callType: page.route === "/" ? COMPOSE_CALL_TYPES.page : COMPOSE_CALL_TYPES.fast,
+      });
+      return { done, own };
+    }),
+  );
+  for (const { done, own } of runs) {
+    notes.push(...own);
     if (done === "stop") break;
     if (!done) continue;
     for (const [f, src] of done.sources) signatures.set(f, src);

@@ -4,7 +4,7 @@
 // first author) and a judge of a third family picks one by the 390 and 1440 screenshots (critic_visual); without a
 // browser or a judge the first candidate stays. A page that never passes keeps its previous version.
 import type { BriefScenario } from "@wizard/appspec";
-import { type LlmMessage, modelFamilyOf, type Registry, type RouteInput } from "@wizard/llm";
+import { type CallType, type LlmMessage, modelFamilyOf, type Registry, type RouteInput } from "@wizard/llm";
 import type { PatternMeta } from "@wizard/ui-kit/v3/patterns";
 import { z } from "zod";
 import { type CallBase, callTool, type RouteFn } from "../../../core/loop.js";
@@ -55,6 +55,8 @@ export interface PageStepInput {
   inspect?: CriticInspector;
   /** Two candidates of the first screen and the judge (the home page). */
   firstScreen: boolean;
+  /** The callType of the page call (default page_compose; the pages after home — page_edit, V4-06 speed). */
+  callType?: CallType;
 }
 
 export interface PageStepResult {
@@ -136,7 +138,7 @@ export async function pageCode(
       r = await callTool({
         ...base,
         route: author.route,
-        callType: PAGE_CALL_TYPES.page,
+        callType: s.callType ?? PAGE_CALL_TYPES.page,
         stepName: `page_code:${s.page.route}`,
         messages,
         tool: req.tool,

@@ -536,7 +536,9 @@ export function createRouter(opts: RouterOptions = {}): Router {
             model,
             messages,
             ...(input.tools ? { tools: input.tools } : {}),
-            toolChoice: input.toolChoice ?? "auto",
+            // A model without reasoning answers tools in text under «auto» (kimi-k3-fast probe): its calls are required.
+            toolChoice:
+              input.toolChoice ?? (model.thinking === "off" && input.tools?.length ? "required" : "auto"),
             // A model with a fixed temperature (kimi-k3: 1) gets it; the request key keeps the route's one.
             temperature: model.temperature ?? routeDef.temperature,
             maxTokens: routeDef.maxTokens,
