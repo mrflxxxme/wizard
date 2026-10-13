@@ -4310,8 +4310,8 @@ tasks:
     owner: frontend
     parallel_group: v4-a
     estimate_days: 2
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: session_01X8jgGUBZgh2j9RwccJpmf6
     owns: ["apps/platform-web/src/screens/canvas/**", "apps/platform-web/src/screens/workspace/**", "apps/platform-web/src/screens/v3/build/**", "apps/platform-web/src/preview/**"]
     acceptance:
       - "Черновая система на всё окно в реальной ширине; формы, запись и оплата работают как в отдельной вкладке (браузерный тест на 1440 и 390)"
