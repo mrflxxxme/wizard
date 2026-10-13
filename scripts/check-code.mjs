@@ -1,5 +1,7 @@
 // CI code checks (M0-27): PgBouncer-unsafe SQL (L3-21, security/isolation.yaml#db_access)
 // and FSL/Convex-licensed sources (L3-40). Suppress a single hit with `wizard-allow-sql` on the same or previous line.
+// A *.browser.test.* file must skip without Chromium (V4-02): PR CI runs only the node project and the build job on
+// main has no browser, so an unguarded browser suite turns main red after a green PR.
 // Usage: node scripts/check-code.mjs [--root=DIR]
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
@@ -62,11 +64,19 @@ function* walk(dir) {
   }
 }
 
+const BROWSER_TEST = /\.browser\.test\.[cm]?[jt]sx?$/;
+const CHROMIUM_GUARD = /\bhasChromium\b|\.executablePath\s*\(/;
+
 const hits = [];
 for (const d of DIRS) {
   for (const file of walk(join(root, d))) {
     if (file === import.meta.filename) continue;
-    const lines = readFileSync(file, "utf8").split("\n");
+    const text = readFileSync(file, "utf8");
+    if (BROWSER_TEST.test(file) && !CHROMIUM_GUARD.test(text))
+      hits.push(
+        `${relative(root, file)}:1 [browser-test-unguarded] браузерный тест без пропуска без Chromium — describe.skipIf(!hasChromium)`,
+      );
+    const lines = text.split("\n");
     lines.forEach((line, i) => {
       const allowed = line.includes(ALLOW) || lines[i - 1]?.includes(ALLOW);
       for (const r of [...(allowed ? [] : sqlRules), ...licenseRules]) {
