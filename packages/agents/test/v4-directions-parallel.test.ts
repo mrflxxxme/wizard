@@ -122,8 +122,8 @@ describe("V4-17 directions in parallel", () => {
       const tool = input.tools?.[0]?.name ?? "";
       if (tool === DIRECTION_IDEAS_TOOL) return answer(tool, { ideas: IDEAS }, calls.length);
       const base = baseOf(input) as string;
-      const d = FIVE.find((x) => x.base === base) ?? FIVE[0];
-      const { why: _w, name: _n, probability: _p, ...rest } = d as typeof d;
+      const d = (FIVE.find((x) => x.base === base) ?? FIVE[0]) as (typeof FIVE)[number];
+      const { why: _w, name: _n, probability: _p, ...rest } = d;
       return answer(
         tool,
         {
@@ -143,6 +143,15 @@ describe("V4-17 directions in parallel", () => {
     // The idea's words where the model left them out.
     expect(p.directions.map((d) => d.name)).toEqual(["Тёплая витрина", "Газетная колонка", "Ночная пекарня"]);
     expect(p.notes).toEqual([]);
+  });
+
+  test("a name as the owner reads it: no quotes, no explanation after a dash", () => {
+    const [first] = pickIdeas({
+      ideas: IDEAS.map((d, i) =>
+        i === 0 ? { ...d, name: "«Атлас вкусов» — каталог как глянцевый журнал" } : d,
+      ),
+    } as never);
+    expect(first?.name).toBe("Атлас вкусов");
   });
 
   test("a failed direction falls back alone: its archetype and the brief's texts; the others are the model's", async () => {

@@ -531,6 +531,12 @@ export const DESIGN_DIRECTION_TOOL = "submit_design_direction";
 
 /** Words clipped to `n` with an ellipsis (a long answer is clipped, not refused). */
 const clipWords = (s: string, n: number) => (s.length <= n ? s : `${s.slice(0, n - 1).trimEnd()}…`);
+/** A direction's name as the owner reads it: no quotes around it, no explanation after a dash (live measure). */
+const cleanName = (s: string) =>
+  (s.split(/\s[—–-]\s/)[0] ?? s)
+    .trim()
+    .replace(/^[«"„“]+|[»"”]+$/g, "")
+    .trim();
 
 /** An idea of a direction: its name, why, base archetype, voice and how typical it is for the niche. */
 export interface DirectionIdea {
@@ -593,7 +599,7 @@ export function directionIdeasIssues(v: DirectionIdeasAnswer): ToolIssue[] {
 export function pickIdeas(v: DirectionIdeasAnswer): DirectionIdea[] {
   const valid = v.ideas
     .filter((d) => wordsIssues(d, "").length === 0)
-    .map((d) => ({ ...d, name: clipWords(d.name, 40), why: clipWords(d.why, 240) }));
+    .map((d) => ({ ...d, name: clipWords(cleanName(d.name) || d.name, 40), why: clipWords(d.why, 240) }));
   const byProb = [...valid].sort((a, b) => b.probability - a.probability);
   const out: DirectionIdea[] = [];
   const take = (d: DirectionIdea | undefined) => {
@@ -673,7 +679,7 @@ function oneDirection(v: DesignDirectionOneAnswer, idea: DirectionIdea): DesignD
   const why = d.fonts.why ? clipWords(d.fonts.why, 200) : undefined;
   return {
     ...d,
-    name: d.name && d.name.length >= 2 ? clipWords(d.name, 40) : idea.name,
+    name: d.name && cleanName(d.name).length >= 2 ? clipWords(cleanName(d.name), 40) : idea.name,
     why: d.why && d.why.length >= 10 ? clipWords(d.why, 240) : idea.why,
     probability: d.probability ?? idea.probability,
     fonts: { display: d.fonts.display, text: d.fonts.text, ...(why && why.length >= 10 ? { why } : {}) },
