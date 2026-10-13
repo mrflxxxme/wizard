@@ -7,7 +7,7 @@
 import type { BriefScenario } from "@wizard/appspec";
 import { createRegistry, type RouteInput, type RouteOutput } from "@wizard/llm";
 import { PATTERNS } from "@wizard/ui-kit/v3/patterns";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
   createPageComposer,
   lintErrors,
@@ -16,6 +16,7 @@ import {
   type PageCodeAnswer,
   pageCodeMessages,
   pageCodeRequest,
+  RIVAL_DEADLINE_MS,
   RIVAL_TOOL,
   readSite,
   type SiteModel,
@@ -300,6 +301,31 @@ describe("V4-06: the first screen — two candidates of different families and a
     const b = scripted({ page_compose: [HOME], signature_section: [new Error("провайдер недоступен")] });
     const r2 = await composer({ firstScreen: true }).scenario({ ...ctx, route: b.route }, LEAD);
     expect(apply(ctx.files, r2).get("ui/sections/home-hero.tsx")).toBe(HERO_CODE.source);
+  });
+});
+
+describe("V4-06: the rival first screen has a deadline", () => {
+  test("a rival silent past RIVAL_DEADLINE_MS is cut off; the first screen stays without the judge", async () => {
+    const { ctx } = await prepared();
+    const a = scripted({ page_compose: [HOME] });
+    const route = async (input: RouteInput): Promise<RouteOutput> => {
+      if (input.callType !== "signature_section") return a.route(input);
+      a.calls.push(input);
+      return new Promise((_, reject) =>
+        input.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true }),
+      );
+    };
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const run = composer({ firstScreen: true }).scenario({ ...ctx, route }, LEAD);
+      await vi.advanceTimersByTimeAsync(RIVAL_DEADLINE_MS + 1000);
+      const r = await run;
+      expect(a.calls.map((c) => c.callType)).toEqual(["page_compose", "signature_section"]);
+      expect(apply(ctx.files, r).get("ui/sections/home-hero.tsx")).toBe(HERO_CODE.source);
+      expect(r.notes.join("\n")).toContain(`не успел за ${RIVAL_DEADLINE_MS / 1000} с`);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

@@ -175,6 +175,8 @@ export async function pageCode(
 // ------------------------------------------------------------------------------------------------ first screen
 
 export const RIVAL_TOOL = "submit_first_screen";
+/** The rival first screen's deadline: past it the author's first screen stays without the judge (the build's time). */
+export const RIVAL_DEADLINE_MS = 60_000;
 export const JUDGE_TOOL = "submit_first_screen_choice";
 
 /** The rival first screen: TSX of the hero and its props. */
@@ -291,6 +293,10 @@ async function firstScreen(
     check: lintRival,
   });
   let b: PageStepResult | null = null;
+  // The pair waits for its slower author: a rival that has not answered by the deadline is dropped (the first stays).
+  const late = new AbortController();
+  const timer = setTimeout(() => late.abort(), RIVAL_DEADLINE_MS);
+  const outer = [base.signal, ctx.signal].filter((x): x is AbortSignal => x !== undefined);
   try {
     const r = await callTool({
       ...base,
@@ -299,6 +305,7 @@ async function firstScreen(
       stepName: "first_screen:rival",
       messages: rivalMessages(ctx, s, a.page),
       tool,
+      signal: AbortSignal.any([late.signal, ...outer]),
     });
     if (r.ok) {
       const page = withHero(a.page, r.value);
@@ -308,10 +315,16 @@ async function firstScreen(
       if (check.ok) b = { page, sources };
     }
   } catch (e) {
-    if (ctx.signal?.aborted) throw e;
+    if (ctx.signal?.aborted || base.signal?.aborted) throw e;
+  } finally {
+    clearTimeout(timer);
   }
   if (!b) {
-    s.notes.push("Второй вариант первого экрана не получился — остался первый.");
+    s.notes.push(
+      late.signal.aborted
+        ? `Второй вариант первого экрана не успел за ${RIVAL_DEADLINE_MS / 1000} с — остался первый.`
+        : "Второй вариант первого экрана не получился — остался первый.",
+    );
     return a;
   }
   const famB = rival.model() ? modelFamilyOf(s.registry, rival.model() as string) : null;

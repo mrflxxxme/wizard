@@ -96,6 +96,7 @@ export {
   type PageStepInput,
   type PageStepResult,
   pageCode,
+  RIVAL_DEADLINE_MS,
   RIVAL_TOOL,
   type RivalAnswer,
   rivalMessages,
