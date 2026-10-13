@@ -214,11 +214,20 @@ export interface FakeComposerOptions {
   skeletonCallsModel?: boolean;
 }
 
+/** A call of the fake composer; `repair` — V4-21: the reasons of a scenario composed again. */
+export interface FakeComposerLog {
+  kind: "skeleton" | "scenario";
+  id?: string;
+  budgetRub: number;
+  briefVersion: number;
+  repair?: string[];
+}
+
 /** A page composer of the V3-12 seam for tests. */
 export function fakeComposer(o: FakeComposerOptions = {}): PageComposer & {
-  log: { kind: "skeleton" | "scenario"; id?: string; budgetRub: number; briefVersion: number }[];
+  log: FakeComposerLog[];
 } {
-  const log: { kind: "skeleton" | "scenario"; id?: string; budgetRub: number; briefVersion: number }[] = [];
+  const log: FakeComposerLog[] = [];
   const attempts = new Map<string, number>();
   return {
     log,
@@ -253,7 +262,13 @@ export function fakeComposer(o: FakeComposerOptions = {}): PageComposer & {
     async scenario(ctx: V3BuildContext, s: BriefScenario): Promise<V3ComposeResult> {
       const n = (attempts.get(s.id) ?? 0) + 1;
       attempts.set(s.id, n);
-      log.push({ kind: "scenario", id: s.id, budgetRub: ctx.budgetRub, briefVersion: ctx.briefVersion });
+      log.push({
+        kind: "scenario",
+        id: s.id,
+        budgetRub: ctx.budgetRub,
+        briefVersion: ctx.briefVersion,
+        ...(ctx.repair ? { repair: [...ctx.repair] } : {}),
+      });
       const err = o.fail?.(s.id, n);
       if (err) throw err;
       let headline = s.when;

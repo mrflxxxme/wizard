@@ -154,6 +154,34 @@ function recorded(suite: "unit" | "demo", lines: FixtureLine[]) {
 const noVerify = async () => ({ ok: true, problems: [] as string[] });
 
 describe("page_compose", () => {
+  test("V4-21 repair: the reasons of the browser check go into the prompt; without them the prompt is as before", async () => {
+    const { ctx, site, facts } = await prepared();
+    const home = site.pages[0];
+    if (!home) throw new Error("home");
+    const base = { facts, site, page: home, scenario: LEAD, library: PATTERNS, offer: true };
+    const plain = pageComposeRequest(base);
+    const REASON = "Обещано в сценарии «видит услуги»: в списке услуг только заглушки вместо названий.";
+    const fix = pageComposeRequest({ ...base, repair: [REASON] });
+    const user = (m: typeof plain.messages) => String(m[1]?.content ?? "");
+    expect(user(plain.messages)).not.toContain("## Что исправить");
+    expect(user(fix.messages)).toContain(`## Что исправить`);
+    expect(user(fix.messages)).toContain(`- ${REASON}`);
+    expect(user(fix.messages).replace(/## Что исправить[\s\S]*?\n\n## Задача/, "## Задача")).toBe(
+      user(plain.messages),
+    );
+    // The composer reads ctx.repair: the recorded line of the prompt with the reasons is the one it asks.
+    const line = fixtureLine("page_compose", fix.messages, [fix.tool.definition], {
+      name: "submit_page",
+      args: HOME,
+    });
+    const { route, seen } = recorded("unit", [line]);
+    await createPageComposer({ patterns: PATTERNS, registry: llm }).scenario(
+      { ...ctx, route, repair: [REASON] },
+      LEAD,
+    );
+    expect(seen).toEqual([{ callType: "page_compose", scrubbed: false }]);
+  });
+
   test("recorded answer (by request key): library variants and texts of the scenario, SEO, the budget counted", async () => {
     const { ctx, site, facts } = await prepared();
     const home = site.pages[0];

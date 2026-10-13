@@ -257,6 +257,7 @@ export function pageComposeMessages(
   scenario: BriefScenario,
   library: readonly PatternMeta[] = PATTERNS,
   withSignature = false,
+  repair: readonly string[] = [],
 ): LlmMessage[] {
   const blocks = editable(page, library).map((e) => {
     const variants = e.options.map(
@@ -293,8 +294,14 @@ export function pageComposeMessages(
         `## Факты\n${factsBlock(facts, site)}`,
         `## Сценарий\n${scenarioText(scenario)}`,
         `## Страница ${page.route} «${page.title}»\n${blocks.join("\n\n")}`,
+        // V4-21: the first page of this scenario did not show what it promises; only facts of the brief fix it.
+        repair.length
+          ? `## Что исправить\nПроверка в браузере: на сайте не показано обещанное сценарием.\n${repair.map((r) => `- ${r}`).join("\n")}\nИсправь это выбором вариантов и текстами по фактам; чего нет в фактах, не выдумывай.`
+          : "",
         "## Задача\nСобери страницу под сценарий и вызови submit_page.",
-      ].join("\n\n"),
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
     },
   ];
 }
@@ -541,6 +548,8 @@ export function pageComposeRequest(o: {
   offer: boolean;
   /** Sources of the signature sections already on the site (their code is linted with the page). */
   signatures?: ReadonlyMap<string, string>;
+  /** V4-21: what the browser check found not shown on the first composition of the scenario. */
+  repair?: readonly string[];
 }) {
   const library = o.library ?? PATTERNS;
   const signatures = o.signatures ?? new Map<string, string>();
@@ -563,7 +572,11 @@ export function pageComposeRequest(o: {
         signatures,
       }),
   });
-  return { edit, tool, messages: pageComposeMessages(o.facts, o.site, o.page, o.scenario, library, o.offer) };
+  return {
+    edit,
+    tool,
+    messages: pageComposeMessages(o.facts, o.site, o.page, o.scenario, library, o.offer, o.repair),
+  };
 }
 
 /** The signature_section request: the submit_section tool with the lint checks and the prompt. */
@@ -691,7 +704,16 @@ export async function composeScenario(
   for (const target of targets) {
     let page = site.pages.find((p) => p.route === target.route) as SitePage;
     const offer = signatureOffer(site, page);
-    const req = pageComposeRequest({ facts, site, page, scenario, library, offer, signatures });
+    const req = pageComposeRequest({
+      facts,
+      site,
+      page,
+      scenario,
+      library,
+      offer,
+      signatures,
+      ...(ctx.repair?.length ? { repair: ctx.repair } : {}),
+    });
     if (req.edit.length === 0) continue;
     let answer: PageComposeAnswer;
     try {

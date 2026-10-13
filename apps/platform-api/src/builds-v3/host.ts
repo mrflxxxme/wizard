@@ -323,8 +323,9 @@ export async function checkScenario(
   if (e1.length)
     return { ok: false, problems: e1.map((c) => c.message_ru), browser: withBrowser, unavailable: true };
   // V4-21: what the scenario promises the visitor sees is on the site and shows it.
+  // Not kept: the system works, so the layer stays (the build tries one repair; the rest goes to the requests).
   const kept = promises ? await promises(input) : null;
-  if (kept?.problems.length) return { ok: false, problems: kept.problems, browser: withBrowser };
+  if (kept?.problems.length) return { ok: true, problems: [], browser: withBrowser, unkept: kept.problems };
   return { ok: true, problems: [], browser: withBrowser };
 }
 

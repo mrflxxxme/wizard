@@ -175,7 +175,7 @@ describe("V4-21 checkScenario with promises", () => {
   });
   const contacts = async () => ({ phones: [], emails: [] });
 
-  test("gates pass, promises not kept: the scenario fails with the reasons", async () => {
+  test("gates pass, promises not kept: ok with the promises not kept (the layer stays)", async () => {
     const h = host(site(["header", "hero", "services", "footer"]));
     const r = await checkScenario(
       h,
@@ -184,9 +184,10 @@ describe("V4-21 checkScenario with promises", () => {
       input(S1.then),
       scenarioPromiseCheck(h, null, { contacts }),
     );
-    expect(r.ok).toBe(false);
-    expect(r.unavailable).toBeUndefined();
-    expect(r.problems.some((p) => p.includes("на сайте нет отзывов"))).toBe(true);
+    // The system works (gates passed): not a failure — the promises not kept, for one repair and the requests.
+    expect(r.ok).toBe(true);
+    expect(r.problems).toEqual([]);
+    expect(r.unkept?.some((p) => p.includes("на сайте нет отзывов"))).toBe(true);
   });
 
   test("no promises, or all kept: as before", async () => {
