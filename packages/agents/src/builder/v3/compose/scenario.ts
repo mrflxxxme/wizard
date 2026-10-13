@@ -24,7 +24,7 @@ import { siteFiles } from "./codegen.js";
 import { siteRules } from "./content.js";
 import { siteFacts } from "./facts.js";
 import { lintErrors } from "./lint.js";
-import { pageCode } from "./page-step.js";
+import { pageCode, pageSections } from "./page-step.js";
 import { pagePlans, readSite, type SiteModel, type SitePage } from "./site.js";
 import { type ComposeLibrary, composeSite, lintSitePage } from "./skeleton.js";
 
@@ -57,6 +57,8 @@ export interface ComposeScenarioOptions extends ComposeLibrary {
   inspect?: CriticInspector;
   /** false — no rival first screen and no judge (default: on the home page). */
   firstScreen?: boolean;
+  /** V4-06 speed: pages by sections (a plan call, then the code sections at once); default — one call per page. */
+  sections?: boolean;
 }
 
 /** G0-IMP-01, G0-SEC-01, G0-TS-01 and G0-BUILD-01 of the system (no database): the checks free code must pass. */
@@ -196,7 +198,8 @@ export async function composeScenario(
     targets.map(async (target) => {
       const page = site.pages.find((p) => p.route === target.route) as SitePage;
       const own: string[] = [];
-      const done = await pageCode(ctx, base, {
+      const step = opts.sections ? pageSections : pageCode;
+      const done = await step(ctx, base, {
         site,
         page,
         scenario,
