@@ -366,8 +366,11 @@ describe("V3-13 critic", () => {
       [1, 38, false],
       [2, 75, true],
     ]);
-    // V4-05 (D79 (3)): screenshots go abroad to the GLM vision model.
-    expect(r.cycles.map((c) => `${c.tier}:${c.model}`)).toEqual(["T1:glm-5v-turbo", "T1:glm-5v-turbo"]);
+    // V4-06: the pages are written by GLM-5.3 (page_compose head), so the critic skips the GLM vision models — another
+    // family judges (the next vision model of critic_visual this registry serves), the same one on both cycles.
+    const judged = r.cycles.map((c) => c.model);
+    expect(new Set(judged).size).toBe(1);
+    expect(judged.some((m) => m?.startsWith("glm"))).toBe(false);
     expect(fx.calls.map((c) => c.callType)).toEqual(["critic_visual", "critic_visual"]);
     const user = fx.calls[0]?.messages.find((m) => m.role === "user");
     expect(user && "attachments" in user ? user.attachments?.length : 0).toBe(2);
