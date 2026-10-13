@@ -34,7 +34,7 @@ export const PROBE_HEADS = {
   interview_v3: { model: "glm-5.3", tier: "T1", price: { input: 162, output: 510 } },
   brief_extract: { model: "glm-5.3", tier: "T1", price: { input: 162, output: 510 } },
   art_direction: { model: "glm-5.3", tier: "T1", price: { input: 162, output: 510 } },
-  page_compose: { model: "kimi-k3", tier: "T1", price: { input: 348, output: 1739 } },
+  page_compose: { model: "glm-5.3", tier: "T1", price: { input: 162, output: 510 } },
   signature_section: { model: "glm-5.3", tier: "T1", price: { input: 162, output: 510 } },
   critic_visual: { model: "glm-5v-turbo", tier: "T1", price: { input: 139.08, output: 463.6 } },
   techreview: { model: "mimo-v2.6-pro", tier: "T1", price: { input: 50.42, output: 100.83 } },

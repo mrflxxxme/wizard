@@ -180,7 +180,11 @@ function luhn(digits: string): boolean {
 // Strong identifiers become format-keeping stand-ins: a replayed answer still passes the validators of its fields.
 const STRONG_RES: [RegExp, (m: string) => string][] = [
   [/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, () => "user@example.com"],
-  [/\b\d{4}(?:[ -]?\d{4}){3}\b/g, (m) => (luhn(m.replace(/\D/g, "")) ? "0000 0000 0000 0000" : m)],
+  // Not inside a UUID or another id (00000002-0000-4000-8000-… passes Luhn): no word character or dash around.
+  [
+    /(?<![\w-])\d{4}(?:[ -]?\d{4}){3}(?![\w-])/g,
+    (m) => (luhn(m.replace(/\D/g, "")) ? "0000 0000 0000 0000" : m),
+  ],
   [/\b\d{3}-\d{3}-\d{3}[ -]\d{2}\b/g, () => "000-000-000 00"],
   [/(?:\+7|\b8)[\s(-]*\d{3}[\s)-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}\b/g, () => "+7 900 000-00-00"],
   [/(?<![\d-])\d{2}\s?\d{2}\s№?\s?\d{6}\b/g, () => "00 00 000000"],
