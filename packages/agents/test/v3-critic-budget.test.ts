@@ -80,6 +80,7 @@ describe("V3-13 upper bound of a call with images", () => {
         "interview_v3": 1.398,
         "page_compose": 5.688,
         "page_edit": 2.725,
+        "photo_pick": 0.645,
         "plan": 0.734,
         "qa_explain": 0.402,
         "qa_generate": 1.398,

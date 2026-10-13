@@ -178,6 +178,20 @@ test("v3: интервью → бриф → три направления → «
   await expect(frame).toBeVisible();
   await expect(page.getByTestId("canvas-sheet")).toHaveCount(0);
 
+  // V4-12 over V4-15: the heading picked on the real draft (bridge edit-mode) is edited without a model; the frame shows
+  // the new revision with it.
+  await page.getByTestId("canvas-island-edit").click();
+  await page.getByTestId("edit-text-pick").click();
+  const draft = page.frameLocator('[data-testid="canvas-frame-site"]');
+  await draft.locator("h1").first().click();
+  const field = page.getByTestId("edit-text-field").first();
+  await expect(field).toBeVisible({ timeout: 15_000 });
+  await field.fill("Стоматология рядом с домом");
+  await page.getByTestId("edit-text-save").click();
+  await expect(page.getByTestId("edit-note")).toContainText("Готово за", { timeout: 15_000 });
+  await expect(draft.locator("h1").first()).toHaveText("Стоматология рядом с домом", { timeout: 30_000 });
+  await page.getByTestId("canvas-panel-close").click();
+
   // An edit by words after the build: the wish goes into the brief, «Собрать» is offered again.
   await page.getByTestId("canvas-island-chat").click();
   await say(page, V3_WISH);

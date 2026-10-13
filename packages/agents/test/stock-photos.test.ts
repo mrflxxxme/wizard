@@ -4,6 +4,7 @@
 // catalog is mostly filled), the photos stage takes the library first and the stock way while it is empty, and the
 // site CSS applies the direction's grade to the library photos.
 import type { SystemPlan } from "@wizard/appspec";
+import { createRegistry, type RouteInput, type RouteOutput } from "@wizard/llm";
 import { photoSlots } from "@wizard/modules";
 import { describe, expect, test } from "vitest";
 import {
@@ -20,9 +21,12 @@ import {
   GOOD_SCORE,
   type LibraryObjects,
   type LibraryPhotoEntry,
+  modelPhotoPicker,
   normalize,
+  PHOTO_PICK_CALL_TYPE,
   type PhotoPicker,
   PICK_CANDIDATES,
+  photoPickTool,
   photoQueryText,
   quantize,
   readRequests,
@@ -279,4 +283,98 @@ test("the site CSS grades the library photos", async () => {
   const ds = designSystemV3({ archetype: "calm_medical", seed: "s1", niche: "стоматология" });
   const css = designCss(ds);
   expect(css).toContain('img[src*="/_wizard/photos/"],[data-wz-photo]{filter:var(--ds-image-filter)}');
+});
+
+describe("photo_pick (the vision model)", () => {
+  const input = {
+    niche: "клининг",
+    style: "",
+    palette: ["#2A7F9E"],
+    slots: [
+      { slot: "top", label: "Первый экран", orientation: "landscape" as const },
+      { slot: "about", label: "О нас", orientation: "landscape" as const },
+    ],
+    candidates: [photo("landscape"), photo("landscape"), photo("landscape")].map((entry, i) => ({
+      entry,
+      thumbnail: i === 0 ? new Uint8Array([0xff, 0xd8, 1]) : new Uint8Array([0x52, 0x49, 0x46, 0x46]),
+    })),
+  };
+
+  const routeOf = (answers: (Record<string, unknown> | Error)[]) => {
+    const calls: RouteInput[] = [];
+    const route = async (i: RouteInput): Promise<RouteOutput> => {
+      calls.push(i);
+      const a = answers[Math.min(calls.length - 1, answers.length - 1)];
+      if (a instanceof Error) throw a;
+      return {
+        tier: "T1",
+        model: "glm-5v-turbo",
+        result: {
+          toolCalls: [{ id: `c${calls.length}`, name: "submit_photos", args: a }],
+          finishReason: "tool-calls",
+        },
+        usage: { inputTokens: 4000, cachedTokens: 0, outputTokens: 60 },
+        creditsCharged: 0.02,
+        creditsMilli: 20,
+        routeReason: "default_T1",
+        scrubbed: false,
+        ruFallback: false,
+      } as RouteOutput;
+    };
+    return { route, calls };
+  };
+
+  test("one call of photo_pick with the numbered pictures; the answer becomes 0-based indices", async () => {
+    const { route, calls } = routeOf([
+      {
+        choices: [
+          { slot: "top", photo: 3 },
+          { slot: "about", photo: 1 },
+        ],
+      },
+    ]);
+    const out = await modelPhotoPicker({ route })(input);
+    expect(out).toEqual([
+      { slot: "top", index: 2 },
+      { slot: "about", index: 0 },
+    ]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.callType).toBe(PHOTO_PICK_CALL_TYPE);
+    const user = calls[0]?.messages.find((m) => m.role === "user");
+    expect(user && "attachments" in user ? user.attachments?.map((a) => a.mime) : []).toEqual([
+      "image/jpeg",
+      "image/webp",
+      "image/webp",
+    ]);
+    expect(user?.content).toContain("Бизнес: клининг.");
+    expect(user?.content).toContain("- top: Первый экран, горизонтальное");
+  });
+
+  test("an unknown slot, a number past the list or a photo twice is sent back; still wrong — null", async () => {
+    const bad = {
+      choices: [
+        { slot: "nope", photo: 9 },
+        { slot: "top", photo: 1 },
+        { slot: "about", photo: 1 },
+      ],
+    };
+    const { route, calls } = routeOf([bad, bad]);
+    expect(await modelPhotoPicker({ route })(input)).toBeNull();
+    expect(calls).toHaveLength(2);
+    const issues = photoPickTool(input).parse(bad);
+    expect(issues.ok).toBe(false);
+  });
+
+  test("a failing model — null (the stage takes the rank order)", async () => {
+    const { route } = routeOf([new Error("503")]);
+    expect(await modelPhotoPicker({ route })(input)).toBeNull();
+  });
+
+  test("the route of photo_pick holds only vision models, glm-5v-turbo first", () => {
+    const reg = createRegistry({ buildDefaultTier: "T1" });
+    const r = reg.routes.photo_pick;
+    expect(r.chain.T1?.[0]).toBe("glm-5v-turbo");
+    for (const id of [...(r.chain.T1 ?? []), ...(r.chain.T0 ?? [])])
+      expect(reg.models.find((m) => m.id === id)?.vision, id).toBe(true);
+  });
 });

@@ -2444,7 +2444,7 @@ tasks:
     owner: platform
     parallel_group: v4-a
     estimate_days: 1.5
-    status: in_progress
+    status: done
     claimed_by: session_01HWKT1m6cHQBBtUV7d9pQhf
     owns: ["packages/build/src/stock/**", "tools/stock/** (новый)", ".github/workflows/stock-library.yml (новый)"]
     acceptance:
@@ -2472,13 +2472,13 @@ tasks:
   - id: V4-12
     title: "Правки в три слоя: мгновенные без модели, «Укажи и измени» ≤ 60 с, чат (заменяет M3-01)"
     milestone: V4
-    deps: [V4-06, V4-11, V4-15]
+    deps: [V4-11, V4-15]
     specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4"]
     owner: frontend
     parallel_group: v4-c
     estimate_days: 2
-    status: todo
-    claimed_by: null
+    status: done
+    claimed_by: session_01X8jgGUBZgh2j9RwccJpmf6
     owns: ["apps/platform-web/src/screens/edit/** (новый)"]
     description: >
       Интерфейс правок (поток В). Сервер — V4-15: разметка исходников, мост превью, API мгновенных правок и ползунков,
@@ -2531,6 +2531,27 @@ tasks:
     claimed_by: null
     acceptance:
       - "Основатель собрал свои системы и дал «да»; отчёты сборок в docs/progress/v4-*"
+
+  - id: V4-16
+    title: "Фото системы: замена из библиотеки по смыслу и загрузка своих"
+    milestone: V4
+    deps: [V4-10, V4-12]
+    specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4", "specs/product.yaml#decisions.D61_stock_photos"]
+    owner: frontend
+    parallel_group: v4-c
+    estimate_days: 1
+    status: done
+    claimed_by: session_01X8jgGUBZgh2j9RwccJpmf6
+    owns: ["apps/platform-web/src/screens/edit/photos/** (новый)", "apps/platform-api/src/builds-v3/photos/** (новый)"]
+    description: >
+      Поток В. Поиск — только через публичный API библиотеки V4-10 (@wizard/agents/stock), замена — мгновенной правкой
+      V4-15 (POST /edit/literals); цветокоррекция направления ложится на фото библиотеки сама (CSS по /_wizard/photos/).
+    acceptance:
+      - "Клик по фото открывает 12–20 фото ниши, подобранных по смыслу места (текст секции + бриф), с поиском по-русски"
+      - "Выбор применяется ≤ 3 с без модели через мост V4-15 и получает цветокоррекцию направления"
+      - "«Загрузить своё»: JPEG/PNG/HEIC до 15 МБ через конвейер изображений (WebP 1600/960/480, без EXIF), фото попадает в библиотеку этой системы и сразу в слот"
+      - "Фото владельца хранятся в РФ и не попадают в общую библиотеку"
+      - "e2e: замена фото и загрузка своего в превью на 390 и 1440"
 
   # ---------------- M4: запуск ----------------
   - id: M4-01

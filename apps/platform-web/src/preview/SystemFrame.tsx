@@ -7,7 +7,14 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import type { ApiClient } from "../api/client.js";
 import type { PreviewUrl } from "../api/types.js";
 import { usePlatform } from "../app/context.js";
-import { envelopeSchema, fromPreviewSchemas, previewSrc } from "./bridge.js";
+import {
+  envelopeSchema,
+  type FromPreview,
+  type FromPreviewType,
+  fromPreviewSchemas,
+  previewSrc,
+  type ToPreview,
+} from "./bridge.js";
 import s from "./SystemFrame.module.css";
 
 export type Device = "desktop" | "phone";
@@ -55,6 +62,11 @@ export async function openPreviewTab(
   }
 }
 
+/** Posts to the bridge of the shown frame with its exact origin. */
+export interface FrameBridge {
+  send(msg: ToPreview): void;
+}
+
 export interface SystemFrameProps {
   systemId: string;
   /** The newest revision with a preview (null — none yet). */
@@ -68,6 +80,12 @@ export interface SystemFrameProps {
   placeholder: ReactNode;
   /** The route the owner is on inside the system (from the preview bridge), for «Открыть в новой вкладке». */
   onRoute?(route: string): void;
+  /** V4-12: every validated message of the shown frame's bridge (exact origin and source). */
+  onBridgeMessage?(m: FromPreview): void;
+  /** V4-12: the way to the shown frame's bridge (null while none is shown). */
+  bridgeRef?(b: FrameBridge | null): void;
+  /** V4-12: a new value reloads the shown revision with a fresh URL (drops an unsaved preview of the style). */
+  reloadKey?: number;
   testId?: string;
 }
 
@@ -79,6 +97,9 @@ export function SystemFrame({
   title,
   placeholder,
   onRoute,
+  onBridgeMessage,
+  bridgeRef,
+  reloadKey = 0,
   testId = "canvas-frame",
 }: SystemFrameProps): ReactNode {
   const { api } = usePlatform();
@@ -119,6 +140,7 @@ export function SystemFrame({
     [api, systemId],
   );
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey is a reload trigger
   useEffect(() => {
     if (revision === null) return;
     let live = true;
@@ -130,7 +152,7 @@ export function SystemFrame({
       live = false;
       clearTimeout(t);
     };
-  }, [revision, batching, load]);
+  }, [revision, batching, load, reloadKey]);
 
   const shown = useCallback((key: number) => {
     lastSwap.current = Date.now();
@@ -160,18 +182,30 @@ export function SystemFrame({
     } catch {
       return;
     }
+    const win = () => frames.current.get(visible.key)?.contentWindow ?? null;
     const onMessage = (e: MessageEvent) => {
-      if (e.origin !== origin || e.source !== frames.current.get(visible.key)?.contentWindow) return;
+      if (e.origin !== origin || !e.source || e.source !== win()) return;
       const env = envelopeSchema.safeParse(e.data);
-      if (!env.success || env.data.type !== "route-changed") return;
-      const p = fromPreviewSchemas["route-changed"].safeParse(env.data.payload);
+      if (!env.success || !Object.hasOwn(fromPreviewSchemas, env.data.type)) return;
+      const type = env.data.type as FromPreviewType;
+      const p = fromPreviewSchemas[type].safeParse(env.data.payload);
       if (!p.success) return;
-      route.current = p.data.route;
-      onRoute?.(p.data.route);
+      if (type === "route-changed") {
+        const r = (p.data as { route: string }).route;
+        route.current = r;
+        onRoute?.(r);
+      }
+      onBridgeMessage?.({ type, payload: p.data ?? {} } as FromPreview);
     };
     window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, [visible, onRoute]);
+    bridgeRef?.({
+      send: (msg) => win()?.postMessage({ wz: 1, type: msg.type, payload: msg.payload }, origin),
+    });
+    return () => {
+      window.removeEventListener("message", onMessage);
+      bridgeRef?.(null);
+    };
+  }, [visible, onRoute, onBridgeMessage, bridgeRef]);
 
   return (
     <div
