@@ -153,7 +153,8 @@ describe("V4-04: the build report", () => {
       .split("\n")
       .filter(Boolean)
       .map((l) => JSON.parse(l) as RecordLine);
-    expect(lines.length).toBe(report.calls.filter((c) => c.status === "ok").length);
+    // One answer record per successful call; refusals are records too (V4-03: replayed as the same refusal).
+    expect(lines.filter((l) => !l.error).length).toBe(report.calls.filter((c) => c.status === "ok").length);
     expect(lines.every((l) => l.source === "build" && l.key.startsWith(`${l.callType}@`))).toBe(true);
 
     const md = renderReportMd(report, "https://p/api/v1/admin/runs/x/report");
