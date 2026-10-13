@@ -65,7 +65,7 @@ export interface PageStepInput {
   inspect?: CriticInspector;
   /** Two candidates of the first screen and the judge (the home page). */
   firstScreen: boolean;
-  /** The callType of the page call (default page_compose; the pages after home — page_edit, V4-06 speed). */
+  /** The callType of the page call (default page_compose; page_edit for a caller that edits). */
   callType?: CallType;
   /** V4-06 speed: the page by sections — a plan call, then one call per code section at once (pageSections). */
   sections?: boolean;

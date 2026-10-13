@@ -33,8 +33,6 @@ export const COMPOSE_CALL_TYPES = {
   page: "page_compose",
   /** The rival author of the first screen (another family). */
   signature: "signature_section",
-  /** V4-06 speed: the pages after the home page, on the fast models. */
-  fast: "page_edit",
 } as const satisfies Record<string, CallType>;
 
 /** G0 of the system with a new section: problems of the files in `focus` (or without a file); ok when none. */
@@ -193,7 +191,7 @@ export async function composeScenario(
     };
 
   // V4-06 speed: the pages of a scenario are written at once (each sees the site as the scenario found it); the home
-  // page keeps the strong model and its two first screens, the other pages go to the fast route (page_edit).
+  // page keeps its two first screens; every page goes by page_compose (GLM-5.3 heads it: fast enough by sections).
   const runs = await Promise.all(
     targets.map(async (target) => {
       const page = site.pages.find((p) => p.route === target.route) as SitePage;
@@ -212,7 +210,7 @@ export async function composeScenario(
         registry,
         ...(opts.inspect ? { inspect: opts.inspect } : {}),
         firstScreen: opts.firstScreen !== false && page.route === "/",
-        callType: page.route === "/" ? COMPOSE_CALL_TYPES.page : COMPOSE_CALL_TYPES.fast,
+        callType: COMPOSE_CALL_TYPES.page,
       });
       return { done, own };
     }),

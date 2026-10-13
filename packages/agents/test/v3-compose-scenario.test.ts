@@ -235,7 +235,7 @@ describe("V4-06: the page as free code", () => {
           "Услуги стоматологии «Белая линия» с ценами: выберите и оставьте заявку на сайте за минуту.",
       },
     };
-    const { route } = scripted({ page_edit: [services] });
+    const { route } = scripted({ page_compose: [services] });
     const r = await composer().scenario({ ...ctx, route }, PRICES);
     const page = readSite(apply(ctx.files, r))?.pages.find((p) => p.route === "/services");
     const ids = page?.sections.map((s) => s.id) ?? [];

@@ -321,7 +321,7 @@ const r = (
 const ORCH_T0 = ["glm-5.1", "kimi-k2.6", "deepseek-v4-pro", "yandex-qwen3-235b"];
 const CODE_T0 = ["deepseek-v4-pro", "glm-5.1", "kimi-k2.6", "qwen3-coder-next"];
 const ORCH_V4_T0 = ["kimi-k2.6", "glm-5.1", "deepseek-v4-pro", "yandex-qwen3-235b"];
-const PAGE_T1 = ["kimi-k3-fast", "glm-5.3", "deepseek-v4-pro-0813"];
+const PAGE_T1 = ["glm-5.3", "kimi-k3-fast", "deepseek-v4-pro-0813"];
 const PAGE_T0 = ["kimi-k2.6", "deepseek-v4-pro", "glm-5.1", "qwen3-coder-next", "yandex-deepseek-v4-flash"];
 
 /**
@@ -431,7 +431,7 @@ export const ROUTES: Record<CallType, RouteDef> = {
   signature_section: r(
     "builder",
     "T1",
-    { T1: ["glm-5.3", "kimi-k3-fast", "deepseek-v4-pro-0813"], T0: PAGE_T0 },
+    { T1: ["deepseek-v4-pro-0813", "kimi-k3-fast", "glm-5.3"], T0: PAGE_T0 },
     0.4,
     16000,
     480000,

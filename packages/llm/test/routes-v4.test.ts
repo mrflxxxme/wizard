@@ -69,7 +69,7 @@ describe("plan v4 §3: every role on its model with a reserve", () => {
     ["interview_v3", "glm-5.3", "kimi-k2.6"],
     ["brief_extract", "glm-5.3", "kimi-k2.6"],
     ["art_direction", "kimi-k3-fast", "glm-5.3"],
-    ["page_compose", "kimi-k3-fast", "glm-5.3"],
+    ["page_compose", "glm-5.3", "kimi-k3-fast"],
     ["page_edit", "deepseek-v4.1-flash", "mimo-v2.6-flash"],
     ["critic_visual", "glm-5v-turbo", "kimi-k2.6"],
     ["techreview", "mimo-v2.6-pro", "gpt-oss-120b"],
@@ -88,7 +88,7 @@ describe("plan v4 §3: every role on its model with a reserve", () => {
       (ROUTES.page_compose.chain.T1 ?? []).map((id) => modelFamilyOf(createRegistry({}, {}), id)),
     );
     expect([...fams]).toEqual(expect.arrayContaining(["kimi", "glm", "deepseek"]));
-    expect(ROUTES.signature_section.chain.T1?.[0]).toBe("glm-5.3");
+    expect(ROUTES.signature_section.chain.T1?.[0]).toBe("deepseek-v4-pro-0813");
   });
 
   test("runtime_ai_*, support, import_mapping: RF chains as in v3", () => {
@@ -100,29 +100,30 @@ describe("plan v4 §3: every role on its model with a reserve", () => {
     expect(isBuildCallType("repo_code")).toBe(false);
   });
 
-  test("live: page code goes to Kimi K3 without reasoning (temperature 0.6, tools required), the second candidate (avoid kimi) to GLM-5.3", async () => {
+  test("live: page code goes to GLM-5.3; avoiding its family — Kimi K3 without reasoning (temperature 0.6, tools required)", async () => {
     const { router } = mk();
+    const tools = [
+      {
+        name: "submit_page_code",
+        description: "Код страницы",
+        parameters: { type: "object", properties: {} },
+      },
+    ];
     const a = await router.route({
       callType: "page_compose",
       messages: msgs("Сайт пекарни"),
-      tools: [
-        {
-          name: "submit_page_code",
-          description: "Код страницы",
-          parameters: { type: "object", properties: {} },
-        },
-      ],
       orgPolicy: OPEN,
       ctx,
     });
     const b = await router.route({
       callType: "page_compose",
       messages: msgs("Сайт пекарни"),
+      tools,
       avoidFamilies: [modelFamilyOf(router.registry, a.model)],
       orgPolicy: OPEN,
       ctx,
     });
-    expect([a.model, b.model]).toEqual(["kimi-k3-fast", "glm-5.3"]);
+    expect([a.model, b.model]).toEqual(["glm-5.3", "kimi-k3-fast"]);
     const kimi = stub.requests.find((r) => r.provider === "moonshot");
     expect(kimi?.body.model).toBe("kimi-k3");
     expect(kimi?.body.temperature).toBe(0.6);
