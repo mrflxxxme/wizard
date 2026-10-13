@@ -810,8 +810,16 @@ export async function designOneDirection(
       tool,
       ...(o.maxRepairs !== undefined ? { maxRepairs: o.maxRepairs } : {}),
     });
-    if (!r.ok)
-      return { direction: null, texts: null, stats: r.stats, note: "ответ модели не прошёл проверку" };
+    if (!r.ok) {
+      // What failed, by code and path (shown by the probe and the notes; no texts of the brief).
+      const why = [...new Set(r.issues.map((i) => `${i.code}@${i.path}`))].slice(0, 4).join(", ");
+      return {
+        direction: null,
+        texts: null,
+        stats: r.stats,
+        note: `ответ модели не прошёл проверку${why ? ` (${why})` : ""}`,
+      };
+    }
     const { texts, ...d } = r.value;
     const brandColor = normalizeBrand(o.input.brandColor);
     const opts = { seed: o.input.seed, niche: o.input.niche, ...(brandColor ? { brandColor } : {}) };
