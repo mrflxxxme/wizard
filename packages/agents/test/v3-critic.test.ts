@@ -282,8 +282,11 @@ describe("V3-13 critic", () => {
     expect(site?.pages[0]?.sections.find((s) => s.id === "services")?.pattern).not.toBe("services-editorial");
     expect(r.files.get("ui/design.css")).not.toContain(ctx.design.palette.light.muted);
     expect(r.files.get("ui/patterns/services-editorial.tsx")).toBeNull();
-    expect(r.notes[0]).toContain("Проверил сайт в браузере");
-    expect(r.notes[1]).toMatch(/^Поправил 2 места/);
+    expect(r.details[0]).toContain("Проверил сайт в браузере");
+    expect(r.details[1]).toMatch(/^Поправил 2 места/);
+    // V4-09: the owner reads plain words — no routes, anchors or check codes.
+    expect(r.notes[0]).toMatch(/^Посмотрел сайт глазами дизайнера и улучшил 2 места: /);
+    expect(r.notes.join(" ")).not.toMatch(/[#/]|\([A-Z]\d+\)|services-/);
   });
 
   test("a signature section the checks keep flagging gives its place to a pattern (no model); its file is deleted", async () => {
@@ -406,7 +409,7 @@ describe("V3-13 critic", () => {
       r.cycles.reduce((s, c) => s + c.costRub, 0),
       1,
     );
-    expect(r.notes[0]).toMatch(/2 круга, оценка 38 → 75 из 100/);
+    expect(r.details[0]).toMatch(/2 круга, оценка 38 → 75 из 100/);
   });
 
   // V3-40: the final measurement's critiques named catalog signs with no edit (v3-06: T04, L13, L15 on the hero, L06
@@ -609,7 +612,8 @@ describe("V3-13 critic", () => {
     const out = await hook({ ...ctx, route: fx.route });
     expect(out.status).toBe("done");
     expect(out.files?.get("ui/site.json")).toContain("services-price-list");
-    expect(out.notes?.[0]).toMatch(/^Посмотрел сайт на телефоне, планшете и компьютере/);
+    expect(out.notes?.[0]).toMatch(/^Посмотрел сайт глазами дизайнера/);
+    expect(out.note).toContain("| Посмотрел сайт на телефоне, планшете и компьютере");
     expect(out.spentRub).toBe(0);
     expect(out.blockers).toBeUndefined();
     expect(out.note).toMatch(/циклов 2, оценка 44→75/);
