@@ -215,6 +215,27 @@ describe("V4-06 speed: the page by sections", () => {
     expect(codes).not.toContain("LINK_COLOR");
   });
 
+  test("LazyMotion imported but not rendered gets the wrapper; href={safeHref(x)} takes its href", () => {
+    const src = [
+      'import { LazyMotion, domAnimation, m } from "motion/react";',
+      'import { safeHref } from "@wizard/ui-kit/v3/headless";',
+      "",
+      "export default function Cta({ title, href }: { title: string; href: string }) {",
+      "  return (",
+      '    <section className="bg-background px-gutter py-section text-foreground">',
+      '      <m.h2 animate={{ opacity: 1 }} className="font-display text-h2">{title}</m.h2>',
+      '      <a href={safeHref(href)} className="text-primary">Записаться</a>',
+      "    </section>",
+      "  );",
+      "}",
+      "",
+    ].join("\n");
+    const fixed = autofixSection(src);
+    expect(fixed).toContain("<LazyMotion features={domAnimation}>");
+    expect(fixed).toContain("href={safeHref(href)?.href}");
+    expect(sectionIssues(fixed, { id: "cta", hero: false }).map((i) => i.code)).not.toContain("MOTION_LAZY");
+  });
+
   test("the plan: sections as a JSON string are parsed, «01» ordinals leave props", () => {
     const plan = normalizePlan({
       sections: JSON.stringify([

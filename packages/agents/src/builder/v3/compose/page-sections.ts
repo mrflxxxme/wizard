@@ -140,8 +140,10 @@ export function autofixSection(source: string): string {
     const named = s.match(/export\s+function\s+([A-Z]\w*)/);
     if (named) s = s.replace(`export function ${named[1]}`, `export default function ${named[1]}`);
   }
-  if (/\bLazyMotion\b/.test(s)) s = s.replace(/<(\/?)motion\./g, "<$1m.");
-  else if (/<m\./.test(s)) s = withLazyMotion(s);
+  if (/<LazyMotion\b/.test(s)) s = s.replace(/<(\/?)motion\./g, "<$1m.");
+  else if (/<(?:m|motion)\./.test(s)) s = withLazyMotion(s.replace(/<(\/?)motion\./g, "<$1m."));
+  // safeHref returns { href, external } | null, not a string (G0 TS2322 on href={safeHref(x)}).
+  s = s.replace(/href=\{safeHref\(([^()]*)\)\}/g, "href={safeHref($1)?.href}");
   // Every helper a section may take has one argument (G0 TS2554 «Expected 1 arguments, but got 2»: fitWords(t, 3)).
   s = s.replace(
     /\b(fitWords|useFitWords|srcSetOf|safeHref|richInline|richPlain)(<[^<>()]*>)?\(([^(),]+),[^()]*\)/g,
