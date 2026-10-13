@@ -56,7 +56,9 @@ describe("V4-21 scenario promises", () => {
     const r = checkPromises(S1, site(["header", "hero", "services", "cta", "footer"]), null);
     expect(r.browser).toBe(false);
     expect(r.problems).toHaveLength(5);
-    expect(r.problems.join("\n")).toContain("на сайте нет специалистов");
+    expect(r.problems.join("\n")).toContain(
+      "на сайте нет специалистов — нужна секция специалистов с их именами",
+    );
     expect(r.problems.join("\n")).toContain("на сайте нет отзывов");
     expect(r.problems.join("\n")).toContain("на сайте нет контактов");
     expect(r.problems[0]).toMatch(/^Обещано в сценарии «Посетитель видит услуги/);

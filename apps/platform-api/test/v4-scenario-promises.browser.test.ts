@@ -62,7 +62,7 @@ describe.skipIf(!hasChromium)("V4-21 scenario promises in the browser", () => {
       await siteViews(browser, { scenario, spec, files: site.files }, { data: () => stand }),
     );
     expect(r1.problems).toEqual([
-      "Обещано в сценарии «Пациент видит список услуг»: в списке услуг только заглушки вместо названий.",
+      "Обещано в сценарии «Пациент видит список услуг»: в списке услуг только заглушки вместо названий (страница /, секция «catalog»: показано «Услуга 1», «Услуга 2», «Услуга 3»).",
     ]);
     const NAMES = ["Лечение кариеса", "Профессиональная чистка", "Имплантация"];
     const own = { ...stand, service: (stand.service ?? []).map((r, i) => ({ ...r, name: NAMES[i] })) };

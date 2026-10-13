@@ -94,7 +94,35 @@ const EMPTY_RU: Readonly<Record<PromiseKind, string>> = {
   schedule: "не показаны часы работы",
 };
 
+/** What to add when the site has no section for a promise (the reason says what to do, V4-21). */
+const ADD_RU: Readonly<Record<PromiseKind, string>> = {
+  services: "нужна секция услуг с их названиями",
+  prices: "нужны цены у услуг: сумма с «₽» или «от …»",
+  staff: "нужна секция специалистов с их именами",
+  staff_photo: "нужна секция специалистов с их фото",
+  staff_experience: "нужна секция специалистов с их опытом или стажем",
+  reviews: "нужна секция отзывов с их текстами",
+  contacts: "нужны контакты: телефон или адрес",
+  schedule: "нужны часы работы",
+};
+
 const reason = (p: ScenarioPromise, text: string) => `Обещано в сценарии «${short(p.step)}»: ${text}.`;
+const quoted = (xs: readonly string[]) =>
+  xs
+    .slice(0, 3)
+    .map((x) => `«${short(x)}»`)
+    .join(", ");
+
+/** Where a promise was looked for and what it showed instead (the page, the section, its first names). */
+function seen(shown: readonly { route: string; view: SectionView }[], contacts?: KnownContacts): string {
+  const first = shown[0];
+  if (!first) return "";
+  const what = first.view.names.length ? `: показано ${quoted(first.view.names)}` : "";
+  const known = contacts?.phones.length
+    ? `; телефоны из брифа: ${contacts.phones.slice(0, 2).join(", ")}`
+    : "";
+  return ` (страница ${first.route}, секция «${first.view.id}»${what}${known})`;
+}
 const short = (s: string) => (s.length > 90 ? `${s.slice(0, 89)}…` : s);
 
 interface SiteSectionRef {
@@ -223,18 +251,23 @@ export function checkPromises(
     // The footer alone is no section of contacts or hours: it only keeps them by what it shows.
     const own = candidates.filter((s) => s.type !== "footer");
     if (!own.length && !(views && candidates.length)) {
-      problems.push(reason(p, MISSING_RU[p.kind]));
+      problems.push(reason(p, `${MISSING_RU[p.kind]} — ${ADD_RU[p.kind]}`));
       continue;
     }
     if (!views) continue;
     const shown = candidates.flatMap((s) =>
-      (views.get(s.route) ?? []).filter((v) => v.id === s.id || v.id === s.type),
+      (views.get(s.route) ?? [])
+        .filter((v) => v.id === s.id || v.id === s.type)
+        .map((view) => ({ route: s.route, view })),
     );
     if (!shown.length) {
-      problems.push(reason(p, MISSING_RU[p.kind]));
+      problems.push(reason(p, `${MISSING_RU[p.kind]} — ${ADD_RU[p.kind]}`));
       continue;
     }
-    if (!shown.some((v) => keeps(p.kind, v, contacts))) problems.push(reason(p, EMPTY_RU[p.kind]));
+    if (!shown.some((x) => keeps(p.kind, x.view, contacts)))
+      problems.push(
+        reason(p, `${EMPTY_RU[p.kind]}${seen(shown, p.kind === "contacts" ? contacts : undefined)}`),
+      );
   }
   return { promises, problems, browser: views !== null };
 }
