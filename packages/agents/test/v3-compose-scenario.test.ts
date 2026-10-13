@@ -2,7 +2,7 @@
 // The model writes the page as free code — sections of React + Tailwind on the tokens — and keeps the SDK components
 // (the catalog, the request form, the contacts); the page passes the pattern and page lint, the SDK gate (a required
 // component removed — the answer goes back) and G0 (real build in two tests); the home page's first screen gets a
-// rival of another family and a judge by screenshots. Every call fits the step's budget; owner scenarios do not
+// rival (within its deadline) and a judge by screenshots. Every call fits the step's budget; owner scenarios do not
 // touch the public pages.
 import type { BriefScenario } from "@wizard/appspec";
 import { createRegistry, type RouteInput, type RouteOutput } from "@wizard/llm";
@@ -263,7 +263,7 @@ describe("V4-06: the first screen — two candidates of different families and a
     };
   };
 
-  test("the rival comes from another family; the judge of a third family picks it by the screenshots", async () => {
+  test("the rival goes by its own route; the judge of a family other than both authors picks it by the screenshots", async () => {
     const { ctx } = await prepared();
     const seen: CriticInspectInput[] = [];
     const { route, calls } = scripted({
@@ -277,7 +277,7 @@ describe("V4-06: the first screen — two candidates of different families and a
     );
     expect(calls.map((c) => c.callType)).toEqual(["page_compose", "signature_section", "critic_visual"]);
     expect(calls[1]?.tools?.[0]?.name).toBe(RIVAL_TOOL);
-    expect(calls[1]?.avoidFamilies).toEqual(["kimi"]);
+    expect(calls[1]?.avoidFamilies ?? []).toEqual([]);
     expect(calls[2]?.avoidFamilies).toEqual(["kimi", "glm"]);
     expect(calls[2]?.messages.filter((m) => m.role === "user" && m.attachments?.length)).toHaveLength(2);
     expect(seen.map((s) => s.shots.map((x) => x.width))).toEqual([

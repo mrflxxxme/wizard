@@ -1,8 +1,9 @@
-// V4-06: one page of a scenario written as code. The page model (page_compose, Kimi K3 at the head) writes the body;
+// V4-06: one page of a scenario written as code. The page model (page_compose, GLM-5.3 at the head) writes the body;
 // the answer passes the page checks (pageCodeIssues) and G0 of the system (one fix round with its problems). On the
-// home page the first screen gets a second candidate from another family (signature_section with avoidFamilies of the
-// first author) and a judge of a third family picks one by the 390 and 1440 screenshots (critic_visual); without a
-// browser or a judge the first candidate stays. A page that never passes keeps its previous version.
+// home page the first screen gets a second candidate (signature_section: its own route and prompt, any family — a
+// generator needs no other family, the reviewer does; within RIVAL_DEADLINE_MS) and a judge of a family other than both
+// authors picks one by the 390 and 1440 screenshots (critic_visual); without a browser or a judge the first candidate
+// stays. A page that never passes keeps its previous version.
 import type { BriefScenario } from "@wizard/appspec";
 import { type LlmMessage, modelFamilyOf, type Registry, type RouteInput } from "@wizard/llm";
 import type { PatternMeta } from "@wizard/ui-kit/v3/patterns";
@@ -273,7 +274,7 @@ async function firstScreen(
 ): Promise<PageStepResult> {
   const heroFile = codeSectionFile(a.page, "hero");
   const famA = authorModel ? modelFamilyOf(s.registry, authorModel) : null;
-  const rival = tracking(avoiding(base.route, famA ? [famA] : []));
+  const rival = tracking(base.route);
   const lintRival = (v: RivalAnswer): ToolIssue[] => {
     const page = withHero(a.page, v);
     const site = { ...s.site, pages: s.site.pages.map((p) => (p.route === page.route ? page : p)) };
