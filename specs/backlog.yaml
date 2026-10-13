@@ -2325,7 +2325,7 @@ tasks:
     owner: qa
     parallel_group: v4-a
     estimate_days: 1
-    status: in_progress
+    status: done
     claimed_by: session_01FAiGcdwk6WNp3eioRKs2Fc
     owns: ["packages/llm/src/fixture/**", "tools/fixtures/**", "packages/e2e/stand/**"]
     acceptance:
