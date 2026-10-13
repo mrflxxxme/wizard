@@ -6,6 +6,7 @@
 #   fill     — catalog niches in priority order, to NICHE_TARGET photos each (a run stops at its time budget, the next
 #              one goes on where it stopped; a full library makes a run a no-op);
 #   backfill — niches the builds asked for (a build with too few photos on its topic queues its niche);
+#   status   — the library by niche (counts) into the job summary;
 #   probe    — the live probe of photo_pick (plan v4 §5.2): the vision models of the route pick photos on 3 niches,
 #              a few rubles; no storage, only the model keys.
 # Schedule: backfill every two hours, fill every six hours (both no-ops when there is nothing to do), prod only.
@@ -17,9 +18,9 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "model — загрузить модель SigLIP в хранилище; fill — наполнить библиотеку по каталогу ниш; backfill — докачать ниши, запрошенные сборками; probe — живая проба выбора фото моделью (photo_pick)"
+        description: "model — загрузить модель SigLIP в хранилище; fill — наполнить библиотеку по каталогу ниш; backfill — докачать ниши, запрошенные сборками; probe — живая проба выбора фото моделью (photo_pick); status — сколько фото по нишам"
         type: choice
-        options: [fill, backfill, model, probe]
+        options: [fill, backfill, model, probe, status]
         default: fill
       env:
         description: "Окружение (бакет files)"

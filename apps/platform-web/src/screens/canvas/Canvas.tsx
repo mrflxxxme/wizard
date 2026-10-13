@@ -1128,14 +1128,9 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
                 onSaved={() => void reload().catch(() => {})}
                 onRun={(id) => setRunId(id)}
                 onReloadFrame={() => setReloadKey((k) => k + 1)}
-                onPick={() => {
-                  // On a phone the site is under the panel: it steps aside while the owner picks.
-                  if (
-                    typeof window.matchMedia === "function" &&
-                    window.matchMedia("(max-width: 720px)").matches
-                  )
-                    setPanel(null);
-                }}
+                // The panel covers part of the site at every width (a heading under it could not be clicked): it
+                // steps aside while the owner picks and comes back with the picked text or photo.
+                onPick={() => setPanel(null)}
               />
             </div>
           </Glass>
