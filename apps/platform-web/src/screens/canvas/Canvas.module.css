@@ -577,3 +577,25 @@
     transition: none;
   }
 }
+
+/* ——— V4-08: a question of the interview asked during the build (the build goes on with its default) ——— */
+.bq {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: var(--p-r-lg);
+  background: var(--p-sunken);
+}
+
+.bqTitle {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--p-ink-2);
+}
+
+.bqText {
+  margin: 0;
+  font-size: 14px;
+  white-space: pre-line;
+}

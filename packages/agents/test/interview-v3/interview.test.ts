@@ -1,18 +1,18 @@
 // V3-03 acceptance 1, 2, 4 on a scripted interview_v3 model (no network): questions one at a time along the tree, each
 // with a recommended answer and why, 3–5 buttons, «Решите за меня» and an own answer; the stop rule by code (no
-// blocking gap, the cap of 15); «Дальше решай сам» at any moment → the rest as explicit assumptions; facts about the
+// blocking gap, the cap of BLOCKING_QUESTIONS_CAP = 5); «Дальше решай сам» at any moment → the rest as explicit assumptions; facts about the
 // niche by the recorded web search within the interview limit; non-blocking questions to the build queue.
 import { emptyBrief, validateBrief } from "@wizard/appspec";
 import { LlmError } from "@wizard/llm";
 import { describe, expect, test, vi } from "vitest";
 import {
   adoptStoredBrief,
+  BLOCKING_QUESTIONS_CAP,
   blockingGaps,
   createInterviewV3,
   INTERVIEW_RESEARCH_LIMITS,
   type InterviewV3Output,
   type InterviewV3Session,
-  MAX_V3_QUESTIONS,
   newInterviewV3Session,
   OPERATOR_LINE_RU,
   OPERATOR_QUESTION,
@@ -78,7 +78,7 @@ describe("the dental dialog on a scripted model", () => {
       expect(q.options.filter((o) => o.recommended)).toHaveLength(1);
       expect(q.recommendation.length).toBeGreaterThan(0);
       expect(q.whyItMatters.length).toBeGreaterThan(0);
-      expect(q).toMatchObject({ allowDelegate: true, allowCustom: true, max: MAX_V3_QUESTIONS });
+      expect(q).toMatchObject({ allowDelegate: true, allowCustom: true, max: BLOCKING_QUESTIONS_CAP });
       expect(q.step).toBe(asked.length);
       expect(res.session.state).toBe("asking");
       res = await iv.answer(res.session, { questionId: q.id, ...a });
@@ -261,7 +261,7 @@ describe("the stop rule by code", () => {
     expect(stopReason({ gaps: [], asked: 3, modelFinished: true })).toBe("clear");
     expect(stopReason({ gaps, asked: 3, modelFinished: true })).toBeNull();
     expect(stopReason({ gaps: [], asked: 3, modelFinished: false })).toBeNull();
-    expect(stopReason({ gaps, asked: MAX_V3_QUESTIONS, modelFinished: false })).toBe("cap");
+    expect(stopReason({ gaps, asked: BLOCKING_QUESTIONS_CAP, modelFinished: false })).toBe("cap");
   });
 
   test("the model may not finish over a blocking gap nor skip a topic: the tool says why and it asks in order", async () => {
@@ -279,7 +279,7 @@ describe("the stop rule by code", () => {
     expect(results?.[1]).toContain("TREE_ORDER");
   });
 
-  test("cap: never more than 15 questions — the 15th answer ends the interview, the rest by assumptions", async () => {
+  test("cap (D79_v4 (7)): never more than BLOCKING_QUESTIONS_CAP questions — the last answer ends the interview, the rest by assumptions", async () => {
     const { iv, inputs } = setup([
       (input) =>
         toolNames(input).includes("submit_question") ? [question("goals", "Ещё вопрос о целях?")] : "нет",
@@ -292,15 +292,15 @@ describe("the stop rule by code", () => {
       expect(q.step).toBe(count);
       res = await iv.answer(res.session, { questionId: q.id, optionId: "o2" });
     }
-    expect(count).toBe(MAX_V3_QUESTIONS);
-    expect(res.session.asked).toBe(MAX_V3_QUESTIONS);
+    expect(count).toBe(BLOCKING_QUESTIONS_CAP);
+    expect(res.session.asked).toBe(BLOCKING_QUESTIONS_CAP);
     const done = main(res.outputs);
     expect(done?.kind === "brief" && done.reason).toBe("cap");
     // The cap turn offers no question; what is still blocking is filled by code as the agent's assumptions.
     expect(toolNames(inputs.at(-1) as never)).not.toContain("submit_question");
     expect(blockingGaps(res.session.brief)).toEqual([]);
     expect(res.session.brief.assumptions.every((a) => a.source === "default")).toBe(true);
-    expect(res.session.brief.qa).toHaveLength(MAX_V3_QUESTIONS);
+    expect(res.session.brief.qa).toHaveLength(BLOCKING_QUESTIONS_CAP);
   });
 });
 

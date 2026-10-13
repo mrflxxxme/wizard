@@ -116,7 +116,7 @@ describe("v3 grill interview through the platform", () => {
       id: "q1",
       topic: "scenarios",
       step: 1,
-      max: 15,
+      max: 5,
       allowDelegate: true,
       allowCustom: true,
     });
@@ -127,7 +127,7 @@ describe("v3 grill interview through the platform", () => {
       role: "assistant",
       kind: "questions",
       text: q.text,
-      payload: { questionIds: ["q1"], interview: { step: 1, max: 15, topic: "scenarios", briefVersion: 1 } },
+      payload: { questionIds: ["q1"], interview: { step: 1, max: 5, topic: "scenarios", briefVersion: 1 } },
     });
     const brief = await api.req("GET", `/systems/${systemId}/brief`);
     expect(brief.body.brief).toMatchObject({ version: 1, author: "agent" });

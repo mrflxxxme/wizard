@@ -1,0 +1,213 @@
+/* «Сначала показать» (V4-08): the first screen of a direction on the whole canvas (like the system itself, V4-11), the
+   bar with its name, the arrows and «Собрать в этом стиле» floats top-left over it; tokens --p-*. */
+
+.root,
+.wait {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  background: var(--p-bg);
+}
+
+.frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+
+.bar {
+  position: fixed;
+  z-index: 30;
+  top: calc(env(safe-area-inset-top, 0px) + 14px);
+  left: 16px;
+  width: min(560px, calc(100% - 32px));
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: var(--p-r-xl);
+  background: var(--p-glass-solid);
+  box-shadow: var(--p-sh-float);
+  color: var(--p-ink);
+  font: 400 14px / 1.45 var(--p-f-ui);
+}
+
+.text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.count {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--p-ink-2);
+}
+
+.name {
+  margin: 0;
+  font-family: var(--p-f-serif);
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.why {
+  margin: 0;
+  color: var(--p-ink-2);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+
+.nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.arrow {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--p-line);
+  border-radius: var(--p-r-pill);
+  background: var(--p-surface);
+  color: var(--p-ink);
+  cursor: pointer;
+}
+
+.arrow svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.arrow:focus-visible {
+  outline: 2px solid var(--p-tint-ring, var(--p-ink));
+  outline-offset: 2px;
+}
+
+.dots {
+  display: inline-flex;
+  gap: 5px;
+}
+
+.dots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--p-line-2, var(--p-line));
+}
+
+.dots i[data-on] {
+  background: var(--p-ink);
+}
+
+.error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--p-bad);
+}
+
+/* ——— waiting for the screens ——— */
+.wait {
+  display: grid;
+  place-items: center;
+  padding: 24px 16px 96px;
+}
+
+.waitBox {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  max-width: 520px;
+  text-align: center;
+  color: var(--p-ink);
+}
+
+.waitTitle {
+  margin: 0;
+  font-family: var(--p-f-serif);
+  font-size: clamp(26px, 4vw, 38px);
+  line-height: 1.15;
+}
+
+.waitText {
+  margin: 0;
+  color: var(--p-ink-2);
+  font-size: 15px;
+}
+
+.skel {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.skel i {
+  width: 96px;
+  height: 64px;
+  border-radius: var(--p-r-md);
+  background: var(--p-skel, var(--p-sunken));
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.skel i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.skel i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* A wide window: the bar sits low between the island and the chat panel, off the first screen's own top. */
+@media (min-width: 1200px) {
+  .bar {
+    top: auto;
+    left: 50%;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+    transform: translateX(-50%);
+  }
+}
+
+@media (max-width: 720px) {
+  .bar {
+    top: auto;
+    left: 8px;
+    width: calc(100% - 16px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 86px);
+    padding: 12px;
+  }
+
+  .name {
+    font-size: 19px;
+  }
+
+  .why {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skel i {
+    animation: none;
+  }
+}
