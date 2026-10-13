@@ -65,7 +65,7 @@ export const ZAI_REASONING_HEADROOM = 8192;
 export function transformBody(
   providerId: ProviderDef["id"] | "byok",
   body: Record<string, unknown>,
-  reasoning: "low" | "high" = "high",
+  reasoning: "off" | "low" | "high" = "high",
 ): Record<string, unknown> {
   const out: Record<string, unknown> = { ...body };
   delete out.response_format;
@@ -90,6 +90,12 @@ export function transformBody(
     delete out.thinking;
     delete out.enable_thinking;
     delete out.chat_template_kwargs;
+    // V4-09: no reasoning at all where the call type asks for it (the vision critic; glm-5.3 is never on such a route).
+    if (reasoning === "off") {
+      delete out.reasoning_effort;
+      out.thinking = { type: "disabled" };
+      return out;
+    }
     out.reasoning_effort = reasoning;
     // Reasoning tokens count against max_tokens: without headroom a short answer budget is spent on thinking alone
     // (finish=length, empty text — the 30-token probe on the pilot server).
@@ -198,7 +204,7 @@ export interface LiveCallInput {
   env: Env;
   fetch?: typeof globalThis.fetch;
   /** Reasoning effort of models that always think (zai); default high. */
-  reasoning?: "low" | "high";
+  reasoning?: "off" | "low" | "high";
 }
 
 /**
@@ -270,7 +276,7 @@ export interface ChatCallInput {
   maxTokens: number;
   signal: AbortSignal;
   fetch?: typeof globalThis.fetch;
-  reasoning?: "low" | "high";
+  reasoning?: "off" | "low" | "high";
 }
 
 /**

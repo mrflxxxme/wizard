@@ -4,7 +4,7 @@
 import { randomUUID } from "node:crypto";
 import { requestKey } from "../fixtures.js";
 import { chatCall, LiveCallError } from "../providers.js";
-import { HIGH_REASONING, type Registry, type RouteDef } from "../registry.js";
+import { type Registry, type RouteDef, reasoningOf } from "../registry.js";
 import type {
   CallType,
   LlmMode,
@@ -215,7 +215,7 @@ export async function routeByok(a: RouteByokArgs): Promise<RouteOutput | null> {
         maxTokens: route.maxTokens,
         signal: AbortSignal.any(signals),
         fetch: doFetch,
-        reasoning: HIGH_REASONING.has(callType) ? "high" : "low",
+        reasoning: reasoningOf(callType),
       });
       await write({
         attempt,

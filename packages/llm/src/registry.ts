@@ -306,6 +306,16 @@ const PAGE_T0 = ["kimi-k2.6", "deepseek-v4-pro", "glm-5.1", "qwen3-coder-next", 
  */
 export const HIGH_REASONING: ReadonlySet<CallType> = new Set<CallType>(["card", "plan", "system_plan"]);
 
+/**
+ * V4-09: call types where zai models do not reason at all (thinking disabled) — the visual critic: 3× faster, half the
+ * ₽ and a steadier score with the same findings (stage probe 13.10.2026: median 16–18 s instead of 56 s).
+ */
+export const NO_REASONING: ReadonlySet<CallType> = new Set<CallType>(["critic_visual"]);
+
+/** The reasoning of a call type: off (NO_REASONING), high (HIGH_REASONING) or low. */
+export const reasoningOf = (callType: CallType): "off" | "low" | "high" =>
+  NO_REASONING.has(callType) ? "off" : HIGH_REASONING.has(callType) ? "high" : "low";
+
 export const ROUTES: Record<CallType, RouteDef> = {
   interview: r("orchestrator", "T1", { T1: ["glm-5.3"], T0: ORCH_T0 }, 0.3, 8000, 180000),
   card: r("orchestrator", "T1", { T1: ["glm-5.3"], T0: ORCH_T0 }, 0.2, 8000, 300000),

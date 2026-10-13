@@ -145,6 +145,8 @@ export {
   modelFamily,
   /** V4-05: family of a registry model id (RouteOutput.model) — critic and judge pass the authors' as avoidFamilies. */
   modelFamilyOf,
+  /** V4-09: call types without reasoning (thinking off for zai); reasoningOf(callType) → off | low | high. */
+  NO_REASONING,
   /** V4-05 (D79 (5)): Ollama Cloud models for benchmarks only (WIZARD_LLM_BENCH=1, WIZARD_LLM_OLLAMA_MODELS). */
   OLLAMA_ENV,
   OPENAI_COMPAT_CONTEXT,
@@ -163,6 +165,7 @@ export {
   ROUTES,
   type RouteDef,
   RU_BUILD_LABEL,
+  reasoningOf,
   /** V4-05 (D79 (3)): PII kinds that keep a build stage in RF — passport, SNILS, card number. */
   SIGNAL_PII_KINDS,
 } from "./registry.js";

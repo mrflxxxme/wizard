@@ -28,13 +28,13 @@ import {
 import { type Env, LiveCallError, liveCall, providerBaseUrl } from "./providers.js";
 import {
   createRegistry,
-  HIGH_REASONING,
   type ModelDef,
   modelFamily,
   type ProviderId,
   policyVersion,
   type Registry,
   type RouteDef,
+  reasoningOf,
 } from "./registry.js";
 import type {
   CallType,
@@ -543,7 +543,7 @@ export function createRouter(opts: RouterOptions = {}): Router {
             signal,
             env,
             ...(opts.fetch ? { fetch: opts.fetch } : {}),
-            reasoning: HIGH_REASONING.has(input.callType as CallType) ? "high" : "low",
+            reasoning: reasoningOf(input.callType as CallType),
           });
           const latencyMs = now() - started;
           circuit.record(cKey, true);
