@@ -64,20 +64,48 @@ export {
   STOP_WORDS,
   sectionOutline,
 } from "./lint.js";
+/**
+ * V4-06: the page as free code — submit_page_code (code sections + the kept SDK components), its checks and the SDK
+ * gate (a required component removed fails), the prompt with the taste rules and library patterns as examples.
+ */
+export {
+  applyPageCode,
+  CODE_RULES,
+  codeExamples,
+  codeSectionFile,
+  designBlock,
+  isKeptSection,
+  PAGE_CODE_TOOL,
+  type PageCodeAnswer,
+  pageCodeIssues,
+  pageCodeMessages,
+  pageCodeRequest,
+  pageCodeSchema,
+  pageKey,
+  SDK_TYPES,
+  sdkGate,
+  sdkSections,
+  TASTE_RULES,
+} from "./page-code.js";
+/** V4-06: the page step — the page author, the rival first screen of another family and the judge by screenshots. */
+export {
+  JUDGE_TOOL,
+  judgeMessages,
+  judgeSchema,
+  PAGE_CALL_TYPES,
+  type PageStepInput,
+  type PageStepResult,
+  pageCode,
+  RIVAL_TOOL,
+  type RivalAnswer,
+  rivalMessages,
+  rivalSchema,
+} from "./page-step.js";
 export {
   COMPOSE_CALL_TYPES,
   type ComposeScenarioOptions,
   composeScenario,
-  type PageComposeAnswer,
-  pageComposeMessages,
-  pageComposeRequest,
-  pageComposeSchema,
   type ScenarioVerify,
-  type SignatureAnswer,
-  signatureMessages,
-  signatureOffer,
-  signatureRequest,
-  signatureSchema,
   verifySystem,
 } from "./scenario.js";
 export { seedHintsFromBrief } from "./seed-hints.js";
@@ -87,7 +115,6 @@ export {
   CONTENT_MODULE,
   componentOf,
   isParamRoute,
-  MAX_SIGNATURES,
   PAGE_SECTIONS,
   type PageKind,
   type PlannedPage,
