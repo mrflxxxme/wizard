@@ -454,13 +454,14 @@ export const ROUTES: Record<CallType, RouteDef> = {
     1500,
     120000,
   ),
-  // DeepSeek first: MiMo V2.6 Pro timed out at 300 s on every attempt of the techreview (stage probe 13.10.2026), ~900 s
-  // per build before the reserve; it stays second until it answers in time.
+  // MiMo V2.6 Pro with reasoning off (models[].thinking): it timed out at 300 s on every attempt while it reasoned; off,
+  // the techreview takes 39–60 s (median 45 s) with 1–8 findings (stage probe 13.10.2026). DeepSeek V4-Pro is the
+  // reserve: 1.8 s, but it submitted no findings at all on the same input.
   techreview: r(
     "reviewer",
     "T1",
     {
-      T1: ["deepseek-v4-pro-0813", "mimo-v2.6-pro"],
+      T1: ["mimo-v2.6-pro", "deepseek-v4-pro-0813"],
       T0: ["gpt-oss-120b", "gigachat-3.5", "deepseek-v4-pro", "kimi-k2.6"],
     },
     0.1,

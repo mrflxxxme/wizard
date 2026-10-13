@@ -194,7 +194,7 @@ describe("platform: the techreview of a v3 build (V3-15)", () => {
     expect(builder).toEqual(["kimi"]);
     const review = calls.filter((c) => c.call_type === "techreview");
     expect(review).toEqual([
-      { call_type: "techreview", tier: "T1", model_id: "deepseek-v4-pro-0813", status: "ok" },
+      { call_type: "techreview", tier: "T1", model_id: "mimo-v2.6-pro", status: "ok" },
     ]);
     const family = familyOf(review[0]?.model_id ?? "");
     expect([...builder, ...defaultBuilderFamilies()]).not.toContain(family);
