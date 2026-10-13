@@ -8,6 +8,7 @@ import { createRegistry, createRouter, MemoryUsageSink, type RouteInput } from "
 import { PATTERNS } from "@wizard/ui-kit/v3/patterns";
 import { describe, expect, test } from "vitest";
 import { createPageComposer, readSite } from "../src/builder/v3/compose/index.js";
+import { verifySystem } from "../src/builder/v3/compose/scenario.js";
 import type { V3BuildContext, V3ComposeResult } from "../src/builder/v3/contract.js";
 import { BRIEF, composeContext } from "./v3-compose-fixtures.js";
 
@@ -38,7 +39,14 @@ describe.skipIf(!ON)("V4-06 live stage probe: the page as code", () => {
           router.route({ ...i, orgPolicy: { ruOnly: false, t1Restricted: false }, ctx: { orgId: "probe" } });
         const ctx: V3BuildContext = { ...base, files: apply(base.files, skeleton), route, budgetRub: 150 };
         const t0 = Date.now();
-        const r = await createPageComposer({ patterns: PATTERNS, registry }).scenario(ctx, scenario);
+        const g0: string[] = [];
+        // The real G0, its refusals kept: why a page needed a fix round.
+        const verify: typeof verifySystem = async (spec, f, focus) => {
+          const out = await verifySystem(spec, f, focus);
+          if (!out.ok) g0.push(...out.problems.slice(0, 4));
+          return out;
+        };
+        const r = await createPageComposer({ patterns: PATTERNS, registry, verify }).scenario(ctx, scenario);
         const files = apply(ctx.files, r);
         const site = readSite(files);
         const changed = [...r.files.keys()].filter((f) => f.startsWith("ui/sections/"));
@@ -58,6 +66,7 @@ describe.skipIf(!ON)("V4-06 live stage probe: the page as code", () => {
             )
             .join(" "),
           notes: r.notes,
+          g0,
           heroChars: files.get(changed.find((f) => f.endsWith("-hero.tsx")) ?? "")?.length ?? 0,
         });
         console.log(`stage_probe_page=${JSON.stringify(records.at(-1))}`);
