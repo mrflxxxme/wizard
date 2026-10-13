@@ -58,7 +58,7 @@ export function scenarioPromises(scenario: Pick<BriefScenario, "then">): Scenari
   return [...out.values()];
 }
 
-/** Section types (ui/site.json `type`) that can keep a promise; signature sections are judged in the browser only. */
+/** Section types (ui/site.json `type`) that can keep a promise; signature sections (free code) may keep any. */
 const SECTION_TYPES: Readonly<Record<PromiseKind, readonly string[]>> = {
   services: ["services", "pricing", "catalog", "shop", "product"],
   prices: ["pricing", "services", "catalog", "shop", "product"],
@@ -218,7 +218,8 @@ export function checkPromises(
   const sections = siteSections(files);
   for (const p of promises) {
     const types = SECTION_TYPES[p.kind];
-    const candidates = sections.filter((s) => types.includes(s.type));
+    // A signature section is free code: what it shows is known only in the browser, so it may keep any promise.
+    const candidates = sections.filter((s) => types.includes(s.type) || s.type === "signature");
     // The footer alone is no section of contacts or hours: it only keeps them by what it shows.
     const own = candidates.filter((s) => s.type !== "footer");
     if (!own.length && !(views && candidates.length)) {
@@ -245,7 +246,7 @@ export function promiseRoutes(
 ): string[] {
   const kinds = new Set(scenarioPromises(scenario).map((p) => p.kind));
   if (!kinds.size) return [];
-  const types = new Set([...kinds].flatMap((k) => SECTION_TYPES[k]));
+  const types = new Set([...[...kinds].flatMap((k) => SECTION_TYPES[k]), "signature"]);
   return [
     ...new Set(
       siteSections(files)

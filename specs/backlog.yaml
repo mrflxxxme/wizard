@@ -2624,7 +2624,7 @@ tasks:
     owner: platform
     parallel_group: v4-g
     estimate_days: 1
-    status: in_progress
+    status: done
     claimed_by: session_01X8jgGUBZgh2j9RwccJpmf6
     owns: ["apps/platform-api/src/builds-v3/promises.ts (новый)", "apps/platform-api/src/builds-v3/host.ts", "apps/platform-api/src/builds-v3/critic.ts", "apps/platform-api/test/v4-scenario-promises*.ts (новые)"]
     description: >

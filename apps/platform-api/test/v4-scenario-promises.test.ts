@@ -125,6 +125,19 @@ describe("V4-21 scenario promises", () => {
     expect(other.problems).toEqual([expect.stringContaining("в контактах нет телефона или адреса")]);
   });
 
+  test("a signature section (free code) may keep any promise: by the site model it stands, the browser judges it", () => {
+    const files = site(["header", "hero", "signature", "footer"]);
+    const doctors = { then: ["Посетитель видит врачей"] };
+    expect(checkPromises(doctors, files, null).problems).toEqual([]);
+    const shown = (v: Partial<SectionView>) => new Map([["/", [view("signature-2", v)]]]);
+    expect(
+      checkPromises(doctors, files, shown({ text: "Наши врачи", names: ["Анна Смирнова"] })).problems,
+    ).toEqual([]);
+    expect(checkPromises(doctors, files, shown({ text: "Красивая анимация" })).problems).toEqual([
+      expect.stringContaining("в секции специалистов нет настоящих имён"),
+    ]);
+  });
+
   test("keeps: a price «от», an address, the hours", () => {
     expect(keeps("prices", view("x", { text: "Чистка — от 2000" }))).toBe(true);
     expect(keeps("contacts", view("x", { text: "Казань, ул. Баумана, 12" }))).toBe(true);
