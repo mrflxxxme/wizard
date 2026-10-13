@@ -206,6 +206,11 @@ export class MockPlatform {
   readonly runs = new Map<string, RunState>();
   previewRole: string;
   previewLogins = 0;
+  /** V4-11: one-time login tokens of preview-url, as the runtime has them (a second use is 404 replay). */
+  previewTokens = 0;
+  readonly usedTokens = new Set<string>();
+  /** V4-11: requests sent by the form of the preview stub (a form in the canvas works like in its own tab). */
+  readonly stubLeads: string[] = [];
   /** B2-25: the canvas build waits before this event index until releaseBuild() (null — no hold). */
   holdBuildAt: number | null = null;
   #release: (() => void) | null = null;
@@ -856,6 +861,8 @@ export class MockPlatform {
       void this.#canvasBuild(sys, st, structuredClone(reused));
       return json(202, { run: st.run });
     }
+    // V4-11: a built v2 system shows its draft on the canvas v4.
+    if (method === "GET" && rest === "/preview-url") return this.#previewUrl(sys, null, json, fail);
     return fail(404, "NOT_FOUND", "Не найдено");
   }
 
@@ -987,17 +994,8 @@ export class MockPlatform {
         revision: { version: sys.system.draftRevision, author: "user", kind: "style", createdAt: now() },
       });
     }
-    if (method === "GET" && rest === "/preview-url") {
-      if (sys.system.previewRevision == null) return fail(409, "PREVIEW_NOT_READY", "Превью ещё не готово");
-      const role =
-        url.searchParams.get("role") ?? this.opts.feed.roles.find((r) => r.access === "public")?.name ?? "";
-      return json(200, {
-        url: `${this.previewOrigin}/_wizard/dev-login?role=${encodeURIComponent(role)}&next=/`,
-        revision: sys.system.previewRevision,
-        roles: feed.roles.map((r) => ({ name: r.name, label: r.label })),
-        expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
-      });
-    }
+    if (method === "GET" && rest === "/preview-url")
+      return this.#previewUrl(sys, url.searchParams.get("role"), json, fail);
     if (method === "GET" && rest === "/gates/latest") {
       if (!sys.gates) return fail(404, "NOT_FOUND", "Отчётов нет");
       return json(200, { revision: sys.system.draftRevision, reports: sys.gates });
@@ -1033,21 +1031,60 @@ export class MockPlatform {
     });
   }
 
+  #previewUrl(
+    sys: SysState,
+    asked: string | null,
+    json: (s: number, d: unknown) => void,
+    fail: (s: number, c: string, m: string) => void,
+  ): unknown {
+    if (sys.system.previewRevision == null) return fail(409, "PREVIEW_NOT_READY", "Превью ещё не готово");
+    const role = asked ?? this.opts.feed.roles.find((r) => r.access === "public")?.name ?? "";
+    return json(200, {
+      url: `${this.previewOrigin}/_wizard/dev-login?role=${encodeURIComponent(role)}&t=tok${++this.previewTokens}&next=/`,
+      revision: sys.system.previewRevision,
+      roles: this.opts.feed.roles.map((r) => ({ name: r.name, label: r.label })),
+      expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+    });
+  }
+
   // ---------------------------------------------------------------- preview stub (runtime draft host)
 
   #current(): SysState | undefined {
     return [...this.systems.values()].at(-1);
   }
 
-  #preview(_req: IncomingMessage, res: ServerResponse, url: URL): unknown {
+  #preview(req: IncomingMessage, res: ServerResponse, url: URL): unknown {
     const feed = this.opts.feed;
     if (url.pathname === "/_wizard/dev-login") {
+      const t = url.searchParams.get("t");
+      if (t !== null) {
+        if (this.usedTokens.has(t)) {
+          res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+          return res.end("replay");
+        }
+        this.usedTokens.add(t);
+      }
       const role = url.searchParams.get("role") ?? "";
       if (feed.roles.some((r) => r.name === role)) this.previewRole = role;
       this.previewLogins++;
       const next = url.searchParams.get("next") ?? "/";
       res.writeHead(302, { location: /^\/(?![/\\])/.test(next) ? next : "/", "cache-control": "no-store" });
       return res.end();
+    }
+    if (url.pathname === "/_wizard/stub-lead" && req.method === "POST") {
+      let body = "";
+      req.on("data", (c) => {
+        body += c;
+      });
+      req.on("end", () => {
+        const name = new URLSearchParams(body).get("name") ?? "";
+        this.stubLeads.push(name);
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+        res.end(
+          `<!doctype html><html lang="ru"><body><p data-testid="stub-sent">Заявка принята</p></body></html>`,
+        );
+      });
+      return;
     }
     if (url.pathname === "/_wizard/stub.js") {
       res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-store" });
@@ -1069,7 +1106,8 @@ export class MockPlatform {
 <style>body{font-family:system-ui;margin:0;padding:16px}nav a{margin-right:12px}.cta{background:var(--w-accent);color:var(--w-accent-ink);border:0;padding:10px 16px;border-radius:8px}</style>
 <script id="wz-config" type="application/json">${JSON.stringify(config).replace(/</g, "\\u003c")}</script>
 <script src="/_wizard/stub.js" defer></script></head>
-<body><nav data-testid="stub-nav"></nav><main><h1 data-testid="stub-route"></h1><button class="cta" data-testid="stub-cta">Зарегистрироваться</button></main></body></html>`);
+<body><nav data-testid="stub-nav"></nav><main><h1 data-testid="stub-route"></h1><button class="cta" data-testid="stub-cta">Зарегистрироваться</button>
+<form method="post" action="/_wizard/stub-lead" data-testid="stub-form"><input name="name" aria-label="Имя" data-testid="stub-name"><button data-testid="stub-send">Отправить заявку</button></form></main></body></html>`);
   }
 }
 

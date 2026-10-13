@@ -222,10 +222,11 @@ describe("a published v3 system opened again", () => {
     expect(sourceOf(BUILD)).toBeDefined();
     expect(sourceOf(PUBLISH)).toBeUndefined();
     await push(BUILD, ...BUILT);
-    // The replayed build has no v3 snapshot here: the preview of the system stands in for it.
-    expect($("canvas-v3-system")).not.toBeNull();
-    expect($("canvas-v3-live-frame")?.getAttribute("title")).toBe("Превью системы");
+    // V4-11: the system on the whole canvas, the panels closed; the publication is under its icon.
+    expect($("canvas-frame")).not.toBeNull();
+    expect($("canvas-sheet")).toBeNull();
     expect($("canvas-main")?.textContent).not.toContain("Думаю над системой");
+    await click("canvas-island-publish");
     expect($("canvas-v3-publish")).not.toBeNull();
   });
 
@@ -234,17 +235,18 @@ describe("a published v3 system opened again", () => {
     const api = canvasApi(() => view);
     await mount(api, h(Canvas, { systemId: SYS, initial: view }));
     expect(FakeEventSource.all).toHaveLength(0);
-    expect($("canvas-v3-system")).not.toBeNull();
+    expect($("canvas-frame")).not.toBeNull();
     expect(api.getPreviewUrl).toHaveBeenCalledWith(SYS);
     expect($("canvas-empty")).toBeNull();
   });
 
-  test("the logo leads to the list of systems", async () => {
+  test("«Ещё» of the island leads to the list of systems", async () => {
     const view = sysView();
     await mount(
       canvasApi(() => view),
       h(Canvas, { systemId: SYS, initial: view }),
     );
+    await click("canvas-island-more");
     expect($("canvas-home")?.getAttribute("href")).toBe("/");
     expect($("canvas-home")?.getAttribute("aria-label")).toContain("Born to Build");
   });
@@ -354,6 +356,9 @@ describe("a running v3 build", () => {
       ev(BUILD, 1, "run_started", { kind: "build" }),
       ev(BUILD, 2, "build_stage", { stage: "brief", status: "started", label_ru: "x", progress }),
     );
+    // V4-11: the build runs over the system — the bar on top, the panel under the ring of the island.
+    expect($("canvas-eta")).not.toBeNull();
+    await click("canvas-island-build");
     await click("canvas-v3-live-stop");
     expect(cancelRun).not.toHaveBeenCalled();
     await click("canvas-v3-live-stop-yes");
@@ -388,9 +393,11 @@ describe("a built v3 system", () => {
       h(Canvas, { systemId: SYS, initial: view }),
     );
     await push(BUILD, ...BUILT);
+    await click("canvas-island-chat");
     expect($("canvas-last-reply")?.textContent).toBe(
       "Добавил в бриф раздел «Отзывы» — соберите систему заново.",
     );
+    await click("canvas-island-publish");
     expect($("canvas-v3-publish")).not.toBeNull();
   });
 
@@ -407,6 +414,7 @@ describe("a built v3 system", () => {
       canvasApi(() => view, { extra: { startFix } }),
       h(Canvas, { systemId: SYS, initial: view }),
     );
+    await click("canvas-island-publish");
     expect($("canvas-v3-publish-techreview")?.textContent).toBe(
       "Техревью нашло: Права: Посетитель без входа видит чужие записи на приём.",
     );

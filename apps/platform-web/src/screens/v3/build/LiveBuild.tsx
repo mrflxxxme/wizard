@@ -1,13 +1,10 @@
-// The live v3 build on the canvas (V3-17; platform-screens.yaml#S-canvas v3_live, product.yaml D77_v3 (10)): the growing
-// system (the live preview of the latest revision a part of the system landed in: the skeleton first, then the pages
-// of each scenario), the checklist of the brief's scenarios, the time left against the 30 min cap, the spend against
+// The live v3 build on the canvas (V3-17; platform-screens.yaml#S-canvas v3_live, product.yaml D77_v3 (10)): the
+// revision the system grew to (the canvas shows it on the whole window, V4-11), the checklist of the brief's scenarios, the time left against the 30 min cap, the spend against
 // the cap, the technical details under «Подробнее»; the ready toast and the browser notice. Everything comes from the
 // structured snapshot of the run's events (live.ts), so leaving the page and coming back restores it from the server.
 import { ActionButton, Serif } from "@wizard/ui-kit/v2";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { PreviewUrl, RunEvent, V3BuildProgress, V3ProgressScenario } from "../../../api/types.js";
-import { usePlatform } from "../../../app/context.js";
-import { previewSrc } from "../../../preview/bridge.js";
+import type { RunEvent, V3BuildProgress, V3ProgressScenario } from "../../../api/types.js";
 import s from "./LiveBuild.module.css";
 import { liveClock, scenarioCount, type V3Live, type V3LiveClock, v3Live } from "./live.js";
 import { askNotify, firstNotice, type NotifyState, notifyState, showNotice } from "./notify.js";
@@ -17,9 +14,6 @@ import { liveRu as T } from "./ru.js";
 const FRESH_MS = 3 * 60_000;
 /** Status changes this recent are announced (a replay of the run on return is not read out). */
 const ANNOUNCE_MS = 60_000;
-const PREVIEW_RETRY_MS = 1500;
-const PREVIEW_RETRIES = 20;
-const PREVIEW_DEBOUNCE_MS = 800;
 
 const cx = (...xs: (string | false | null | undefined)[]) => xs.filter(Boolean).join(" ");
 
@@ -202,111 +196,6 @@ function Details({ live }: { live: V3Live }): ReactNode {
   );
 }
 
-/** The growing system: the live preview of the system, reloaded when a new part of it lands. */
-export function LivePreview({
-  systemId,
-  revision,
-  settled = false,
-}: {
-  systemId: string;
-  /** Revision of the snapshot (null — no preview yet); a new one reloads the frame. */
-  revision: number | null;
-  /** V3-18: a built system outside a build (opened again, published) — no «grows» caption. */
-  settled?: boolean;
-}): ReactNode {
-  const { api } = usePlatform();
-  const [info, setInfo] = useState<PreviewUrl | null>(null);
-  const [failed, setFailed] = useState(false);
-  const loaded = useRef(false);
-  useEffect(() => {
-    if (revision === null) return;
-    let alive = true;
-    let t: ReturnType<typeof setTimeout>;
-    // The bundle follows the gate by a moment: PREVIEW_NOT_READY is retried; a reload waits for the burst to settle.
-    const attempt = async (left: number) => {
-      try {
-        const i = await api.getPreviewUrl(systemId);
-        if (!alive) return;
-        loaded.current = true;
-        setFailed(false);
-        setInfo((cur) => (cur && cur.revision === i.revision && cur.url === i.url ? cur : i));
-      } catch {
-        if (!alive) return;
-        if (left > 0) t = setTimeout(() => void attempt(left - 1), PREVIEW_RETRY_MS);
-        else setFailed(true);
-      }
-    };
-    t = setTimeout(() => void attempt(PREVIEW_RETRIES), loaded.current ? PREVIEW_DEBOUNCE_MS : 0);
-    return () => {
-      alive = false;
-      clearTimeout(t);
-    };
-  }, [api, systemId, revision]);
-
-  const src = info ? previewSrc(info.url, "/", info.revision) : null;
-  let host = "";
-  try {
-    host = info ? new URL(info.url).host : "";
-  } catch {
-    host = "";
-  }
-  return (
-    <section className={s.frameWrap} aria-label={T.preview.label} id="canvas-v3-live-preview" tabIndex={-1}>
-      <div
-        className={s.frame}
-        data-testid="canvas-v3-live-preview"
-        data-revision={info?.revision ?? undefined}
-      >
-        <div className={s.addr}>
-          <span className={s.dots} aria-hidden="true">
-            <i />
-            <i />
-            <i />
-          </span>
-          <span className={s.host}>{host || T.preview.label}</span>
-          {info && <span className={s.rev}>{T.preview.revision(info.revision)}</span>}
-          {src && (
-            <a className={s.open} href={src} target="_blank" rel="noopener noreferrer">
-              {T.preview.open}
-            </a>
-          )}
-        </div>
-        {src && info ? (
-          <iframe
-            key={info.revision}
-            className={s.iframe}
-            src={src}
-            title={settled ? T.preview.frameSettled : T.preview.frame}
-            sandbox="allow-scripts allow-forms allow-same-origin allow-popups"
-            data-testid="canvas-v3-live-frame"
-          />
-        ) : (
-          <div className={s.pending} data-testid="canvas-v3-live-preview-pending">
-            <div className={s.skel} aria-hidden="true">
-              <span className={s.skHero} />
-              <span className={s.skLine} />
-              <span className={s.skLine} />
-              <span className={s.skCards}>
-                <i />
-                <i />
-                <i />
-              </span>
-            </div>
-            <p className={s.pendingText}>
-              {settled && failed
-                ? T.preview.unavailable
-                : revision === null || failed
-                  ? T.preview.pending
-                  : T.preview.loading}
-            </p>
-          </div>
-        )}
-      </div>
-      {src && !settled && <p className={s.caption}>{T.preview.growing}</p>}
-    </section>
-  );
-}
-
 export interface V3LivePanelProps {
   live: V3Live;
   now: number;
@@ -423,12 +312,22 @@ export interface UseV3LiveOptions {
   announce(text: string): void;
   /** V3-18: stop the followed build (absent — the member may not, or no build runs). */
   onStop?(): Promise<void>;
+  /** V4-11: «Посмотреть» of the ready card — the canvas closes its panels over the system. */
+  onLook?(): void;
+  /** V4-11: a fresh status change in words (a stage, a scenario passed) — the short notice over the canvas. */
+  onNews?(text: string): void;
 }
 
 export interface V3LiveView {
   live: V3Live | null;
-  /** The canvas main area: the panel and the growing system (null — not a v3 build). */
-  main: ReactNode;
+  /** The panel of the build (time, money, scenarios, «Подробнее»; null — not a v3 build). */
+  panel: ReactNode;
+  /** The revision the system grew to (null — none yet). */
+  previewRevision: number | null;
+  /** Share of the build done, 0…1, by the clock (elapsed against elapsed + left). */
+  fraction: number;
+  /** What the build does now («Пишу тексты»), null at the end. */
+  stageLabel: string | null;
   /** The chat dock after a v3 build: «Система готова» and the way to the system. */
   ready: ReactNode;
   /** The ready toast (fixed over the canvas). */
@@ -451,7 +350,7 @@ export function useV3Live(o: UseV3LiveOptions): V3LiveView {
   const now = useNow(live?.phase === "running" ? 5000 : null);
   const [notify, setNotify] = useState<NotifyState>(() => notifyState());
   const [toast, setToast] = useState<{ title: string; text: string } | null>(null);
-  const { announce } = o;
+  const { announce, onNews } = o;
 
   // Status changes in words for screen readers — only fresh ones (a replay on return stays quiet).
   const seen = useRef<{ stage: string | null; statuses: Map<string, string>; preview: number | null } | null>(
@@ -480,8 +379,11 @@ export function useV3Live(o: UseV3LiveOptions): V3LiveView {
     }
     if (p.previewRevision !== null && p.previewRevision !== prev.preview && prev.preview !== null)
       said.push(T.announce.preview);
-    if (said.length) announce(said.join(". "));
-  }, [live, announce]);
+    if (said.length) {
+      announce(said.join(". "));
+      onNews?.(said[said.length - 1] as string);
+    }
+  }, [live, announce, onNews]);
 
   // The end: the toast and the browser notice once per run, for a fresh finish only.
   const told = useRef<string | null>(null);
@@ -502,20 +404,25 @@ export function useV3Live(o: UseV3LiveOptions): V3LiveView {
     void askNotify().then(setNotify);
   }, []);
 
-  const look = useCallback(() => {
-    const el = document.getElementById("canvas-v3-live-preview");
-    if (!el) return;
-    const reduce =
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
-    el.focus({ preventScroll: true });
-  }, []);
+  const { onLook } = o;
+  const look = useCallback(() => onLook?.(), [onLook]);
 
-  if (!live) return { live: null, main: null, ready: null, toast: null, spend: null, remainingSec: null };
+  if (!live)
+    return {
+      live: null,
+      panel: null,
+      previewRevision: null,
+      fraction: 0,
+      stageLabel: null,
+      ready: null,
+      toast: null,
+      spend: null,
+      remainingSec: null,
+    };
   const p = live.progress;
   const { done, total } = scenarioCount(p);
-  const main = (
+  const clock = liveClock(live, now);
+  const panel = (
     <section
       className={s.live}
       aria-label={T.title[live.phase]}
@@ -529,9 +436,9 @@ export function useV3Live(o: UseV3LiveOptions): V3LiveView {
         onAskNotify={askNotifyNow}
         {...(o.onStop ? { onStop: o.onStop } : {})}
       />
-      <LivePreview systemId={o.systemId} revision={p.previewRevision} />
     </section>
   );
+  const span = clock.elapsedSec + clock.remainingSec;
   const ready =
     live.phase === "done" ? (
       <div className={s.ready} data-testid="canvas-v3-live-ready">
@@ -570,10 +477,14 @@ export function useV3Live(o: UseV3LiveOptions): V3LiveView {
   ) : null;
   return {
     live,
-    main,
+    panel,
+    previewRevision: p.previewRevision,
+    fraction: live.phase === "running" ? (span > 0 ? Math.min(0.99, clock.elapsedSec / span) : 0) : 1,
+    stageLabel:
+      live.phase === "running" ? (p.stages.find((x) => x.id === p.stage)?.label_ru ?? T.starting) : null,
     ready,
     toast: toastNode,
     spend: T.spend.line(p.spentRub, p.capRub),
-    remainingSec: liveClock(live, now).remainingSec,
+    remainingSec: clock.remainingSec,
   };
 }
