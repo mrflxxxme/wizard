@@ -28,6 +28,7 @@ import { loadBriefs } from "../lib/briefs.mjs";
 import { platformClient } from "../server/client.mjs";
 import { evalCredits, evalIdentity, newEvalSession, newRunId, parseSeedOutput, seedSql } from "../server/seed.mjs";
 import { runV3Eval } from "../server/v3.mjs";
+import { storageEnv } from "../../stock/fill.mjs";
 
 /** The platform's origin as the cabinet sends it (the session's CSRF checks the Origin). */
 const ORIGIN = "http://localhost:5173";
@@ -204,7 +205,11 @@ export async function runAcceptance(o: { out: string; capRub: number; briefs?: r
   const local = createFileStorage({ WIZARD_FILES_STORAGE: "fs", WIZARD_FILES_DIR: filesDir }, { defaultDir: filesDir });
   const files: FileStorage =
     process.env.WIZARD_FILES_STORAGE === "s3"
-      ? new ReadThroughStorage(local, createFileStorage(process.env, { defaultDir: filesDir }))
+      ? new ReadThroughStorage(
+          local,
+          // The bucket of prod by the account key when the job gives none (as the photo library runner finds it).
+          createFileStorage(await storageEnv({ DEPLOY_ENV: "prod", ...process.env }), { defaultDir: filesDir }),
+        )
       : local;
   delete process.env.WIZARD_FILES_STORAGE;
   mkdirSync(artifactsDir, { recursive: true });
