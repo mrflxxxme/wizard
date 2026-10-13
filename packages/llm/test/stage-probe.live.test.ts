@@ -15,7 +15,7 @@ import {
   type Registry,
 } from "../src/index.js";
 
-const ON = process.env.WIZARD_STAGE_PROBE === "1";
+const ON = (process.env.WIZARD_STAGE_PROBE ?? "").split(",").includes("llm");
 const OUT = new URL("../../../tools/llm-probe/out/", import.meta.url);
 const OPEN = { ruOnly: false, t1Restricted: false };
 

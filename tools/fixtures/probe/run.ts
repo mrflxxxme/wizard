@@ -58,6 +58,8 @@ export interface ProbeInputResult {
   error: string | null;
   calls: ProbeCall[];
   failedCalls: string[];
+  /** Failed attempts of the route's chain: model, error code and seconds. */
+  failedAttempts?: string[];
 }
 
 export interface ProbeReport {
@@ -123,12 +125,26 @@ export async function runProbe(o: ProbeOptions): Promise<ProbeReport> {
   for (const model of models) {
     const base = createRegistry({ buildDefaultTier: "T1" }, env);
     const registry = model ? forceModel(base, stage.callTypes, model) : base;
-    const inner =
-      o.router?.(registry) ??
-      createRouter({ mode: "live", registry, env, sink: { write: () => {} }, t1Reserve: true });
     let label = "";
     let calls: ProbeCall[] = [];
     let failed: string[] = [];
+    // Failed attempts of the chain (the provider's error code): a model that fails and hands over to the reserve
+    // is seen, not only the model that answered.
+    let attempts: string[] = [];
+    const inner =
+      o.router?.(registry) ??
+      createRouter({
+        mode: "live",
+        registry,
+        env,
+        sink: {
+          write: (u) => {
+            if (u.status !== "ok")
+              attempts.push(`${u.modelId} ${u.errorCode ?? u.status}${u.latencyMs !== null ? ` за ${Math.round(u.latencyMs / 1000)} с` : ""}`);
+          },
+        },
+        t1Reserve: true,
+      });
     const recorder = recordingRouter(inner, {
       book,
       source: "probe",
@@ -164,6 +180,7 @@ export async function runProbe(o: ProbeOptions): Promise<ProbeReport> {
       label = name;
       calls = [];
       failed = [];
+      attempts = [];
       const ctx = { orgId: "probe", systemId: `probe-${o.stage}-${name}` };
       let run: { fallback: boolean; summary: string } = { fallback: true, summary: "" };
       let error: string | null = null;
@@ -182,6 +199,7 @@ export async function runProbe(o: ProbeOptions): Promise<ProbeReport> {
         error,
         calls,
         failedCalls: failed,
+        failedAttempts: attempts,
       };
       results.push(r);
       log(
@@ -189,7 +207,7 @@ export async function runProbe(o: ProbeOptions): Promise<ProbeReport> {
           .reduce((s, c) => s + c.rub, 0)
           .toFixed(2)} ₽${run.fallback ? ", запасной путь" : ""}${error ? `, ошибка: ${error}` : ""}${
           failed.length ? `, отказы: ${failed.join("; ")}` : ""
-        }`,
+        }${attempts.length ? `, неудачные попытки: ${attempts.join("; ")}` : ""}`,
       );
     }
   }
@@ -220,7 +238,9 @@ export function renderProbe(r: ProbeReport): string {
       .map((c) => `${c.callType} · ${c.model} (${c.tier}) · ${c.rub.toFixed(2)} · ${c.seconds} · ${c.tools.join("+") || c.finish}`)
       .join("<br>");
     const verdict = x.ok ? "✅" : x.error ? `❌ ${x.error}` : x.fallback ? "❌ запасной путь" : "❌ отказ вызова";
-    const fails = x.failedCalls.length ? `<br>отказы: ${x.failedCalls.join("; ")}` : "";
+    const fails =
+      (x.failedCalls.length ? `<br>отказы: ${x.failedCalls.join("; ")}` : "") +
+      (x.failedAttempts?.length ? `<br>неудачные попытки: ${x.failedAttempts.join("; ")}` : "");
     out.push(
       `| ${x.input} | ${x.model ?? "по маршруту"} | ${verdict} | ${calls || "—"}${fails} | ${x.summary.replace(/\|/g, "/")} |`.replace(
         /\n/g,

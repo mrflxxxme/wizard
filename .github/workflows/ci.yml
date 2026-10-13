@@ -133,6 +133,9 @@ jobs:
       - run: pnpm exec vitest run --project browser apps/platform-api/test/v3-goals-variants.browser.test.ts
       # V4-04: the build report's screenshots 390/1440 and the HTTP responses of a scenario's steps.
       - run: pnpm exec vitest run --project browser apps/platform-api/test/v4-build-report.browser.test.ts
+      # V3-13/V3-40/V4-09: the visual critic in Chromium — deterministic checks by section, the hook end to end on
+      # recorded answers (≤ 2 cycles, edits re-checked), library photos in the shots (≈ 2,5 min).
+      - run: pnpm exec vitest run --project browser apps/platform-api/test/v3-critic.browser.test.ts
       # V4-08/V4-17/V4-12/V4-16: the canvas v4 — first screens (also as a stream), edits in three layers, photos of a
       # slot from the library and the owner's own; 390/1440, screenshots test/artifacts/v4-*.png.
       - run: pnpm exec vitest run --project browser apps/platform-web/test/v4-first.browser.test.ts apps/platform-web/test/v4-first-stream.browser.test.ts apps/platform-web/test/v4-edit.browser.test.ts apps/platform-web/test/v4-photos.browser.test.ts
