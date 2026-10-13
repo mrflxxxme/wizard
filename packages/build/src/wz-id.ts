@@ -89,28 +89,49 @@ export interface WzTransform {
  * changes wzIds here. The prop goes after all attributes, overriding a hand-written wzId or spread.
  */
 export function injectWzIds(file: string, source: string): WzTransform {
+  const elements = kitElements(file, source);
+  const entries: Array<[string, WzEntry]> = elements.map((e) => [e.id, e.entry]);
+  let code = source;
+  for (const e of [...elements].sort((a, b) => b.attrsEnd - a.attrsEnd)) {
+    code = `${code.slice(0, e.attrsEnd)} wzId="${e.id}"${code.slice(e.attrsEnd)}`;
+  }
+  return { code, entries };
+}
+
+/** A ui-kit or pattern JSX element of a file with its wzId and source range (the whole element, children included). */
+export interface KitElement {
+  id: string;
+  entry: WzEntry;
+  start: number;
+  end: number;
+  /** Where injectWzIds writes the prop: the end of the element's attributes. */
+  attrsEnd: number;
+}
+
+/** The ui-kit and pattern elements of a file in document order — the ordinals of their wzIds. */
+export function kitElements(file: string, source: string): KitElement[] {
   const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const kit = collectKitImports(sf, file);
-  const entries: Array<[string, WzEntry]> = [];
-  if (kit.named.size === 0 && kit.namespaces.size === 0) return { code: source, entries };
+  const out: KitElement[] = [];
+  if (kit.named.size === 0 && kit.namespaces.size === 0) return out;
   const key = fileKey(file);
-  const inserts: Array<{ at: number; text: string }> = [];
   const visit = (node: ts.Node): void => {
     if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
       const name = componentName(node.tagName, kit);
       if (name) {
-        const id = `${key}:${entries.length + 1}`;
+        const whole = ts.isJsxOpeningElement(node) ? node.parent : node;
         const line = sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
-        entries.push([id, { file, line, componentName: name }]);
-        inserts.push({ at: node.attributes.end, text: ` wzId="${id}"` });
+        out.push({
+          id: `${key}:${out.length + 1}`,
+          entry: { file, line, componentName: name },
+          start: whole.getStart(sf),
+          end: whole.getEnd(),
+          attrsEnd: node.attributes.end,
+        });
       }
     }
     ts.forEachChild(node, visit);
   };
   visit(sf);
-  let code = source;
-  for (const ins of [...inserts].sort((a, b) => b.at - a.at)) {
-    code = code.slice(0, ins.at) + ins.text + code.slice(ins.at);
-  }
-  return { code, entries };
+  return out;
 }

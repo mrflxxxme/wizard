@@ -189,13 +189,15 @@ function wizardBridge(win, config) {
       .then((m) => {
         const text = new Map();
         const image = new Map();
+        const wz = new Map();
         for (const [ref, l] of Object.entries(m && typeof m === "object" ? m : {})) {
           if (!REF_RE.test(ref) || !l || typeof l.value !== "string") continue;
           const index = l.kind === "image" ? image : text;
           const key = l.kind === "image" ? l.value : l.value.replace(/\s+/g, " ").trim();
           index.set(key, [...(index.get(key) || []), ref]);
+          if (typeof l.wz === "string") wz.set(ref, l.wz);
         }
-        return { text, image };
+        return { text, image, wz };
       });
     return literals;
   };
@@ -204,6 +206,43 @@ function wizardBridge(win, config) {
     let t = "";
     for (const n of el.childNodes) if (n.nodeType === 3) t += n.nodeValue;
     return t.replace(/\s+/g, " ").trim();
+  };
+  /**
+   * The literal of `el` among those sharing its value: first the ones of the section it is shown in (the nearest ui-kit or
+   * pattern element above it, data-wz-id, holding one of them) — a heading that repeats the brand of the header edits
+   * the heading only; then, within one file, by order: the n-th element of the section showing the value ↔ the n-th
+   * literal. Still more than one — ambiguous: the platform says so instead of offering identical fields.
+   */
+  const resolve = (el, refs, same) => {
+    if (refs.length < 2) return { refs };
+    let scope = win.document.body;
+    let own = refs;
+    for (
+      let cur = el.closest("[data-wz-id]");
+      cur;
+      cur = cur.parentElement?.closest("[data-wz-id]") ?? null
+    ) {
+      const id = cur.getAttribute("data-wz-id");
+      const mine = refs.filter((r) => index.wz.get(r) === id);
+      if (mine.length) {
+        scope = cur;
+        own = mine;
+        break;
+      }
+    }
+    if (own.length < 2) return { refs: own };
+    const file = own[0].split(":")[0];
+    if (own.every((r) => r.split(":")[0] === file)) {
+      const shown = [...scope.querySelectorAll("*")].filter(
+        (e) => !e.getAttribute("data-wz-overlay") && same(e),
+      );
+      const at = shown.indexOf(el);
+      if (at >= 0 && shown.length === own.length) {
+        const ordered = [...own].sort((a, b) => Number(a.split(":")[1]) - Number(b.split(":")[1]));
+        return { refs: [ordered[at]] };
+      }
+    }
+    return { refs: own, ambiguous: true };
   };
   /** The element showing a literal at or above `target` and its refs (up to 3 ancestors). */
   const literalOf = (target) => {
@@ -217,11 +256,18 @@ function wizardBridge(win, config) {
         try {
           path = new win.URL(el.currentSrc || el.src, win.location.href).pathname;
         } catch (_e) {}
-        const refs = index.image.get(path) || index.image.get(el.getAttribute("src") || "");
-        if (refs) return { el, refs, kind: "image" };
+        const src = el.getAttribute("src") || "";
+        const refs = index.image.get(path) || index.image.get(src);
+        if (refs)
+          return {
+            el,
+            ...resolve(el, refs, (e) => e.tagName === "IMG" && e.getAttribute("src") === src),
+            kind: "image",
+          };
       }
-      const refs = index.text.get(ownText(el));
-      if (refs) return { el, refs, kind: "text" };
+      const text = ownText(el);
+      const refs = index.text.get(text);
+      if (refs) return { el, ...resolve(el, refs, (e) => ownText(e) === text), kind: "text" };
     }
     return null;
   };
@@ -239,6 +285,7 @@ function wizardBridge(win, config) {
     post("literal-selected", {
       refs: hit.refs.slice(0, 20),
       kind: hit.kind,
+      ...(hit.ambiguous ? { ambiguous: true } : {}),
       route: route(),
       rect: { x: r.left, y: r.top, width: r.width, height: r.height },
     });

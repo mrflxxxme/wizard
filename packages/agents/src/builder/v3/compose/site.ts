@@ -21,8 +21,6 @@ export const SITE_PATH = "ui/site.json";
 export const SITE_PAGES_DIR = "ui/pages/site";
 /** Folder of the signature sections written as free code. */
 export const SECTIONS_DIR = "ui/sections";
-/** At most this many signature sections per site (D77 (6)). */
-export const MAX_SIGNATURES = 2;
 
 /**
  * Kind of a page: its section order and bindings. V3-24: `entry` — one entry of «Контент и блог» by the slug of the

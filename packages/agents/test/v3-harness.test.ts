@@ -411,14 +411,15 @@ describe("harness v3: browser check, stop rules, «Запросы на разв�
     const { out, rec } = await build(sys, {
       lines: { completionTokens: 12_000 },
       composer: { calls: 2 },
-      params: { limits: { capRub: 150 } },
+      // V4-06: the page head is GLM-5.3 (≈ 3× cheaper than Kimi K3) — a lower cap still stops «must» midway.
+      params: { limits: { capRub: 50 } },
     });
     const r = ok(out);
     expect(r.stop.reason).toBe("budget");
     expect(r.stop.message_ru).toMatch(
-      /следующий шаг вышел бы за потолок сборки 150 ₽ \(потрачено \d+ ₽ из 150 ₽\)/,
+      /следующий шаг вышел бы за потолок сборки 50 ₽ \(потрачено \d+ ₽ из 50 ₽\)/,
     );
-    expect(rub(rec.creditsMilli)).toBeLessThanOrEqual(150);
+    expect(rub(rec.creditsMilli)).toBeLessThanOrEqual(50);
     const passed = r.scenarios.filter((s) => s.status === "passed").length;
     expect(passed).toBeGreaterThan(0);
     expect(passed).toBeLessThan(6);

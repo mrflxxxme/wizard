@@ -43,6 +43,8 @@ export const fromPreviewSchemas = {
   "literal-selected": z.object({
     refs: z.array(z.string().regex(LITERAL_REF_RE)).min(1).max(20),
     kind: z.enum(["text", "image"]),
+    /** The value repeats on the site and its source literal is not found unambiguously: nothing to edit here. */
+    ambiguous: z.boolean().optional(),
     route: ROUTE.optional(),
     rect: z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() }),
   }),

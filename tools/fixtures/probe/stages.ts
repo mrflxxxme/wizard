@@ -99,7 +99,8 @@ async function builtClinic(
   photos = true,
   archetype?: ArchetypeId,
 ): Promise<V3BuildContext> {
-  const fixture = composeContext({ photos, systemId });
+  // The phone is the redaction stand-in: records keep it as it is, the replayed page still quotes the facts.
+  const fixture = composeContext({ photos, systemId, contact: "+7 900 000-00-00" });
   const design = archetype
     ? designSystemV3({ archetype, brandColor: "#2a7f9e", seed: 7, niche: fixture.plan.niche })
     : fixture.design;
