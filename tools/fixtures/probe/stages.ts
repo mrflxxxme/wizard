@@ -15,6 +15,7 @@ import {
   RouteOutput,
 } from "../../../packages/llm/src/index.ts";
 import { PATTERNS } from "../../../packages/ui-kit/src/v3/patterns/index.ts";
+import { type ArchetypeId, designSystemV3 } from "../../../packages/ui-kit/src/v3/design/index.ts";
 import { dentalBrief, shopBrief } from "../../../packages/appspec/test/brief-fixtures.ts";
 import { composeContext } from "../../../packages/agents/test/v3-compose-fixtures.ts";
 import { extractBriefDraft } from "../../../packages/agents/src/brief-extract/index.ts";
@@ -28,6 +29,7 @@ import {
   directionsNiche,
   shotPlan,
   pointEditV3,
+  withSitePages,
   proposeDirections,
   runArtDirector,
   runTechreview,
@@ -72,8 +74,17 @@ function brief(name: unknown): SystemBrief {
 }
 
 /** The fixture clinic after the skeleton, with the probe's route (page_compose, techreview). */
-async function builtClinic(route: RouteFn, systemId: string, photos = true): Promise<V3BuildContext> {
-  const base = { ...composeContext({ photos, systemId }), route, budgetRub: 40 };
+async function builtClinic(
+  route: RouteFn,
+  systemId: string,
+  photos = true,
+  archetype?: ArchetypeId,
+): Promise<V3BuildContext> {
+  const fixture = composeContext({ photos, systemId });
+  const design = archetype
+    ? designSystemV3({ archetype, brandColor: "#2a7f9e", seed: 7, niche: fixture.plan.niche })
+    : fixture.design;
+  const base = { ...fixture, design, route, budgetRub: 40 };
   const out = await createPageComposer({ patterns: PATTERNS }).skeleton(base);
   const files = new Map(base.files);
   for (const [p, v] of out.files) {
@@ -188,14 +199,20 @@ export const STAGES: Record<string, Stage> = {
   critic_visual: {
     callTypes: ["critic_visual"],
     async run(input, route, ctx) {
-      const built = await builtClinic(route, ctx.systemId, input.photos !== false);
+      const built = await builtClinic(
+        route,
+        ctx.systemId,
+        input.photos !== false,
+        input.archetype as ArchetypeId | undefined,
+      );
       const site = readSite(built.files);
       if (!site) throw new Error("в клинике нет модели сайта");
       const browser = chromiumProvider({ slots: 1 });
       try {
         const shots = shotPlan(site);
         const insp = await criticInspector({ browser })({
-          spec: built.spec,
+          // As the critic hook: the spec routes the site's pages (without them every route is «не найдена»).
+          spec: withSitePages(built.spec, site),
           files: built.files,
           routes: [...new Set(shots.map((x) => x.route))],
           viewports: CRITIC_VIEWPORTS,
@@ -211,6 +228,7 @@ export const STAGES: Record<string, Stage> = {
           library: PATTERNS,
           shots: insp.shots,
           found: insp.problems,
+          stubPhotos: insp.stubPhotos === true,
           history: [],
           code: new Map(
             [...new Set(shots.map((x) => x.route))].flatMap((rt) => {
