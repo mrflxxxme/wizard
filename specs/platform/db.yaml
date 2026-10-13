@@ -326,7 +326,7 @@ tables:
       route_reason: "text not null check (route_reason in ('policy_ru_only','policy_region_restricted','callType_forbidden_T1','pii_high_risk','pii_detected_interview','pii_hint','default_T1','default_T0','fallback_circuit_open','fallback_error'))"
       fallback_from: "text"
       policy_version: "text not null"
-      scrubbed: "boolean not null"                          # true для всех T1
+      scrubbed: "boolean not null"                          # было: true для всех T1; V4-05 (D79 (3)): этапы сборки уходят за рубеж без scrub — false; BYOK — всегда true
       pii_categories_count: "jsonb not null default '{}'"   # {phone_ru: 2, email: 1}; только счётчики детекторов
       input_tokens: "integer not null default 0"
       cached_tokens: "integer not null default 0"
@@ -341,7 +341,7 @@ tables:
       request_hash: "text"                                  # sha256 scrubbed-запроса (ключ fixture); не содержимое
       byok: "boolean not null default false"                # V3-33 (миграция 0041): попытка на ключе организации (provider byok:<id>, model_id byok:<модель>, tier T1); бесплатна для баланса
     indexes: ["(run_id)", "(org_id, created_at)", "(tier, call_type, created_at)", "(created_at)"]   # последний — платформенный лимит токенов месяца (M2-15; миграция 0015)
-    checks: ["check (tier = 'T0' or scrubbed)", "llm_calls_byok_free: check (not byok or (cost_rub = 0 and credits_milli = 0 and not billable and scrubbed)) — V3-33, NOT VALID (старые строки byok = false)"]
+    checks: ["(снят миграцией 0045, V4-05) check (tier = 'T0' or scrubbed)", "llm_calls_byok_free: check (not byok or (cost_rub = 0 and credits_milli = 0 and not billable and scrubbed)) — V3-33, NOT VALID (старые строки byok = false)"]
 
   credit_ledger:
     milestone: M1

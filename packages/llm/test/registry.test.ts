@@ -10,7 +10,7 @@ const num = (s: string) => Number(s);
 describe("registry mirrors specs/agents/models.yaml", () => {
   test("models: provider, providerModel, tier, placement, context, price, enabled, vision, image", () => {
     const re =
-      /^\s*- \{ id: ([\w.-]+),\s*provider: (\w+),\s*providerModel: "([^"]+)",\s*tier: (T[01]),\s*placement: (\w+),\s*context: (\d+),\s*price: \{ input: ([\d.]+),\s*cached: ([\d.]+),\s*output: ([\d.]+) \},\s*enabled: (true|false)(,\s*vision: true)?(?:,\s*image: \{ px: (\d+), max: (\d+) \})?/gm;
+      /^\s*- \{ id: ([\w.-]+),\s*provider: (\w+),\s*providerModel: "([^"]+)",\s*tier: (T[01]),\s*placement: (\w+),\s*context: (\d+),\s*price: \{ input: ([\d.]+),\s*cached: ([\d.]+),\s*output: ([\d.]+) \},\s*enabled: (true|false)(,\s*vision: true)?(?:,\s*image: \{ px: (\d+), max: (\d+) \})?(?:,\s*temperature: ([\d.]+))?/gm;
     const fromYaml = [...YAML.matchAll(re)].map((x) => ({
       id: x[1],
       provider: x[2],
@@ -22,6 +22,7 @@ describe("registry mirrors specs/agents/models.yaml", () => {
       enabled: x[10] === "true",
       ...(x[11] ? { vision: true } : {}),
       ...(x[12] ? { image: { px: num(x[12]), max: num(x[13] as string) } } : {}),
+      ...(x[14] ? { temperature: num(x[14]) } : {}),
     }));
     expect(fromYaml.length).toBeGreaterThan(0);
     expect(MODELS).toEqual(fromYaml);
@@ -66,7 +67,16 @@ describe("registry lint", () => {
 
   test("no Anthropic/OpenAI/Google/xAI providers or base URLs (checks provider and baseUrl, not the model name)", () => {
     for (const p of Object.values(PROVIDERS)) {
-      expect(["cloudru", "yandex", "zai", "moonshot", "deepseek", "openai_compatible"]).toContain(p.id);
+      expect([
+        "cloudru",
+        "yandex",
+        "zai",
+        "moonshot",
+        "deepseek",
+        "xiaomi",
+        "ollama",
+        "openai_compatible",
+      ]).toContain(p.id);
       expect(p.defaultBaseUrl).not.toMatch(FORBIDDEN_HOSTS);
     }
   });

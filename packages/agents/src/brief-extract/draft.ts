@@ -1,4 +1,4 @@
-// ТЗ text → a draft of the system brief (V3-04, D77 (8)): per chunk one T0 call brief_extract with the required tool
+// ТЗ text → a draft of the system brief (V3-04, D77 (8)): per chunk one call brief_extract with the required tool
 // submit_brief_draft (its schema is made of systemBriefSchema fields); the model carries over only what the ТЗ says and
 // marks required fields the ТЗ does not answer as «уточнить в интервью». Chunk drafts are merged, validated and scrubbed
 // (no personal data is stored in the brief); without a model, on an error or a refused answer — the heuristic draft.
@@ -15,7 +15,7 @@ import { BRIEF_DRAFT_TODO } from "./gaps.js";
 import { heuristicDraft } from "./heuristic.js";
 import { BRIEF_FILE_LIMITS } from "./types.js";
 
-/** callType of the stage (builder-v3.md §3 C7; route — models.yaml#routes.brief_extract, T0 only). */
+/** callType of the stage (builder-v3.md §3 C7; route — models.yaml#routes.brief_extract, a build stage of D79 (3)). */
 export const BRIEF_EXTRACT_CALL_TYPE = "brief_extract" as const;
 export const BRIEF_DRAFT_TOOL = "submit_brief_draft";
 /** Chunks read by the model at once (one HTTP request of the upload waits for all of them). */
@@ -264,7 +264,7 @@ export async function extractBriefDraft(o: {
           callType: BRIEF_EXTRACT_CALL_TYPE,
           orgPolicy: o.orgPolicy ?? null,
           ctx: o.ctx ?? { orgId: "host" },
-          containsPiiHint: true,
+          // V4-05 (D79 (3)): the ТЗ is a build stage — it goes abroad as is; passport, SNILS or a card keep it in RF.
           ...(o.runStep ? { runStep: o.runStep } : {}),
           ...(o.signal ? { signal: o.signal } : {}),
           stepName: `brief_extract_${i + 1}`,

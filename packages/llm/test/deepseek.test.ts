@@ -1,9 +1,8 @@
-// DeepSeek API (T1 eval challenger, models.yaml#providers.deepseek): off by default, thinking always disabled,
-// same scrub and pii_forbidden_for_T1 rules as Z.ai, missing key → plain fallback. Local HTTP stub only.
+// DeepSeek API (T1, models.yaml#providers.deepseek; V4-05: mass edits and the page-code reserve): thinking always
+// disabled, the same data boundary as Z.ai (D79 (3)), missing key → plain fallback. Local HTTP stub only.
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { detect, isPlaceholder } from "@wizard/pii";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import {
   buildModelLabel,
@@ -25,6 +24,8 @@ import {
 import { type Captured, okToolCall, type Responder, type Stub, startStub } from "./stub-server.js";
 
 const DS_MODELS = ["deepseek-v4.1-flash", "deepseek-v4-pro-0813"];
+/** V4-05 routes that hold DeepSeek models (plan v4 §3). */
+const DS_ROUTES: readonly string[] = ["page_compose", "signature_section", "page_edit"];
 const OPEN = { ruOnly: false, t1Restricted: false };
 const ctx = { orgId: "00000000-0000-4000-8000-000000000001", runId: "00000000-0000-4000-8000-0000000000bb" };
 const TOOLS: LlmTool[] = [
@@ -39,7 +40,7 @@ const msgs = (text: string): LlmMessage[] => [
   { role: "user", content: text },
 ];
 
-/** Worst case for the boundary: the challenger enabled and first in the T1 chain of EVERY call type. */
+/** Worst case for the boundary: DeepSeek first in the T1 chain of EVERY call type. */
 function challengerRegistry(id = "deepseek-v4.1-flash"): Registry {
   const base = createRegistry({ buildDefaultTier: "T1" }, {});
   const routes = structuredClone(base.routes);
@@ -89,7 +90,7 @@ function mk(extra: Partial<RouterOptions> = {}) {
 }
 const toDeepseek = () => stub.requests.filter((r) => r.provider === "deepseek");
 
-describe("registry: deepseek is a disabled-by-default T1 challenger", () => {
+describe("registry: deepseek is a T1 provider of the v4 roles", () => {
   test("provider: T1, env DEEPSEEK_API_KEY / DEEPSEEK_BASE_URL, default https://api.deepseek.com", () => {
     expect(PROVIDERS.deepseek).toMatchObject({
       tier: "T1",
@@ -102,14 +103,17 @@ describe("registry: deepseek is a disabled-by-default T1 challenger", () => {
     expect(getModel(reg, "deepseek-v4-pro-0813").providerModel).toBe("deepseek-v4-pro");
   });
 
-  test("models are enabled=false, T1/external, and in no route chain; build default stays GLM-5.3 on Z.ai", () => {
+  test("models are enabled, T1/external, only in the v4 page routes; legacy builds stay GLM-5.3 on Z.ai", () => {
     const reg = createRegistry({}, {});
     for (const id of DS_MODELS) {
-      expect(getModel(reg, id)).toMatchObject({ provider: "deepseek", tier: "T1", enabled: false });
+      expect(getModel(reg, id)).toMatchObject({ provider: "deepseek", tier: "T1", enabled: true });
       for (const ct of CALL_TYPES) {
+        if (DS_ROUTES.includes(ct)) continue;
         for (const ids of Object.values(ROUTES[ct].chain)) expect(ids, `${ct}:${id}`).not.toContain(id);
       }
     }
+    expect(ROUTES.page_edit.chain.T1?.[0]).toBe("deepseek-v4.1-flash");
+    expect(ROUTES.page_compose.chain.T1).toContain("deepseek-v4-pro-0813");
     expect(reg.buildDefaultTier).toBe("T1");
     expect(ROUTES.build_ops.chain.T1).toEqual(["glm-5.3"]);
     expect(buildModelLabel(reg, OPEN)).toBe("GLM-5.3");
@@ -117,9 +121,9 @@ describe("registry: deepseek is a disabled-by-default T1 challenger", () => {
     expect(ROUTES.runtime_ai_generate.defaultTier).toBe("T0");
   });
 
-  test("default registry with a DeepSeek key set: no call type ever reaches the DeepSeek host", async () => {
+  test("default registry with a DeepSeek key set: call types outside the v4 page routes never reach DeepSeek", async () => {
     const { router } = mk({ registry: createRegistry({}, {}) });
-    for (const callType of CALL_TYPES) {
+    for (const callType of CALL_TYPES.filter((ct) => !DS_ROUTES.includes(ct))) {
       const out = await router.route({
         callType,
         messages: msgs("Собери форму"),
@@ -256,7 +260,7 @@ describe("data boundary applies to deepseek exactly as to Z.ai", () => {
     `Организатор — ${CANARIES[0]}, помощник ${CANARIES[1]}. Телефоны: ${CANARIES[2]} и ${CANARIES[3]}. ` +
     `Почта ${CANARIES[4]}, телеграм ${CANARIES[5]}, гость ${CANARIES[6]}. Нужна регистрация на форум.`;
 
-  test("build calls with basic PII reach deepseek only after scrub; journal: scrubbed, counts only", async () => {
+  test("build stages reach deepseek as is (D79 (3)); journal: not scrubbed, counts only, no texts", async () => {
     const { router, sink } = mk();
     for (const callType of [
       "card",
@@ -268,36 +272,31 @@ describe("data boundary applies to deepseek exactly as to Z.ai", () => {
       "qa_explain",
     ] as const) {
       const out = await router.route({ callType, messages: msgs(BRIEF), tools: TOOLS, orgPolicy: OPEN, ctx });
-      expect([out.tier, out.model, out.scrubbed]).toEqual(["T1", "deepseek-v4.1-flash", true]);
+      expect([out.tier, out.model, out.scrubbed]).toEqual(["T1", "deepseek-v4.1-flash", false]);
     }
     const reqs = toDeepseek();
     expect(reqs).toHaveLength(7);
     for (const r of reqs) {
-      const lower = r.raw.toLowerCase();
-      for (const c of CANARIES) {
-        expect(lower).not.toContain(c.toLowerCase());
-        const digits = c.replace(/\D/g, "");
-        if (digits.length > 6) expect(lower).not.toContain(digits);
-      }
       const text = (r.body.messages as { content: string }[]).map((m) => m.content).join("\n");
-      expect(detect(text).filter((f) => !isPlaceholder(text.slice(f.start, f.end)))).toEqual([]);
-      expect(text).toContain("[EMAIL_1]");
+      expect(text).toContain(BRIEF);
+      expect(text).not.toContain("[EMAIL_1]");
     }
     const journal = JSON.stringify(sink.records);
     for (const c of CANARIES) expect(journal).not.toContain(c);
     for (const rec of sink.records) {
-      expect([rec.provider, rec.tier, rec.scrubbed]).toEqual(["deepseek", "T1", true]);
+      expect([rec.provider, rec.tier, rec.scrubbed]).toEqual(["deepseek", "T1", false]);
       expect(rec.piiCategoriesCount.email).toBe(1);
     }
   });
 
-  test("pii_forbidden_for_T1, attachments, strong ids, interview PII, import_mapping and ruOnly never reach deepseek", async () => {
+  test("pii_forbidden_for_T1, attachments outside build stages, signal ids, import_mapping and ruOnly never reach deepseek", async () => {
     const { router, sink } = mk();
     for (const callType of PII_FORBIDDEN_FOR_T1.always) {
       await router.route({ callType, messages: msgs("Извлеки сумму из записи"), orgPolicy: OPEN, ctx });
     }
     await router.route({
-      callType: "build_ops",
+      callType: "import_mapping",
+      containsPiiHint: false,
       messages: [
         {
           role: "user",
@@ -315,7 +314,6 @@ describe("data boundary applies to deepseek exactly as to Z.ai", () => {
       orgPolicy: OPEN,
       ctx,
     });
-    await router.route({ callType: "interview", messages: msgs(BRIEF), orgPolicy: OPEN, ctx });
     await router.route({
       callType: "import_mapping",
       messages: msgs("Колонки: имя, телефон"),
@@ -338,7 +336,6 @@ describe("data boundary applies to deepseek exactly as to Z.ai", () => {
       "callType_forbidden_T1",
       "pii_hint",
       "pii_high_risk",
-      "pii_detected_interview",
       "policy_ru_only",
       "policy_region_restricted",
     ])
@@ -452,7 +449,7 @@ describe("fixture mode stays offline", () => {
       orgPolicy: OPEN,
       ctx,
     });
-    expect([out.tier, out.model, out.scrubbed]).toEqual(["T1", "deepseek-v4.1-flash", true]);
+    expect([out.tier, out.model, out.scrubbed]).toEqual(["T1", "deepseek-v4.1-flash", false]);
     expect(sink.records[0]?.provider).toBe("deepseek");
     expect(sink.records[0]?.mode).toBe("fixture");
   });

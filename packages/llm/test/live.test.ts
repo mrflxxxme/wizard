@@ -2,7 +2,6 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { detect, isPlaceholder } from "@wizard/pii";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import {
   abortableSleep,
@@ -154,7 +153,7 @@ describe("request body policy (models.yaml#call_policy)", () => {
   });
 });
 
-describe("call journal: no PII reaches T1 (models.yaml#usage_record.test, data-boundary.yaml#tests)", () => {
+describe("call journal: no PII in the journal, signal PII and client data never reach T1 (D79 (3))", () => {
   const CANARIES = [
     "Иванов Пётр Сергеевич",
     "Анна Смирнова",
@@ -174,7 +173,7 @@ describe("call journal: no PII reaches T1 (models.yaml#usage_record.test, data-b
     `Заявки сводит помощник финдиректора ${CANARIES[9]}. ` +
     "Нужна регистрация на форум с типами билетов.";
 
-  test("build calls with basic PII go to T1 only after scrub; journal has counts only", async () => {
+  test("build stages with basic PII go to T1 as is (D79 (3)); the journal keeps counts only", async () => {
     const { router, sink } = mk();
     for (const callType of [
       "card",
@@ -191,7 +190,7 @@ describe("call journal: no PII reaches T1 (models.yaml#usage_record.test, data-b
     ] as const) {
       const out = await router.route({ callType, messages: msgs(BRIEF), tools: TOOLS, orgPolicy: OPEN, ctx });
       expect(out.tier).toBe("T1");
-      expect(out.scrubbed).toBe(true);
+      expect(out.scrubbed).toBe(false);
     }
     const t1 = stub.requests.filter((r) => r.provider === "zai");
     expect(t1.length).toBe(11);
@@ -211,31 +210,28 @@ describe("call journal: no PII reaches T1 (models.yaml#usage_record.test, data-b
       "low",
     ]);
     for (const r of t1) {
-      const lower = r.raw.toLowerCase();
-      for (const c of CANARIES) {
-        expect(lower).not.toContain(c.toLowerCase());
-        expect(lower).not.toContain(c.replace(/\D/g, "").length > 6 ? c.replace(/\D/g, "") : "\u0000");
-      }
       const text = (r.body.messages as { content: string }[]).map((m) => m.content).join("\n");
-      const leftovers = detect(text).filter((f) => !isPlaceholder(text.slice(f.start, f.end)));
-      expect(leftovers).toEqual([]);
-      expect(text).toContain("[ФИО_1]");
-      expect(text).toContain("[EMAIL_1]");
+      expect(text).toContain(BRIEF);
     }
     const journal = JSON.stringify(sink.records);
     for (const c of CANARIES) expect(journal).not.toContain(c);
     for (const rec of sink.records) {
-      expect(rec.tier === "T0" || rec.scrubbed).toBe(true);
+      expect(rec.scrubbed).toBe(false);
       expect(rec.piiCategoriesCount.email).toBe(1);
       expect(Object.values(rec.piiCategoriesCount).every((n) => typeof n === "number")).toBe(true);
     }
   });
 
-  test("strong identifiers, interview with PII, forbidden callTypes and ruOnly never reach the T1 host", async () => {
+  test("signal identifiers, forbidden callTypes and ruOnly never reach the T1 host", async () => {
     const { router, sink } = mk();
     const strong = `${BRIEF} Паспорт 4510 123456.`;
     await router.route({ callType: "build_ops", messages: msgs(strong), tools: TOOLS, orgPolicy: OPEN, ctx });
-    await router.route({ callType: "interview", messages: msgs(BRIEF), orgPolicy: OPEN, ctx });
+    await router.route({
+      callType: "interview",
+      messages: msgs(`${BRIEF} СНИЛС 112-233-445 95`),
+      orgPolicy: OPEN,
+      ctx,
+    });
     for (const callType of PII_FORBIDDEN_FOR_T1.always) {
       await router.route({ callType, messages: msgs(BRIEF), orgPolicy: OPEN, ctx });
     }
@@ -259,7 +255,6 @@ describe("call journal: no PII reaches T1 (models.yaml#usage_record.test, data-b
     const reasons = new Set(sink.records.map((r) => r.routeReason));
     for (const r of [
       "pii_high_risk",
-      "pii_detected_interview",
       "callType_forbidden_T1",
       "policy_ru_only",
       "policy_region_restricted",

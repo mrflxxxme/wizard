@@ -26,26 +26,39 @@ providers:
     tier: T1
     base_url_env: ZAI_BASE_URL              # по умолчанию https://api.z.ai/api/paas/v4
     api_key_env: ZAI_API_KEY
-    rule: "MUST: только после pii.scrub; MUST NOT для callType из pii_forbidden_for_T1"
+    rule: "V4-05 (D79 (3)): этапы сборки — без scrub (pii_boundary_v4); прочие callType — только после pii.scrub; MUST NOT для callType из pii_forbidden_for_T1 и client_code"
     termsCheckedAt: 2026-09-30              # security/data-boundary.yaml#routing.model_registry: старше 90 дней → предупреждение CI
     prompt_cache: auto                      # неявный кэш без параметров (docs.z.ai/guides/capabilities/cache): usage.prompt_tokens_details.cached_tokens; цена — price.cached (docs.z.ai/guides/overview/pricing), хранение кэша бесплатно
   moonshot:
     tier: T1
-    base_url_env: MOONSHOT_BASE_URL
-    api_key_env: MOONSHOT_API_KEY
-    enabled: false
-    termsCheckedAt: 2026-09-30
-    disabled_reason: "Kimi K3 обучается на контенте API; включать только после договора о запрете обучения (E-LEGAL)"
+    base_url_env: MOONSHOT_BASE_URL         # по умолчанию https://api.moonshot.ai/v1
+    api_key_env: KIMI_API_KEY               # секрет KIMI_API_KEY (проба ключей 13.10.2026, прогон provider-probe 38390672565)
+    termsCheckedAt: 2026-10-13
+    rule: "V4-05 (D79 (5)): D54 для этапов сборки снят — Kimi K3 напрямую у Moonshot. MUST NOT для callType из pii_forbidden_for_T1 и client_code. kimi-k3 принимает только temperature: 1 (models[].temperature)"
     prompt_cache: auto                      # автоматический кэш Kimi API (platform.kimi.ai/docs/guide/use-context-caching-feature-of-kimi-api); поле usage.cached_tokens [?]
   deepseek:
     tier: T1
-    role: eval_challenger
     base_url_env: DEEPSEEK_BASE_URL         # по умолчанию https://api.deepseek.com
     api_key_env: DEEPSEEK_API_KEY           # необязателен: без ключа модели провайдера недоступны, цепочка идёт дальше
-    termsCheckedAt: 2026-10-01
-    rule: "MUST: только после pii.scrub; MUST NOT для callType из pii_forbidden_for_T1 (как zai). Модели провайдера enabled=false и не входят ни в одну цепочку routes — выбираются только в eval через --models (претендент недельного eval, docs/founder/models-research.md#рекомендация-для-пилота п. 4б). Включение в маршрутизацию по умолчанию — отдельное решение (хранение данных в КНР, E-LEGAL)"
+    termsCheckedAt: 2026-10-13
+    rule: "V4-05 (D79 (4), план v4 §3): массовые правки (deepseek-v4.1-flash) и запасной код страниц (deepseek-v4-pro-0813). MUST NOT для callType из pii_forbidden_for_T1 и client_code. Баланс 13.10.2026 нулевой (402): цепочки пропускают провайдера до пополнения (fallback_rules, D76)"
     thinking: "MUST: thinking: {type: disabled} в КАЖДОМ запросе (у DeepSeek он включён по умолчанию; с tools в режиме thinking API требует вернуть reasoning_content, а мы его вырезаем → 400 на втором ходе)"
     prompt_cache: auto                      # «Context Caching on Disk» включён по умолчанию (api-docs.deepseek.com/guides/kv_cache): usage.prompt_cache_hit_tokens = prompt_tokens_details.cached_tokens
+  xiaomi:
+    tier: T1
+    base_url_env: MIMO_BASE_URL             # по умолчанию https://api.xiaomimimo.com/v1
+    api_key_env: MIMO_API_KEY               # в GitHub рабочий секрет — MIMO_SECOND_API_KEY (MIMO_API_KEY недействителен, проба 13.10.2026): выкат и пробы кладут его в MIMO_API_KEY
+    termsCheckedAt: 2026-10-13
+    rule: "V4-05 (D79 (4)): MiMo V2.6 Pro — техревью, V2.6 Flash — запасной на массовых правках. MUST NOT для callType из pii_forbidden_for_T1 и client_code. Баланс 13.10.2026 нулевой (402): цепочки пропускают провайдера до пополнения"
+    prompt_cache: auto                      # кэш-попадания в usage [?] (цена кэша $0.0036/M по вторичным источникам)
+  ollama:
+    tier: T1
+    base_url_env: OLLAMA_BASE_URL           # по умолчанию https://ollama.com/v1
+    api_key_env: OLLAMA_API_KEY
+    enabled: false                          # включается только режимом замеров: WIZARD_LLM_BENCH=1 и WIZARD_LLM_OLLAMA_MODELS (packages/llm ollamaFromEnv)
+    termsCheckedAt: 2026-10-13
+    rule: "D79 (5): Ollama Cloud — только замеры основателя. Модели ollama:<имя> с ценой 0 (подписка) не входят ни в одну цепочку routes и в prod не включаются; закрытые западные модели → MODEL_NOT_ALLOWED"
+    prompt_cache: none
   openai_compatible:
     tier: T0
     base_url_env: WIZARD_LLM_OPENAI_COMPAT_BASE_URL   # свой vLLM (D77 (13)), напр. http://vllm.internal:8000/v1
@@ -61,6 +74,7 @@ providers:
 
 # Цены — ₽ за 1M токенов с НДС. Z.ai/Moonshot/DeepSeek: $ × 95 ₽/$ [?] + 22% НДС налогового агента (DeepSeek — цены часов пик).
 # cached — цена кэшированного входа; если провайдер кэш-скидку не даёт (prompt_cache: none), cached = input.
+# temperature — единственная температура, которую принимает модель (kimi-k3: 1): заменяет температуру маршрута в запросе (ключ записи — по маршруту).
 # vision: true — модель принимает изображения (метка Vision каталога); цепочки critic_visual — только из таких моделей.
 # image — как модель считает картинку во входе (для верхней границы стоимости до вызова, V3-13): один токен на квадрат
 # px × px пикселей (патч энкодера со слиянием 2×2), не больше max токенов на картинку (провайдер уменьшает крупные);
@@ -78,9 +92,12 @@ models:
   - { id: glm-5.3,          provider: zai,      providerModel: "glm-5.3",                      tier: T1, placement: external, context: 200000, price: { input: 162, cached: 30, output: 510 }, enabled: true, note: "$1.4/$0.26/$4.4 [?] курс" }
   - { id: glm-5.3-flash,    provider: zai,      providerModel: "glm-5.3-flash",                tier: T1, placement: external, context: 1000000, price: { input: 17.38, cached: 3.48, output: 57.95 }, enabled: true, vision: true, image: { px: 28, max: 16384 }, note: "GLM-V: патч 14, слияние 2×2 [?]. V3-16: $0.15/$0.03/$0.5 (docs.z.ai/guides/overview/pricing, 08.10.2026) [?] курс; нативно мультимодальная, размышление не выключается. Хвосты page_compose и critic_visual — после пробы на русском (ступень 2, журнал трат V3-01)" }
   - { id: glm-4.6v,         provider: zai,      providerModel: "glm-4.6v",                     tier: T1, placement: external, context: 128000, price: { input: 34.77, cached: 5.79, output: 104.31 }, enabled: true, vision: true, image: { px: 28, max: 16384 }, note: "GLM-4.1V/4.5V: патч 14, слияние 2×2 [?]. V3-16: $0.3/$0.05/$0.9 [?] курс; запасной критик — после пробы на русском (ступень 2, журнал трат V3-01)" }
-  - { id: kimi-k3,          provider: moonshot, providerModel: "kimi-k3",                      tier: T1, placement: external, context: 256000, price: { input: 348, cached: 34.8, output: 1739 }, enabled: false, note: "см. providers.moonshot.disabled_reason" }
-  - { id: deepseek-v4.1-flash,  provider: deepseek, providerModel: "deepseek-flash",   tier: T1, placement: external, context: 1000000, price: { input: 34.77,  cached: 0.7, output: 139.08 }, enabled: false, note: "претендент eval; $0.3/$0.006/$1.2 в пик (вне пика ×0.5) [?] курс; см. providers.deepseek.rule" }
-  - { id: deepseek-v4-pro-0813, provider: deepseek, providerModel: "deepseek-v4-pro",  tier: T1, placement: external, context: 1000000, price: { input: 152.99, cached: 5.1, output: 458.96 }, enabled: false, note: "претендент eval; $1.32/$0.044/$3.96 в пик (вне пика ×0.5) [?] курс; см. providers.deepseek.rule" }
+  - { id: glm-5v-turbo,     provider: zai,      providerModel: "glm-5v-turbo",                 tier: T1, placement: external, context: 203000, price: { input: 139.08, cached: 27.82, output: 463.6 }, enabled: true, vision: true, image: { px: 28, max: 16384 }, note: "V4-05: визуальный критик и судья (план v4 §3). Проба 13.10.2026: glm-5v — «Unknown Model», glm-5v-turbo видит картинку. $1.2/$0.24/$4 (вторичные источники) [?] курс; размышления съедают max_tokens — запас ZAI_REASONING_HEADROOM" }
+  - { id: kimi-k3,          provider: moonshot, providerModel: "kimi-k3",                      tier: T1, placement: external, context: 256000, price: { input: 348, cached: 34.8, output: 1739 }, enabled: true, vision: true, image: { px: 28, max: 16384 }, temperature: 1, note: "V4-05: арт-директор и код страниц (план v4 §3). Принимает только temperature: 1 и видит картинки (проба 13.10.2026). image [?]" }
+  - { id: deepseek-v4.1-flash,  provider: deepseek, providerModel: "deepseek-flash",   tier: T1, placement: external, context: 1000000, price: { input: 34.77,  cached: 0.7, output: 139.08 }, enabled: true, note: "V4-05: массовые правки (page_edit). $0.3/$0.006/$1.2 в пик (вне пика ×0.5) [?] курс" }
+  - { id: deepseek-v4-pro-0813, provider: deepseek, providerModel: "deepseek-v4-pro",  tier: T1, placement: external, context: 1000000, price: { input: 152.99, cached: 5.1, output: 458.96 }, enabled: true, note: "V4-05: запасной код страниц. $1.32/$0.044/$3.96 в пик (вне пика ×0.5) [?] курс" }
+  - { id: mimo-v2.6-pro,    provider: xiaomi,   providerModel: "mimo-v2.6-pro",                tier: T1, placement: external, context: 256000, price: { input: 50.42, cached: 0.42, output: 100.83 }, enabled: true, note: "V4-05: техревью. $0.435/$0.0036/$0.87 (вторичные источники) [?] курс; context [?]" }
+  - { id: mimo-v2.6-flash,  provider: xiaomi,   providerModel: "mimo-v2.6-flash",              tier: T1, placement: external, context: 256000, price: { input: 16.23, cached: 1.62, output: 32.45 }, enabled: true, note: "V4-05: запасной на массовых правках. $0.14/[?]/$0.28 [?] курс; context [?]" }
 
 catalog_rules:
   - "MUST: ids моделей — единственные имена в конфигурации, eval и логах (tools/eval использует те же id)"
@@ -132,19 +149,26 @@ call_types:            # полный список; route() с иным callType
   # V3-32 (D77 (4)): агент для совместимых репозиториев — код клиента
   - repo_code          # агент правит код репозитория клиента по задаче (инструменты чтения, записи и тестов в песочнице)
   - repo_review        # ревьюер изменения агента в репозитории клиента: модель другого семейства, чем агент
+  # v4 (V4-05, план v4 §3)
+  - page_edit          # массовые правки кода страниц («Укажи и измени», правки чатом)
 
 client_code:           # V3-32, D77 (4): «код клиента — только в модели с инференсом в РФ»
   call_types: [repo_code, repo_review]
   rule: "MUST: только T0 (reason callType_forbidden_T1) при любой политике организации, переключателе week0 и WIZARD_LLM_T1_RESERVE; цепочек T1 у маршрутов нет; жёсткая проверка роутера перед каждой попыткой (T1_FORBIDDEN, packages/llm policy.ts t1Forbidden); BYOK не обслуживает (их нет в BYOK_CALL_TYPES — ни прямой провайдер, ни шлюз пользователя). Свой vLLM (openai_compatible) — T0 и допустим"
   test: "packages/llm/test/client-code.test.ts (матрица политик × ПДн × подсказки × резерв × BYOK, все модели цепочек — T0-провайдеры) и apps/platform-api/test/v3-repo-agent.test.ts (каждый HTTP-вызов агента — только к хостам T0)"
 
-pii_forbidden_for_T1:
+pii_forbidden_for_T1:  # данные конечных клиентов — только РФ (D79 (3))
   always: [runtime_ai_extract, runtime_ai_generate, support]
   conditional:
     - callType: import_mapping
       rule: "T1 допустим ТОЛЬКО если вызывающий явно передал containsPiiHint=false (в запросе лишь заголовки, профили колонок и синтетические строки) И DLP по payload нашёл 0 ПДн. Иначе (hint отсутствует/true или DLP>0) → T0"
-  any_pii: [interview, interview_v3, brief_extract]   # сырой ввод владельца (чат, файл ТЗ): любая находка детектора → T0 (reason pii_detected_interview) — правило interview в коде до M2-28 (D50, шаг 5); brief_extract к тому же только T0 по маршруту
   test: "Юнит-тест роутера: для каждого callType из always × все orgPolicy × все containsPiiHint → tier=T0; для import_mapping без hint=false → T0"
+
+pii_boundary_v4:       # V4-05, product.yaml#decisions.D79_v4 (3); заменяет D2_models, D3_pii_boundary, D50, D62 для этапов сборки
+  build_stages: "все callType, кроме pii_forbidden_for_T1 и client_code (packages/llm isBuildCallType): интервью, бриф, дизайн, код, критик по картинкам, техревью"
+  rule: "MUST: этапы сборки идут к моделям allowlist без scrub (исходные сообщения, usage_record.scrubbed=false); картинки этапов сборки (снимки критика, логотип, референсы) идут за рубеж — T0 не принуждается. MUST: сигнальный фильтр — паспорт РФ, СНИЛС, номер карты (SIGNAL_PII_KINDS) во входе этапа → T0 (reason=pii_high_risk). Прочие находки детектора (телефон, ФИО, особые категории) этап не останавливают. Обратимые токены ПДн за рубеж не уходят никогда (assertNoTokens)"
+  rf_only: "runtime_ai_*, support, import_mapping — как было (pii_forbidden_for_T1); код репозиториев клиента — client_code (без изменений в v4, решение агента V4-05)"
+  test: "packages/llm/test/pii-boundary-v4.test.ts, routing.matrix.json"
 
 routing_algorithm:     # route({callType, messages, tools?, containsPiiHint?, orgPolicy: {ruOnly, t1Restricted}, ctx: {orgId, runId?, systemId?, budget?}}) (architecture.yaml#interfaces.llm_call) — детерминированно, policy-as-code
   - "1. dlp = pii.detect(все текстовые части messages, включая результаты инструментов)"
@@ -152,10 +176,10 @@ routing_algorithm:     # route({callType, messages, tools?, containsPiiHint?, or
   - "2a. Если orgPolicy.t1Restricted (регион организации запрещён условиями провайдера T1; platform/db.yaml#orgs.t1_restricted) → T0 (reason=policy_region_restricted). Политика не загружена (поле t1Restricted не передано) → считается true (fail-safe T0). Неизвестный регион организации (region_code NULL) T1 не ограничивает: платформа передаёт t1Restricted=false (product.yaml#decisions.D26_models_default, security/data-boundary.yaml#region_restriction.unknown_region)"
   - "3. Если callType ∈ pii_forbidden_for_T1.always или сработало conditional → T0 (reason=callType_forbidden_T1)"
   - "3a. Если containsPiiHint=true для любого callType → T0 (reason=pii_hint): вызывающий знает, что в payload реальные записи"
-  - "4. Если dlp содержит strong-виды security/data-boundary.yaml#detectors или special_context/biometric_context → T0 (reason=pii_high_risk)"
-  - "5. (Снят 05.10.2026, product.yaml#decisions.D50_brief_pii_routing.) Было: callType=interview и dlp.count>0 → T0 (pii_detected_interview). Теперь интервью проходит шаги 4, 6 и 7 как остальные callType: basic-ПДн заменяются заглушками, strong-виды → T0 по шагу 4 (реализация — M2-28)"
+  - "4. Этап сборки (pii_boundary_v4): в dlp паспорт, СНИЛС или номер карты → T0 (reason=pii_high_risk). Прочие callType: strong-виды security/data-boundary.yaml#detectors или special_context/biometric_context → T0 (reason=pii_high_risk). Вложения (картинки, PDF) вне этапов сборки → T0 (reason=pii_hint)"
+  - "5. (Снят; V4-05: правило any_pii — любая находка в интервью и брифе → T0 — удалено, D79 (3).)"
   - "6. Иначе tier = routes[callType].default_tier с учётом week0_decision.switch (reason=default_T1|default_T0)"
-  - "7. Если tier=T1: messages = pii.scrub(messages) (одноразовые заглушки [ТЕЛЕФОН_1], [EMAIL_1], [ФИО_1]… — формат security/data-boundary.yaml#scrub.placeholders, без таблицы соответствия); в журнал — только счётчики категорий"
+  - "7. Если tier=T1 и callType не этап сборки: messages = pii.scrub(messages) (одноразовые заглушки [ТЕЛЕФОН_1], [EMAIL_1], [ФИО_1]… — формат security/data-boundary.yaml#scrub.placeholders, без таблицы соответствия); в журнал — только счётчики категорий"
   - "8. Модель = первая доступная в routes[callType].chain[tier] (circuit closed, enabled, семейство не в avoidFamilies вызова). Нет доступной → фолбэк по fallback_rules"
   - "8a. Модель не проходит gateway_allowlist (хост или модель) → не вызывается: строка llm_calls status=error, error_code=MODEL_NOT_ALLOWED, дальше по цепочке (во всех режимах, и в fixture)"
   - "9. Неизвестная ситуация/исключение в политике → T0 (fail-safe)"
@@ -179,18 +203,20 @@ routes:                # chain.T1 пробуется только если tier=
   runtime_ai_extract:  { role: runtime,      default_tier: T0, chain: { T0: [gpt-oss-120b, gigachat-3.5, yandex-deepseek-v4-flash] },               temperature: 0.0, max_tokens: 1000,  timeout_ms: 30000, note: "[?] выбор первой модели подтвердить eval на русском извлечении" }
   runtime_ai_generate: { role: runtime,      default_tier: T0, chain: { T0: [gigachat-3.5, kimi-k2.6, yandex-qwen3-235b] },                         temperature: 0.7, max_tokens: 2000,  timeout_ms: 30000 }
   support:             { role: support,      default_tier: T0, chain: { T0: [kimi-k2.6, glm-5.1, deepseek-v4-pro] },                                temperature: 0.2, max_tokens: 4000,  timeout_ms: 120000 }
-  # v3 (V3-16): смешанный маршрут D77 (11) — GLM на арт-директоре и фирменных секциях, массовый код на недорогих моделях, критик со зрением, ревьюер другого семейства. Хвосты цепочек — модели «после пробы на русском (ступень 2, журнал трат V3-01)»
-  interview_v3:        { role: orchestrator, default_tier: T1, chain: { T1: [glm-5.3], T0: [glm-5.1, kimi-k2.6, deepseek-v4-pro, yandex-qwen3-235b] }, temperature: 0.3, max_tokens: 8000,  timeout_ms: 180000, note: "как interview: scrub; любая находка ПДн → T0 (pii_forbidden_for_T1.any_pii)" }
-  brief_extract:       { role: orchestrator, default_tier: T0, chain: { T0: [gigachat-3.5, kimi-k2.6, glm-5.1] },                                temperature: 0.0, max_tokens: 8000,  timeout_ms: 180000, note: "дешёвый T0: файл ТЗ и чат могут содержать ПДн и чужие записи; T1-цепочки нет (резерв D76 не применяется), правило any_pii — страховка" }
-  art_direction:       { role: designer,     default_tier: T1, chain: { T1: [glm-5.3], T0: [glm-5.1, kimi-k2.6] },                                    temperature: 0.4, max_tokens: 4000,  timeout_ms: 180000, note: "GLM (Design Arena 08.10.2026). GLM-5.2 у Cloud.ru внешняя — не T0. Логотип и референсы картинками → T0 (policy), зрение из цепочки есть у kimi-k2.6" }
-  page_compose:        { role: builder,      default_tier: T1, chain: { T1: [glm-5.3, glm-5.3-flash], T0: [kimi-k2.6, deepseek-v4-pro, glm-5.1, qwen3-coder-next, yandex-deepseek-v4-flash] }, temperature: 0.2, max_tokens: 16000, timeout_ms: 480000, note: "массовый код страниц и тексты: glm-5.3 с кэшем Z.ai (≈ 195 ₽ за 2M); glm-5.3-flash и yandex-deepseek-v4-flash — после пробы на русском (ступень 2, журнал трат V3-01). MiMo-V2.5-Pro и DeepSeek-V4-Flash у Cloud.ru внешние — не включены; DeepSeek напрямую (deepseek-v4.1-flash) — только eval до замера D54" }
-  signature_section:   { role: builder,      default_tier: T1, chain: { T1: [glm-5.3], T0: [glm-5.1, kimi-k2.6, deepseek-v4-pro] },                   temperature: 0.4, max_tokens: 12000, timeout_ms: 480000, note: "1–2 фирменные секции на GLM" }
-  critic_visual:       { role: critic,       default_tier: T1, chain: { T1: [glm-5.3-flash, glm-4.6v], T0: [kimi-k2.6, qwen3.6-35b] },             temperature: 0.1, max_tokens: 4000,  timeout_ms: 180000, note: "только модели с vision: true. D45: сначала T1 — после маскирования изображений по D62 (M2-28); до тех пор вызов с изображениями идёт на T0 (policy.ts: вложения → T0). T1-модели и qwen3.6-35b — после пробы на русском (ступень 2, журнал трат V3-01)" }
-  techreview:          { role: reviewer,     default_tier: T0, chain: { T0: [gpt-oss-120b, gigachat-3.5, deepseek-v4-pro, kimi-k2.6] },              temperature: 0.1, max_tokens: 8000,  timeout_ms: 300000, note: "семейство MUST отличаться от строителя прогона: голова — не GLM и не Kimi (головы art_direction, signature_section, page_compose); вызывающий передаёт avoidFamilies семейств моделей строителя (V3-15). Порядок по пробе формы 09.10.2026 (v3-004): gpt-oss-120b отвечает инструментом; deepseek-v4-pro у Cloud.ru отвечает 500 на любой запрос с инструментом — в конце цепочки" }
+  # v3/v4: роли плана v4 §3 (V4-05, D79 (5)); было — смешанный маршрут D77 (11) — GLM на арт-директоре и фирменных секциях, массовый код на недорогих моделях, критик со зрением, ревьюер другого семейства. Хвосты цепочек — модели «после пробы на русском (ступень 2, журнал трат V3-01)»
+  interview_v3:        { role: orchestrator, default_tier: T1, chain: { T1: [glm-5.3], T0: [kimi-k2.6, glm-5.1, deepseek-v4-pro, yandex-qwen3-235b] }, temperature: 0.3, max_tokens: 8000,  timeout_ms: 180000, note: "V4-05: GLM-5.3, запасная Kimi K2.6 (Cloud.ru); без scrub (pii_boundary_v4)" }
+  brief_extract:       { role: orchestrator, default_tier: T1, chain: { T1: [glm-5.3], T0: [kimi-k2.6, glm-5.1, deepseek-v4-pro, yandex-qwen3-235b] }, temperature: 0.0, max_tokens: 8000,  timeout_ms: 180000, note: "V4-05: бриф — этап сборки (D79 (3)): GLM-5.3 без scrub; паспорт, СНИЛС, карта в файле ТЗ → T0" }
+  art_direction:       { role: designer,     default_tier: T1, chain: { T1: [kimi-k3, glm-5.3], T0: [kimi-k2.6, glm-5.1] },                          temperature: 0.4, max_tokens: 6000,  timeout_ms: 240000, note: "V4-05: Kimi K3 (temperature 1 модели), запасная GLM-5.3; логотип и референсы картинками — тоже за рубеж (pii_boundary_v4)" }
+  page_compose:        { role: builder,      default_tier: T1, chain: { T1: [kimi-k3, glm-5.3, deepseek-v4-pro-0813], T0: [kimi-k2.6, deepseek-v4-pro, glm-5.1, qwen3-coder-next, yandex-deepseek-v4-flash] }, temperature: 0.2, max_tokens: 16000, timeout_ms: 480000, note: "V4-05: код страниц — Kimi K3, затем GLM-5.3 и DeepSeek V4-Pro; первый экран — 2 кандидата разных семейств: второй вызов с avoidFamilies семейства первого" }
+  signature_section:   { role: builder,      default_tier: T1, chain: { T1: [glm-5.3, kimi-k3, deepseek-v4-pro-0813], T0: [kimi-k2.6, deepseek-v4-pro, glm-5.1, qwen3-coder-next, yandex-deepseek-v4-flash] }, temperature: 0.4, max_tokens: 16000, timeout_ms: 480000, note: "V4-05: голова — другое семейство, чем у page_compose (второй кандидат); уходит в V4-06" }
+  critic_visual:       { role: critic,       default_tier: T1, chain: { T1: [glm-5v-turbo, glm-4.6v], T0: [kimi-k2.6, qwen3.6-35b] },                temperature: 0.1, max_tokens: 4000,  timeout_ms: 240000, note: "V4-05: только vision; запасные по плану §3 — Kimi K2.6 и Qwen-VL в РФ; критик и судья — не семейство автора: вызывающий передаёт avoidFamilies семейств авторов (modelFamilyOf); снимки идут за рубеж (pii_boundary_v4)" }
+  techreview:          { role: reviewer,     default_tier: T1, chain: { T1: [mimo-v2.6-pro], T0: [gpt-oss-120b, gigachat-3.5, deepseek-v4-pro, kimi-k2.6] }, temperature: 0.1, max_tokens: 8000,  timeout_ms: 300000, note: "V4-05: MiMo V2.6 Pro, запасная gpt-oss-120b; семейство MUST отличаться от строителя прогона (avoidFamilies, V3-15). deepseek-v4-pro у Cloud.ru отвечает 500 на запрос с инструментом — в конце цепочки" }
   research:            { role: researcher,   default_tier: T0, chain: { T0: [gpt-oss-120b, gigachat-3.5, kimi-k2.6] },                               temperature: 0.2, max_tokens: 4000,  timeout_ms: 120000, note: "дешёвый T0: выжимка фактов о нише из поиска и страниц (V3-05)" }
   # V3-32 (D77 (4)): код клиента — только T0 (client_code); голова ревьюера — другого семейства, чем голова агента, вызывающий передаёт avoidFamilies семейства модели агента
   repo_code:           { role: repo_agent,   default_tier: T0, chain: { T0: [glm-5.1, qwen3-coder-next, kimi-k2.6, deepseek-v4-pro] },              temperature: 0.1, max_tokens: 16000, timeout_ms: 480000, note: "агент репозитория: чтение файлов, правка, тесты в песочнице без сети; потолок задачи 80 ₽ (как правка D77 (11)); glm-5.1 — первой: у Cloud.ru стабильно отвечает инструментом (D74), deepseek-v4-pro отвечает 500 на запрос с инструментом (проба формы 09.10.2026)" }
   repo_review:         { role: reviewer,     default_tier: T0, chain: { T0: [gpt-oss-120b, gigachat-3.5, deepseek-v4-pro, kimi-k2.6] },              temperature: 0.1, max_tokens: 8000,  timeout_ms: 300000, note: "ревьюер изменения агента: только T0, семейство MUST отличаться от модели агента (avoidFamilies)" }
+  # V4-05 (план v4 §3): массовые правки — DeepSeek V4.1 Flash, запасная MiMo V2.6 Flash; пока у обоих нулевой баланс — glm-5.3-flash и glm-5.3
+  page_edit:           { role: editor,       default_tier: T1, chain: { T1: [deepseek-v4.1-flash, mimo-v2.6-flash, glm-5.3-flash, glm-5.3], T0: [deepseek-v4-pro, kimi-k2.6, glm-5.1] }, temperature: 0.2, max_tokens: 16000, timeout_ms: 300000 }
 
 fallback_rules:
   - "MUST: при открытом circuit breaker, исчерпанных ретраях или 5xx/timeout модель берётся следующей в цепочке своего tier; затем T1 → T0 (reason=fallback_*)"
@@ -205,7 +231,7 @@ fallback_rules:
 
 # ---------------------------------------------------------------- Allowlist шлюза (V3-16, D18)
 gateway_allowlist:     # packages/llm/src/allowlist.ts; проверка перед каждой попыткой вызова (routing_algorithm 8a) и при создании реестра для openai_compatible
-  providers: [cloudru, yandex, zai, moonshot, deepseek, openai_compatible]
+  providers: [cloudru, yandex, zai, moonshot, deepseek, xiaomi, ollama, openai_compatible]
   western_hosts: [openai.com, openai.azure.com, anthropic.com, claude.ai, googleapis.com, google.com, x.ai, grok.com, openrouter.ai, vercel.sh, amazonaws.com]   # хост base URL или его суффикс
   western_closed_models: "claude, gemini, imagen, grok, chatgpt, dall-e, sora, gpt-* (кроме gpt-oss), o1…o9, text-embedding-3; префиксы anthropic/, x-ai/, xai/ — по имени модели у любого провайдера. Открытые веса (gpt-oss, whisper, gemma) допустимы (D18)"
   cloudru: "providerModel ∈ providers.cloudru.internal_models и placement=internal; остальной каталог Cloud.ru (партнёрские модели) отклоняется"

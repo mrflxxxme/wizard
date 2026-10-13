@@ -30,14 +30,14 @@ export const PROBE_MAX_CAP_RUB = 30;
  * the probe reports the model actually served.
  */
 export const PROBE_HEADS = {
+  // V4-05 (plan v4 §3): the role heads; build stages go abroad as is (D79 (3)), images included.
   interview_v3: { model: "glm-5.3", tier: "T1", price: { input: 162, output: 510 } },
-  brief_extract: { model: "gigachat-3.5", tier: "T0", price: { input: 96.22, output: 288.6 } },
-  art_direction: { model: "glm-5.3", tier: "T1", price: { input: 162, output: 510 } },
-  page_compose: { model: "glm-5.3", tier: "T1", price: { input: 162, output: 510 } },
+  brief_extract: { model: "glm-5.3", tier: "T1", price: { input: 162, output: 510 } },
+  art_direction: { model: "kimi-k3", tier: "T1", price: { input: 348, output: 1739 } },
+  page_compose: { model: "kimi-k3", tier: "T1", price: { input: 348, output: 1739 } },
   signature_section: { model: "glm-5.3", tier: "T1", price: { input: 162, output: 510 } },
-  // A call with an image goes to T0 (llm policy: attachments → T0): the vision head of the T0 chain.
-  critic_visual: { model: "kimi-k2.6", tier: "T0", price: { input: 175.68, output: 725.9 } },
-  techreview: { model: "gpt-oss-120b", tier: "T0", price: { input: 15.86, output: 61 } },
+  critic_visual: { model: "glm-5v-turbo", tier: "T1", price: { input: 139.08, output: 463.6 } },
+  techreview: { model: "mimo-v2.6-pro", tier: "T1", price: { input: 50.42, output: 100.83 } },
   research: { model: "gpt-oss-120b", tier: "T0", price: { input: 15.86, output: 61 } },
 };
 /**
@@ -131,7 +131,15 @@ export async function probeMain(cfg, d) {
     );
   };
   const env = cfg.fake
-    ? { ...d.env, CLOUDRU_API_KEY: "probe-fake", ZAI_API_KEY: "probe-fake", YANDEX_API_KEY: "probe-fake" }
+    ? {
+        ...d.env,
+        CLOUDRU_API_KEY: "probe-fake",
+        ZAI_API_KEY: "probe-fake",
+        YANDEX_API_KEY: "probe-fake",
+        KIMI_API_KEY: "probe-fake",
+        MIMO_API_KEY: "probe-fake",
+        DEEPSEEK_API_KEY: "probe-fake",
+      }
     : d.env;
   const router = d.createRouter({
     mode: "live",

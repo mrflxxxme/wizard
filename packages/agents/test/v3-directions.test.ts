@@ -195,7 +195,7 @@ describe("three directions by code", () => {
 });
 
 describe("texts: one model call for three voices", () => {
-  test("recorded answer through the fixture router: texts of the model, scrubbed, ≤ 40 ₽ by the route stats", async () => {
+  test("recorded answer through the fixture router: texts of the model, not scrubbed (D79 (3)), ≤ 40 ₽ by the route stats", async () => {
     const p = await baseline();
     const ids = p.directions.map((d) => d.archetype);
     const facts = briefFacts(BRIEF, NAME, NICHE);
@@ -242,7 +242,7 @@ describe("texts: one model call for three voices", () => {
     expect(r.directions.map((d) => [d.archetype, d.header, d.hero])).toEqual(
       p.directions.map((d) => [d.archetype, d.header, d.hero]),
     );
-    expect(scrubbed).toEqual([true]);
+    expect(scrubbed).toEqual([false]);
     expect(r.calls).toBe(1);
     expect(r.costRub).toBeGreaterThan(0);
     expect(r.costRub).toBeLessThanOrEqual(40);

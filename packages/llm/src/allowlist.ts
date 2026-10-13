@@ -18,6 +18,8 @@ export const ALLOWED_PROVIDERS: readonly ProviderId[] = [
   "zai",
   "moonshot",
   "deepseek",
+  "xiaomi",
+  "ollama",
   "openai_compatible",
 ];
 

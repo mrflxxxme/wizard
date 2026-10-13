@@ -6,7 +6,15 @@ import { LlmError } from "./errors.js";
 import type { ImageTokenRule } from "./tokens.js";
 import { CALL_TYPES, type CallType, type OrgPolicy, type Tier } from "./types.js";
 
-export type ProviderId = "cloudru" | "yandex" | "zai" | "moonshot" | "deepseek" | "openai_compatible";
+export type ProviderId =
+  | "cloudru"
+  | "yandex"
+  | "zai"
+  | "moonshot"
+  | "deepseek"
+  | "xiaomi"
+  | "ollama"
+  | "openai_compatible";
 
 /**
  * Prompt cache of a provider (models.yaml#providers.*.prompt_cache): auto — implicit prefix cache, cached input reported
@@ -43,6 +51,8 @@ export interface ModelDef {
   vision?: true;
   /** How the model reads an image (models.yaml#models[].image): the upper bound counts images by it, not their base64. */
   image?: ImageTokenRule;
+  /** The only temperature the provider accepts for this model (kimi-k3: 1); the route's temperature is replaced by it. */
+  temperature?: number;
 }
 
 export interface RouteDef {
@@ -95,17 +105,17 @@ export const PROVIDERS: Record<ProviderId, ProviderDef> = {
     termsCheckedAt: "2026-09-30",
     promptCache: "auto",
   },
+  // D79 (5): Kimi K3 directly at Moonshot for the build stages (D54 lifted).
   moonshot: {
     id: "moonshot",
     tier: "T1",
     baseUrlEnv: "MOONSHOT_BASE_URL",
-    defaultBaseUrl: "",
-    apiKeyEnv: "MOONSHOT_API_KEY",
-    enabled: false,
-    termsCheckedAt: "2026-09-30",
+    defaultBaseUrl: "https://api.moonshot.ai/v1",
+    apiKeyEnv: "KIMI_API_KEY",
+    enabled: true,
+    termsCheckedAt: "2026-10-13",
     promptCache: "auto",
   },
-  // Eval challenger only (models.yaml#providers.deepseek): its models are enabled=false and in no route chain.
   deepseek: {
     id: "deepseek",
     tier: "T1",
@@ -113,8 +123,30 @@ export const PROVIDERS: Record<ProviderId, ProviderDef> = {
     defaultBaseUrl: "https://api.deepseek.com",
     apiKeyEnv: "DEEPSEEK_API_KEY",
     enabled: true,
-    termsCheckedAt: "2026-10-01",
+    termsCheckedAt: "2026-10-13",
     promptCache: "auto",
+  },
+  // D79 (4): Xiaomi MiMo V2.6 (techreview, mass edits).
+  xiaomi: {
+    id: "xiaomi",
+    tier: "T1",
+    baseUrlEnv: "MIMO_BASE_URL",
+    defaultBaseUrl: "https://api.xiaomimimo.com/v1",
+    apiKeyEnv: "MIMO_API_KEY",
+    enabled: true,
+    termsCheckedAt: "2026-10-13",
+    promptCache: "auto",
+  },
+  // D79 (5): Ollama Cloud — the founder's benchmarks only (WIZARD_LLM_BENCH=1), never a route chain (ollamaFromEnv).
+  ollama: {
+    id: "ollama",
+    tier: "T1",
+    baseUrlEnv: "OLLAMA_BASE_URL",
+    defaultBaseUrl: "https://ollama.com/v1",
+    apiKeyEnv: "OLLAMA_API_KEY",
+    enabled: false,
+    termsCheckedAt: "2026-10-13",
+    promptCache: "none",
   },
   // Own OpenAI-compatible server (vLLM) in the RF contour, D77 (13): enabled by createRegistry when the env names a base
   // URL and models (openAiCompatFromEnv); T0 like Cloud.ru internal models.
@@ -143,6 +175,7 @@ const m = (
   enabled = true,
   vision = false,
   image?: ImageTokenRule,
+  temperature?: number,
 ): ModelDef => ({
   id,
   provider,
@@ -154,6 +187,7 @@ const m = (
   enabled,
   ...(vision ? { vision: true as const } : {}),
   ...(image ? { image } : {}),
+  ...(temperature !== undefined ? { temperature } : {}),
 });
 
 export const MODELS: ModelDef[] = [
@@ -223,31 +257,31 @@ export const MODELS: ModelDef[] = [
     px: 28,
     max: 16384,
   }),
-  m("kimi-k3", "moonshot", "kimi-k3", "T1", "external", 256000, 348, 34.8, 1739, false),
+  // V4-05 (D79 (5)): Z.ai vision — the visual critic and judge (probe 13.10.2026: glm-5v is unknown, glm-5v-turbo sees).
+  m("glm-5v-turbo", "zai", "glm-5v-turbo", "T1", "external", 203000, 139.08, 27.82, 463.6, true, true, {
+    px: 28,
+    max: 16384,
+  }),
+  // Kimi K3 accepts only temperature 1 and sees images (probe 13.10.2026).
   m(
-    "deepseek-v4.1-flash",
-    "deepseek",
-    "deepseek-flash",
+    "kimi-k3",
+    "moonshot",
+    "kimi-k3",
     "T1",
     "external",
-    1000000,
-    34.77,
-    0.7,
-    139.08,
-    false,
+    256000,
+    348,
+    34.8,
+    1739,
+    true,
+    true,
+    { px: 28, max: 16384 },
+    1,
   ),
-  m(
-    "deepseek-v4-pro-0813",
-    "deepseek",
-    "deepseek-v4-pro",
-    "T1",
-    "external",
-    1000000,
-    152.99,
-    5.1,
-    458.96,
-    false,
-  ),
+  m("deepseek-v4.1-flash", "deepseek", "deepseek-flash", "T1", "external", 1000000, 34.77, 0.7, 139.08),
+  m("deepseek-v4-pro-0813", "deepseek", "deepseek-v4-pro", "T1", "external", 1000000, 152.99, 5.1, 458.96),
+  m("mimo-v2.6-pro", "xiaomi", "mimo-v2.6-pro", "T1", "external", 256000, 50.42, 0.42, 100.83),
+  m("mimo-v2.6-flash", "xiaomi", "mimo-v2.6-flash", "T1", "external", 256000, 16.23, 1.62, 32.45),
 ];
 
 const r = (
@@ -261,6 +295,9 @@ const r = (
 
 const ORCH_T0 = ["glm-5.1", "kimi-k2.6", "deepseek-v4-pro", "yandex-qwen3-235b"];
 const CODE_T0 = ["deepseek-v4-pro", "glm-5.1", "kimi-k2.6", "qwen3-coder-next"];
+const ORCH_V4_T0 = ["kimi-k2.6", "glm-5.1", "deepseek-v4-pro", "yandex-qwen3-235b"];
+const PAGE_T1 = ["kimi-k3", "glm-5.3", "deepseek-v4-pro-0813"];
+const PAGE_T0 = ["kimi-k2.6", "deepseek-v4-pro", "glm-5.1", "qwen3-coder-next", "yandex-deepseek-v4-flash"];
 
 /**
  * Call types where zai models reason with effort high (D75, founder 2026-10-06): the card and the brief/template choice
@@ -352,42 +389,52 @@ export const ROUTES: Record<CallType, RouteDef> = {
     30000,
   ),
   support: r("support", "T0", { T0: ["kimi-k2.6", "glm-5.1", "deepseek-v4-pro"] }, 0.2, 4000, 120000),
-  // V3-16 (builder-v3.md C7): the stages of the v3 pipeline. Models verified in the repo head the chains; probe
-  // candidates (qwen3.6-35b, glm-5.3-flash, glm-4.6v, yandex-deepseek-v4-flash for page code) sit at the tails.
-  interview_v3: r("orchestrator", "T1", { T1: ["glm-5.3"], T0: ORCH_T0 }, 0.3, 8000, 180000),
-  brief_extract: r("orchestrator", "T0", { T0: ["gigachat-3.5", "kimi-k2.6", "glm-5.1"] }, 0.0, 8000, 180000),
-  art_direction: r("designer", "T1", { T1: ["glm-5.3"], T0: ["glm-5.1", "kimi-k2.6"] }, 0.4, 4000, 180000),
-  page_compose: r(
-    "builder",
+  // V4-05 (D79 (5), plan v4 §3): the roles of the v3/v4 pipeline. Build stages go abroad without scrub (policy.ts);
+  // T0 chains stay the RF reserve. Providers with an empty balance (402) are skipped for 30 min (fallback_rules).
+  interview_v3: r("orchestrator", "T1", { T1: ["glm-5.3"], T0: ORCH_V4_T0 }, 0.3, 8000, 180000),
+  brief_extract: r("orchestrator", "T1", { T1: ["glm-5.3"], T0: ORCH_V4_T0 }, 0.0, 8000, 180000),
+  art_direction: r(
+    "designer",
     "T1",
-    {
-      T1: ["glm-5.3", "glm-5.3-flash"],
-      T0: ["kimi-k2.6", "deepseek-v4-pro", "glm-5.1", "qwen3-coder-next", "yandex-deepseek-v4-flash"],
-    },
-    0.2,
-    16000,
-    480000,
+    { T1: ["kimi-k3", "glm-5.3"], T0: ["kimi-k2.6", "glm-5.1"] },
+    0.4,
+    6000,
+    240000,
   ),
+  page_compose: r("builder", "T1", { T1: PAGE_T1, T0: PAGE_T0 }, 0.2, 16000, 480000),
+  // The second candidate of the first screen: another family heads it (the caller also passes avoidFamilies).
   signature_section: r(
     "builder",
     "T1",
-    { T1: ["glm-5.3"], T0: ["glm-5.1", "kimi-k2.6", "deepseek-v4-pro"] },
+    { T1: ["glm-5.3", "kimi-k3", "deepseek-v4-pro-0813"], T0: PAGE_T0 },
     0.4,
-    12000,
+    16000,
     480000,
   ),
+  page_edit: r(
+    "editor",
+    "T1",
+    {
+      T1: ["deepseek-v4.1-flash", "mimo-v2.6-flash", "glm-5.3-flash", "glm-5.3"],
+      T0: ["deepseek-v4-pro", "kimi-k2.6", "glm-5.1"],
+    },
+    0.2,
+    16000,
+    300000,
+  ),
+  // Vision only; the caller passes avoidFamilies of the authors, so a chain always keeps another family (test).
   critic_visual: r(
     "critic",
     "T1",
-    { T1: ["glm-5.3-flash", "glm-4.6v"], T0: ["kimi-k2.6", "qwen3.6-35b"] },
+    { T1: ["glm-5v-turbo", "glm-4.6v"], T0: ["kimi-k2.6", "qwen3.6-35b"] },
     0.1,
     4000,
-    180000,
+    240000,
   ),
   techreview: r(
     "reviewer",
-    "T0",
-    { T0: ["gpt-oss-120b", "gigachat-3.5", "deepseek-v4-pro", "kimi-k2.6"] },
+    "T1",
+    { T1: ["mimo-v2.6-pro"], T0: ["gpt-oss-120b", "gigachat-3.5", "deepseek-v4-pro", "kimi-k2.6"] },
     0.1,
     8000,
     300000,
@@ -419,16 +466,27 @@ export const ROUTES: Record<CallType, RouteDef> = {
  */
 export const CLIENT_CODE_CALL_TYPES: readonly CallType[] = ["repo_code", "repo_review"];
 
-/** models.yaml#pii_forbidden_for_T1 */
+/** models.yaml#pii_forbidden_for_T1: the data of end clients — RF only (D79 (3)). */
 export const PII_FORBIDDEN_FOR_T1 = {
   always: ["runtime_ai_extract", "runtime_ai_generate", "support"] as readonly CallType[],
   conditional: ["import_mapping"] as readonly CallType[],
-  /**
-   * Raw owner input (chat, brief files): any detector finding → T0 (reason pii_detected_interview) until M2-28 moves
-   * interview to D50; the v3 interview and the brief extraction follow the interview.
-   */
-  anyPii: ["interview", "interview_v3", "brief_extract"] as readonly CallType[],
 };
+
+/**
+ * models.yaml#pii_boundary_v4 (D79 (3)): build stages — every call type but the end clients' data (PII_FORBIDDEN_FOR_T1)
+ * and the client's repository code (CLIENT_CODE_CALL_TYPES). They go abroad without scrub; only the signal filter
+ * (SIGNAL_PII_KINDS) keeps a call in RF. Images of build stages go abroad too.
+ */
+export function isBuildCallType(callType: CallType): boolean {
+  return (
+    !PII_FORBIDDEN_FOR_T1.always.includes(callType) &&
+    !PII_FORBIDDEN_FOR_T1.conditional.includes(callType) &&
+    !CLIENT_CODE_CALL_TYPES.includes(callType)
+  );
+}
+
+/** Signal filter of the build stages (D79 (3)): a passport, a SNILS or a card number in the input → T0 (pii_high_risk). */
+export const SIGNAL_PII_KINDS = ["passport_ru", "snils", "card"] as const;
 
 const FAMILY_RE = /glm|kimi|deepseek|qwen|gpt-oss|gigachat|minimax|mimo|llama|mistral|gemma|yandexgpt/;
 
@@ -439,6 +497,12 @@ const FAMILY_RE = /glm|kimi|deepseek|qwen|gpt-oss|gigachat|minimax|mimo|llama|mi
 export function modelFamily(model: Pick<ModelDef, "providerModel">): string {
   const name = model.providerModel.toLowerCase();
   return FAMILY_RE.exec(name)?.[0] ?? name;
+}
+
+/** Family of a registry model id (RouteOutput.model; `byok:` ids keep the model name); unknown ids → the id itself. */
+export function modelFamilyOf(reg: Pick<Registry, "models">, id: string): string {
+  const model = reg.models.find((x) => x.id === id);
+  return modelFamily({ providerModel: model?.providerModel ?? id.replace(/^byok:/, "") });
 }
 
 /** models.yaml#week0_decision.state: t1_default=true until the week-0 eval report. */
@@ -514,6 +578,36 @@ export function openAiCompatFromEnv(env: Record<string, string | undefined>): Op
   };
 }
 
+/** Env of the benchmark-only Ollama Cloud provider (models.yaml#providers.ollama, D79 (5)). */
+export const OLLAMA_ENV = { bench: "WIZARD_LLM_BENCH", models: "WIZARD_LLM_OLLAMA_MODELS" } as const;
+
+/**
+ * Ollama Cloud for the founder's benchmarks (D79 (5)): only with WIZARD_LLM_BENCH=1 and a list of models; ids
+ * `ollama:<name>`, price 0 (a subscription), in no route chain — a benchmark names them explicitly. null otherwise.
+ */
+export function ollamaFromEnv(
+  env: Record<string, string | undefined>,
+): { provider: ProviderDef; models: ModelDef[] } | null {
+  if (env[OLLAMA_ENV.bench] !== "1") return null;
+  const names = (env[OLLAMA_ENV.models] ?? "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+  if (names.length === 0) return null;
+  const closed = names.filter(isWesternClosedModel);
+  if (closed.length > 0)
+    throw new LlmError("MODEL_NOT_ALLOWED", "Модель не разрешена для вызова на ключах платформы.", {
+      env: OLLAMA_ENV.models,
+      models: closed,
+    });
+  return {
+    provider: { ...PROVIDERS.ollama, enabled: true },
+    models: names.map((name) =>
+      m(`ollama:${name}`, "ollama", name, "T1", "external", OPENAI_COMPAT_CONTEXT, 0, 0, 0),
+    ),
+  };
+}
+
 /** Routes with the own server's models: first in the T0 chains of compat.first, the last T0 reserve elsewhere. */
 function withCompat(routes: Record<CallType, RouteDef>, compat: OpenAiCompat): Record<CallType, RouteDef> {
   const ids = compat.models.map((x) => x.id);
@@ -538,9 +632,14 @@ export function createRegistry(
   env: Record<string, string | undefined> = process.env,
 ): Registry {
   const compat = openAiCompatFromEnv(env);
+  const ollama = ollamaFromEnv(env);
   return {
-    providers: compat ? { ...PROVIDERS, openai_compatible: compat.provider } : PROVIDERS,
-    models: compat ? [...MODELS, ...compat.models] : MODELS,
+    providers: {
+      ...PROVIDERS,
+      ...(compat ? { openai_compatible: compat.provider } : {}),
+      ...(ollama ? { ollama: ollama.provider } : {}),
+    },
+    models: [...MODELS, ...(compat?.models ?? []), ...(ollama?.models ?? [])],
     routes: compat ? withCompat(ROUTES, compat) : ROUTES,
     buildDefaultTier: overrides.buildDefaultTier ?? buildDefaultTierFromEnv(env),
     rubPerCredit: 5,

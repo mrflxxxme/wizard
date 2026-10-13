@@ -178,8 +178,8 @@ describe("with a model (recorded answer through the fixture router)", () => {
     expect(cssHex(r.design.palette.light.accent)).toBe("#B5541B");
     expect(designLintErrors(r.design)).toEqual([]);
     expect(r.candidates.find((c) => c.archetype === second)?.design).toEqual(r.design);
-    // Everything that goes to T1 is scrubbed (AGENTS.md); one call.
-    expect(scrubbed).toEqual([true]);
+    // V4-05 (D79 (3)): a build stage goes abroad as is; one call.
+    expect(scrubbed).toEqual([false]);
     expect(r.stats?.calls).toBe(1);
     console.info(
       `V3-07 арт-директор на записанном ответе: ${((milli / 1000) * llm.rubPerCredit).toFixed(3)} ₽`,

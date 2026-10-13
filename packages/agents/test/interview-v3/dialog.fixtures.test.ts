@@ -77,7 +77,7 @@ async function recordAndReplay(name: string, script: readonly ScriptStep[], answ
 }
 
 describe("interview v3 on recorded answers (fixture router)", () => {
-  test("the dental dialog to the end: 3 questions, brief ready, the same brief as recorded; everything to T1 scrubbed", async () => {
+  test("the dental dialog to the end: 3 questions, brief ready, the same brief as recorded; abroad as is (D79 (3))", async () => {
     const r = await recordAndReplay("interview-v3-dental", DENTAL_SCRIPT, DENTAL_ANSWERS);
     expect(r.lines.map((l) => l.callType)).toEqual(Array(5).fill("interview_v3"));
     const last = r.replayed.at(-1) as InterviewV3Result;
@@ -91,7 +91,8 @@ describe("interview v3 on recorded answers (fixture router)", () => {
     ]);
     expect(blockingGaps(last.session.brief)).toEqual([]);
     expect(last.session.brief.qa.map((x) => x.chosen)).toEqual(["recommended", "delegated", "custom"]);
-    expect(r.scrubbed).toEqual(Array(5).fill(true));
+    // V4-05 (D79 (3)): the interview is a build stage — abroad as is.
+    expect(r.scrubbed).toEqual(Array(5).fill(false));
     expect(r.rub).toBeGreaterThan(0);
     console.info(`V3-03 интервью на записанных ответах (3 вопроса, 5 вызовов): ${r.rub.toFixed(2)} ₽`);
   });

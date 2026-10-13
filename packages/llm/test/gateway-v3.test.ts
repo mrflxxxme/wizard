@@ -59,9 +59,6 @@ const V3: readonly CallType[] = [
   "techreview",
   "research",
 ];
-/** Models added by V3-16 as probe candidates; yandex-deepseek-v4-flash is new to page code. */
-const PROBES = new Set(["qwen3.6-35b", "glm-5.3-flash", "glm-4.6v"]);
-const PROBE_NOTE = "после пробы на русском (ступень 2, журнал трат V3-01)";
 const model = (id: string): ModelDef => {
   const found = MODELS.find((x) => x.id === id);
   if (!found) throw new Error(id);
@@ -69,60 +66,24 @@ const model = (id: string): ModelDef => {
 };
 
 describe("v3 routes (models.yaml#routes, builder-v3.md C7)", () => {
-  test("every v3 call type is routed; default tiers as decided", () => {
+  test("every v3 call type is routed; default tiers as decided (V4-05: brief and techreview go abroad too)", () => {
     for (const ct of V3) expect(CALL_TYPES).toContain(ct);
     const tiers = Object.fromEntries(V3.map((ct) => [ct, ROUTES[ct].defaultTier]));
     expect(tiers).toEqual({
       interview_v3: "T1",
-      brief_extract: "T0",
+      brief_extract: "T1",
       art_direction: "T1",
       page_compose: "T1",
       signature_section: "T1",
       critic_visual: "T1",
-      techreview: "T0",
+      techreview: "T1",
       research: "T0",
     });
   });
 
-  test("art director and signature sections on GLM: glm-5.3 on T1, GLM first on T0", () => {
-    for (const ct of ["art_direction", "signature_section"] as const) {
-      expect(ROUTES[ct].chain.T1?.[0]).toBe("glm-5.3");
-      expect(modelFamily(model(ROUTES[ct].chain.T0?.[0] as string))).toBe("glm");
-    }
-  });
-
-  test("probe candidates only at the tails, with the probe note in models.yaml; heads were verified before", () => {
-    for (const ct of CALL_TYPES) {
-      for (const [tier, ids] of Object.entries(ROUTES[ct].chain)) {
-        const firstProbe = ids.findIndex((id) => PROBES.has(id));
-        if (firstProbe < 0) continue;
-        // After the first probe model there is no verified model in the same tier chain.
-        expect(
-          ids.slice(firstProbe).every((id) => PROBES.has(id)),
-          `${ct}.${tier}`,
-        ).toBe(true);
-        // critic_visual on T1 has no verified vision model at all (vision on T1 waits for D62, M2-28).
-        if (!(ct === "critic_visual" && tier === "T1"))
-          expect(firstProbe, `${ct}.${tier}`).toBeGreaterThan(0);
-      }
-    }
-    for (const id of PROBES) {
-      const line = YAML.split("\n").find((l) => l.includes(`{ id: ${id},`)) ?? "";
-      expect(line, id).toContain(PROBE_NOTE);
-    }
-    const page = ROUTES.page_compose.chain.T0 ?? [];
-    expect(page.at(-1)).toBe("yandex-deepseek-v4-flash");
-    expect(YAML.split("\n").find((l) => l.includes("  page_compose:"))).toContain(PROBE_NOTE);
-  });
-
-  test("page code is cheaper than the art director; research and brief extraction start on cheap T0 models", () => {
-    const head = (ct: CallType, tier: "T0" | "T1") => model(ROUTES[ct].chain[tier]?.[0] as string);
-    expect(head("page_compose", "T0").price.input).toBeLessThan(head("art_direction", "T0").price.input);
-    expect(head("page_compose", "T0").price.output).toBeLessThan(head("art_direction", "T0").price.output);
-    for (const ct of ["research", "brief_extract"] as const) {
-      expect(ROUTES[ct].chain.T1).toBeUndefined();
-      expect(head(ct, "T0").price.input).toBeLessThanOrEqual(100);
-    }
+  test("research starts on a cheap T0 model and has no T1 chain", () => {
+    expect(ROUTES.research.chain.T1).toBeUndefined();
+    expect(model(ROUTES.research.chain.T0?.[0] as string).price.input).toBeLessThanOrEqual(100);
   });
 
   test("critic_visual: vision models only", () => {
@@ -134,6 +95,7 @@ describe("v3 routes (models.yaml#routes, builder-v3.md C7)", () => {
     const builder = new Set<string>();
     for (const ct of ["art_direction", "signature_section", "page_compose"] as const)
       for (const ids of Object.values(ROUTES[ct].chain)) builder.add(modelFamily(model(ids[0] as string)));
+    expect(builder.has(modelFamily(model(ROUTES.techreview.chain.T1?.[0] as string)))).toBe(false);
     const chain = (ROUTES.techreview.chain.T0 ?? []).map(model);
     expect(builder.has(modelFamily(chain[0] as ModelDef))).toBe(false);
     expect(chain.filter((x) => !builder.has(modelFamily(x))).length).toBeGreaterThanOrEqual(2);
@@ -300,7 +262,7 @@ describe("gateway allowlist in the router (routing_algorithm 8a)", () => {
     expect(out.model).toBe("yandex-qwen3-235b");
     expect(providersHit()).toEqual(["yandex"]);
     const refused = sink.records.filter((r) => r.errorCode === "MODEL_NOT_ALLOWED");
-    expect(refused.map((r) => r.modelId)).toEqual(["glm-5.1", "kimi-k2.6", "deepseek-v4-pro"]);
+    expect(refused.map((r) => r.modelId)).toEqual(["kimi-k2.6", "glm-5.1", "deepseek-v4-pro"]);
     for (const r of refused)
       expect([r.status, r.attempt, r.billable, r.costRub]).toEqual(["error", 0, false, 0]);
   });
@@ -313,7 +275,8 @@ describe("gateway allowlist in the router (routing_algorithm 8a)", () => {
       orgPolicy: OPEN,
       ctx,
     });
-    expect([out.tier, out.model, out.ruFallback]).toEqual(["T0", "glm-5.1", true]);
+    // kimi-k3 has no key in the stub env; glm-5.3 is refused by the allowlist → the T0 head.
+    expect([out.tier, out.model, out.ruFallback]).toEqual(["T0", "kimi-k2.6", true]);
     expect(providersHit()).toEqual(["cloudru"]);
   });
 
@@ -536,33 +499,34 @@ describe("prompt cache: cached input is journaled and billed at the cache price 
 describe("v3 data boundary: PII and images", () => {
   const BRIEF =
     "Пекарня «Колос». Владелец Иванов Пётр Сергеевич, телефон +7 916 123-45-67, почта kolos.owner@example.ru.";
-  const CANARIES = ["Иванов Пётр Сергеевич", "+7 916 123-45-67", "9161234567", "kolos.owner@example.ru"];
+  const _CANARIES = ["Иванов Пётр Сергеевич", "+7 916 123-45-67", "9161234567", "kolos.owner@example.ru"];
 
-  test("art direction, pages, signature sections and a text critic go to T1 only scrubbed", async () => {
+  test("art direction, pages, signature sections and a text critic go to T1 as is (D79 (3))", async () => {
     const { router } = mk();
     for (const callType of ["art_direction", "page_compose", "signature_section", "critic_visual"] as const) {
       const out = await router.route({ callType, messages: msgs(BRIEF), tools: TOOLS, orgPolicy: OPEN, ctx });
-      expect([out.tier, out.scrubbed], callType).toEqual(["T1", true]);
+      expect([out.tier, out.scrubbed], callType).toEqual(["T1", false]);
     }
     const t1 = stub.requests.filter((r) => r.provider === "zai");
     expect(t1.length).toBe(4);
-    for (const r of t1) for (const c of CANARIES) expect(r.raw).not.toContain(c);
+    for (const r of t1) {
+      const text = (r.body.messages as { content: string }[]).map((m) => m.content).join("\n");
+      expect(text).toContain(BRIEF);
+    }
   });
 
-  test("interview_v3 and brief_extract with PII stay in RF; research and techreview are T0 by route", async () => {
+  test("interview_v3 and brief_extract with basic PII go abroad as is (D79 (3)); research stays T0 by route", async () => {
     const { router, sink } = mk();
-    for (const callType of ["interview_v3", "brief_extract", "research", "techreview"] as const)
+    for (const callType of ["interview_v3", "brief_extract", "research"] as const)
       await router.route({ callType, messages: msgs(BRIEF), orgPolicy: OPEN, ctx });
-    expect(stub.requests.filter((r) => r.provider === "zai")).toEqual([]);
-    expect(sink.records.map((r) => [r.callType, r.tier, r.routeReason])).toEqual([
-      ["interview_v3", "T0", "pii_detected_interview"],
-      ["brief_extract", "T0", "pii_detected_interview"],
-      ["research", "T0", "default_T0"],
-      ["techreview", "T0", "default_T0"],
+    expect(sink.records.map((r) => [r.callType, r.tier, r.routeReason, r.scrubbed])).toEqual([
+      ["interview_v3", "T1", "default_T1", false],
+      ["brief_extract", "T1", "default_T1", false],
+      ["research", "T0", "default_T0", false],
     ]);
   });
 
-  test("critic with screenshots: T0 vision model until D62 masking (D45)", async () => {
+  test("critic with screenshots: the images go to the GLM vision model abroad (D79 (3))", async () => {
     const { router } = mk();
     const out = await router.route({
       callType: "critic_visual",
@@ -573,8 +537,8 @@ describe("v3 data boundary: PII and images", () => {
       orgPolicy: OPEN,
       ctx,
     });
-    expect([out.tier, out.model]).toEqual(["T0", "kimi-k2.6"]);
-    expect(providersHit()).toEqual(["cloudru"]);
+    expect([out.tier, out.model]).toEqual(["T1", "glm-5v-turbo"]);
+    expect(providersHit()).toEqual(["zai"]);
   });
 
   test("avoidFamilies: the reviewer skips the builder's families; none left → LLM_UNAVAILABLE", async () => {

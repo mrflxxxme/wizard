@@ -64,7 +64,7 @@ describe("V3-13 upper bound of a call with images", () => {
     expect(bounds).toEqual(Object.fromEntries(CALL_TYPES.map((ct) => [ct, oldBound(ct, messages, tools)])));
     expect(bounds).toMatchInlineSnapshot(`
       {
-        "art_direction": 0.731,
+        "art_direction": 2.204,
         "audit": 1.221,
         "brief_extract": 1.394,
         "build_code": 2.722,
@@ -78,7 +78,8 @@ describe("V3-13 upper bound of a call with images", () => {
         "import_mapping": 0.731,
         "interview": 1.394,
         "interview_v3": 1.394,
-        "page_compose": 2.722,
+        "page_compose": 5.682,
+        "page_edit": 2.722,
         "plan": 0.731,
         "qa_explain": 0.399,
         "qa_generate": 1.394,
@@ -87,7 +88,7 @@ describe("V3-13 upper bound of a call with images", () => {
         "research": 0.64,
         "runtime_ai_extract": 0.201,
         "runtime_ai_generate": 0.368,
-        "signature_section": 2.058,
+        "signature_section": 5.682,
         "support": 0.731,
         "system_plan": 1.394,
         "techreview": 1.233,
@@ -134,9 +135,9 @@ describe("V3-13 upper bound of a call with images", () => {
       stubPhotos: true,
     });
     const tools = [critiqueTool.definition];
-    // The recorded answer is priced like a live one: the T0 vision model that answers (kimi-k2.6), its image rule.
-    const kimi = MODELS.find((m) => m.id === "kimi-k2.6");
-    const images = shots.reduce((s, x) => s + imageTokens(x.px.width, x.px.height, kimi?.image), 0);
+    // The recorded answer is priced like a live one: the vision model that answers (V4-05: glm-5v-turbo abroad).
+    const glm = MODELS.find((m) => m.id === "glm-5v-turbo");
+    const images = shots.reduce((s, x) => s + imageTokens(x.px.width, x.px.height, glm?.image), 0);
     const fx = fixtureRoute(critiqueLines({ messages, imageTokens: images }, [critique(2)]));
     const out = await fx.route({
       callType: "critic_visual",
@@ -145,16 +146,17 @@ describe("V3-13 upper bound of a call with images", () => {
       toolChoice: "required",
       ctx: { orgId: "org" },
     });
-    expect(`${out.tier}:${out.model}`).toBe("T0:kimi-k2.6");
+    expect(`${out.tier}:${out.model}`).toBe("T1:glm-5v-turbo");
     const actual = (out.creditsMilli / 1000) * rpc;
     const bound = upperBoundCredits("critic_visual", messages, tools, registry) * rpc;
     const before = oldBound("critic_visual", messages, tools) * rpc;
     expect(actual).toBeGreaterThan(1);
     expect(bound).toBeGreaterThan(actual);
     // With room for the reserve of max_tokens, but not 5 times over (the old bound was).
-    expect(bound / actual).toBeLessThan(2.5);
+    // V4-05: the bound prices the dearest model of the chain (kimi-k2.6), the answer comes from glm-5v-turbo.
+    expect(bound / actual).toBeLessThan(3);
     expect(before / actual).toBeGreaterThan(4);
-    // Three cycles of such calls fit the critic's 40 ₽ by their bounds.
-    expect(3 * bound).toBeLessThan(40);
+    // Three cycles of such calls fit the critic's 60 ₽ by their bounds.
+    expect(3 * bound).toBeLessThan(60);
   });
 });

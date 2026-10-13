@@ -175,7 +175,7 @@ describe("page_compose", () => {
       { ...ctx, route },
       LEAD,
     );
-    expect(seen).toEqual([{ callType: "page_compose", scrubbed: true }]);
+    expect(seen).toEqual([{ callType: "page_compose", scrubbed: false }]);
     expect(out.pages.map((p) => p.route)).toEqual(["/"]);
     expect(out.pages[0]?.sections.map((s) => [s.id, s.pattern])).toEqual([
       ["header", home.sections[0]?.pattern],
@@ -421,7 +421,8 @@ describe("signature sections", () => {
       LEAD,
     );
     expect(seen.map((s) => s.callType)).toEqual(["page_compose", "signature_section"]);
-    expect(seen.every((s) => s.scrubbed)).toBe(true);
+    // V4-05 (D79 (3)): build stages go abroad as is.
+    expect(seen.every((s) => !s.scrubbed)).toBe(true);
     const files = apply(ctx.files, out);
     expect(files.get("ui/sections/first-visit.tsx")).toBe(SIGNATURE_OK.source);
     const next = readSite(files) as SiteModel;

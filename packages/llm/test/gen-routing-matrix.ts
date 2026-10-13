@@ -36,6 +36,7 @@ export const CALL_TYPES = [
   "research",
   "repo_code",
   "repo_review",
+  "page_edit",
 ] as const;
 
 /** Real texts per payload class; the router sees these through @wizard/pii.detect. */
@@ -60,14 +61,12 @@ const DEFAULT_T0 = new Set([
   "runtime_ai_extract",
   "runtime_ai_generate",
   "support",
-  "brief_extract",
-  "techreview",
   "research",
   "repo_code",
   "repo_review",
 ]);
-/** pii_forbidden_for_T1.any_pii: raw owner input, any finding → T0 (the interview rule until M2-28). */
-const ANY_PII_T0 = new Set(["interview", "interview_v3", "brief_extract"]);
+/** pii_boundary_v4 (D79 (3)): build stages stop only at the signal filter — passport, SNILS, card number. */
+const NOT_BUILD = new Set([...ALWAYS_T0, "import_mapping"]);
 
 export const COLUMNS = [
   "callType",
@@ -97,8 +96,7 @@ function expected(
   if (ct === "import_mapping" && !(hint === false && payload === "none"))
     return ["T0", "callType_forbidden_T1"];
   if (hint === true) return ["T0", "pii_hint"];
-  if (payload === "strong" || payload === "special") return ["T0", "pii_high_risk"];
-  if (ANY_PII_T0.has(ct) && payload !== "none") return ["T0", "pii_detected_interview"];
+  if (payload === "strong" || (payload === "special" && NOT_BUILD.has(ct))) return ["T0", "pii_high_risk"];
   if (DEFAULT_T0.has(ct) || build === "T0") return ["T0", "default_T0"];
   return ["T1", "default_T1"];
 }
