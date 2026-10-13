@@ -115,13 +115,20 @@ export {
   DEFAULT_BUILD_TIER,
   getModel,
   HIGH_REASONING,
+  /** V4-05 (D79 (3)): build stages — everything but end clients' data and client code; no scrub, signal filter only. */
+  isBuildCallType,
   MODELS,
   type ModelDef,
   /** Model family from the provider's model name (glm, kimi, deepseek…): RouteInput.avoidFamilies. */
   modelFamily,
+  /** V4-05: family of a registry model id (RouteOutput.model) — critic and judge pass the authors' as avoidFamilies. */
+  modelFamilyOf,
+  /** V4-05 (D79 (5)): Ollama Cloud models for benchmarks only (WIZARD_LLM_BENCH=1, WIZARD_LLM_OLLAMA_MODELS). */
+  OLLAMA_ENV,
   OPENAI_COMPAT_CONTEXT,
   OPENAI_COMPAT_ENV,
   type OpenAiCompat,
+  ollamaFromEnv,
   /** Own OpenAI-compatible server (vLLM) from env WIZARD_LLM_OPENAI_COMPAT_*; createRegistry connects it. */
   openAiCompatFromEnv,
   PII_FORBIDDEN_FOR_T1,
@@ -134,6 +141,8 @@ export {
   ROUTES,
   type RouteDef,
   RU_BUILD_LABEL,
+  /** V4-05 (D79 (3)): PII kinds that keep a build stage in RF — passport, SNILS, card number. */
+  SIGNAL_PII_KINDS,
 } from "./registry.js";
 /** The router; V3-18: Retry-After capped at MAX_RETRY_AFTER_MS, pauses end with the call's signal (abortableSleep). */
 export {

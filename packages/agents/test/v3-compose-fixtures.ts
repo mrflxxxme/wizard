@@ -96,7 +96,8 @@ export function composeContext(o: { photos?: boolean; systemId?: string } = {}):
     route: async () => {
       throw new Error("model is not connected in this test");
     },
-    budgetRub: 40,
+    // V4-05: a page call is bounded by Kimi K3 now (≈ 30 ₽): room for the three attempts of a scenario.
+    budgetRub: 100,
   };
 }
 

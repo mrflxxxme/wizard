@@ -136,7 +136,7 @@ describe("ТЗ file → brief draft (recorded answers of the model)", () => {
     expect(res.body.gaps.missing).toEqual(COFFEE.missing);
     expect(res.body.gaps.blocking).toEqual(COFFEE.blocking);
     expect(res.body.diagrams.journey.nodes.length).toBeGreaterThan(0);
-    // The call is journaled (no prompt text): T0 only, the system, no run.
+    // The call is journaled (no prompt text): a build stage on GLM-5.3 (V4-05, D79 (3)), the system, no run.
     const calls = await api.deps.db
       .selectFrom("platform.llm_calls")
       .select(["call_type", "tier", "model_id", "run_id", "status", "org_id"])
@@ -145,8 +145,8 @@ describe("ТЗ file → brief draft (recorded answers of the model)", () => {
     expect(calls).toEqual([
       {
         call_type: "brief_extract",
-        tier: "T0",
-        model_id: "gigachat-3.5",
+        tier: "T1",
+        model_id: "glm-5.3",
         run_id: null,
         status: "ok",
         org_id: DEFAULT_ORG_ID,

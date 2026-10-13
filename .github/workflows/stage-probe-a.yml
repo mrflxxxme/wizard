@@ -1,0 +1,45 @@
+# V4 stream A live stage probe (plan v4 §5.2, D79 (10)): the changed stage answers 2–3 saved Russian inputs on the real
+# models with platform keys (packages/llm/test/stage-probe.live.test.ts). Kopecks, not a full build. Never prints keys.
+# Runs on manual dispatch and on pushes of task branches that change the probe, the registry or the models catalog.
+name: stage-probe-a
+on:
+  workflow_dispatch:
+  push:
+    branches: ["task/V4-0*"]
+    paths:
+      - "packages/llm/test/stage-probe.live.test.ts"
+      - "packages/llm/src/registry.ts"
+      - ".github/workflows/stage-probe-a.yml"
+permissions:
+  contents: read
+concurrency:
+  group: stage-probe-a-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Probe
+        env:
+          WIZARD_STAGE_PROBE: "1"
+          WIZARD_LLM_MODE: live
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          # The working MiMo key is MIMO_SECOND_API_KEY (provider probe 13.10.2026); the gateway reads MIMO_API_KEY.
+          MIMO_API_KEY: ${{ secrets.MIMO_SECOND_API_KEY || secrets.MIMO_API_KEY }}
+        run: npx vitest run packages/llm/test/stage-probe.live.test.ts --reporter=verbose
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage-probe-a
+          path: tools/llm-probe/out/
+          if-no-files-found: ignore
