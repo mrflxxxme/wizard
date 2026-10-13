@@ -258,10 +258,10 @@ export async function probeCli(argv: readonly string[]): Promise<number> {
     return 2;
   }
   let ok = true;
-  let cap = Number(args["cap-rub"] ?? PROBE_DEFAULT_CAP_RUB);
+  // The cap holds per stage (D79 (10): 5–15 ₽ a stage).
+  const cap = Number(args["cap-rub"] ?? PROBE_DEFAULT_CAP_RUB);
   for (const stage of stages) {
     const report = await runProbe({ stage, inputs: list(args.inputs), models: list(args.model), capRub: cap });
-    cap = Math.max(0, cap - report.spentRub);
     const md = renderProbe(report);
     console.log(md);
     if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, md);

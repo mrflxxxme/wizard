@@ -18,6 +18,7 @@ import {
   redact,
   replayRouter,
 } from "../../../packages/llm/src/index.ts";
+import { root } from "./helpers.ts";
 import { forceModel, renderProbe, runProbe, stageInputs } from "../probe/run.ts";
 import { STAGES } from "../probe/stages.ts";
 
@@ -209,4 +210,26 @@ describe("stage probe (V4-03)", () => {
     // No saved raw inputs in the repository: the probe says so.
     expect(String(r)).toMatch(/нет сохранённых входов/);
   });
+
+  // CI replays the probes' records: the stage uses the recorded answer, no fallback; an edited prompt needs a new probe
+  // (the stage-probe workflow records it on the push of the edit).
+  test.each(["interview_v3", "brief_extract", "art_direction", "direction_texts", "page_compose"])(
+    "the recorded probe of %s replays without a miss and without the fallback",
+    async (stage) => {
+      const book = RecordBook.named(`probe/${stage}`, root);
+      const labels = new Set(book.all().map((l) => l.label));
+      const inputs = stageInputs(stage).filter(([name]) => labels.has(name));
+      expect(inputs.length, "нет записей пробы: запустите stage-probe").toBeGreaterThan(0);
+      const replay = replayRouter({ registry, books: [book] });
+      for (const [name, input] of inputs) {
+        const r = await STAGES[stage]?.run(input, (i) => replay.route(i), {
+          orgId: "probe",
+          systemId: `probe-${stage}-${name}`,
+        });
+        expect(replay.misses.map((m) => m.message)).toEqual([]);
+        expect(r?.fallback, `${stage}/${name}: ${r?.summary}`).toBe(false);
+      }
+    },
+    60_000,
+  );
 });
