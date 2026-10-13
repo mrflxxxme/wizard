@@ -2408,12 +2408,12 @@ tasks:
   - id: V4-08
     title: "«Сначала показать»: три первых экрана за 90 с, 3–5 блокирующих вопросов параллельно, выбор = «Собрать»"
     milestone: V4
-    deps: [V4-07, V4-11]
+    deps: [V4-11]
     specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4"]
     owner: frontend
     parallel_group: v4-c
     estimate_days: 1.5
-    status: in_progress
+    status: done
     claimed_by: session_01X8jgGUBZgh2j9RwccJpmf6
     owns: ["apps/platform-web/src/screens/v3/**", "packages/agents/src/interview/**", "apps/platform-api/src/builds-v3/directions/**"]
     acceptance:

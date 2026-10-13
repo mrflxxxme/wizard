@@ -19,7 +19,13 @@ export {
 /** Deterministic questions of the blocking topics (each option with its brief patch) and the recommended defaults. */
 export { defaultPatch, type FallbackContext, type FallbackQuestion, fallbackQuestion } from "./fallback.js";
 /** Stop rule by code: blocking gaps of a brief, the tree order of a question, why the interview stops. */
-export { type BlockingGap, blockingGaps, questionOrderIssues, stopReason } from "./gaps.js";
+export {
+  BLOCKING_QUESTIONS_CAP,
+  type BlockingGap,
+  blockingGaps,
+  questionOrderIssues,
+  stopReason,
+} from "./gaps.js";
 /** The interview: start / answer / say a turn at a time; session, outputs, the short brief for the chat. */
 export {
   adoptStoredBrief,
