@@ -139,7 +139,8 @@ describe("section code (signature sections)", () => {
     expect(codes(sig(section("      <p>🦷 Лечение без боли</p>")))).toContain("emoji");
     expect(codes(sig(section("      <p>Lorem ipsum</p>")))).toContain("placeholder");
     const props = { items: [{ title: "Быстро" }, { title: "Удобно" }, { title: "Надёжно" }] };
-    expect(codes({ ...sig(SIGNATURE_OK.source), props })).toContain("three-cards");
+    // Three items of a section written as code are content: its markup decides (a list here, not a row of cards).
+    expect(codes({ ...sig(SIGNATURE_OK.source), props })).not.toContain("three-cards");
   });
 
   test("accessibility: img without alt, meaningless alt, heading order, one h1", () => {

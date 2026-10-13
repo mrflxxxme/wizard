@@ -507,7 +507,7 @@ describe("v3 data boundary: PII and images", () => {
       const out = await router.route({ callType, messages: msgs(BRIEF), tools: TOOLS, orgPolicy: OPEN, ctx });
       expect([out.tier, out.scrubbed], callType).toEqual(["T1", false]);
     }
-    const t1 = stub.requests.filter((r) => r.provider === "zai");
+    const t1 = stub.requests.filter((r) => ["zai", "deepseek", "moonshot"].includes(r.provider));
     expect(t1.length).toBe(4);
     for (const r of t1) {
       const text = (r.body.messages as { content: string }[]).map((m) => m.content).join("\n");

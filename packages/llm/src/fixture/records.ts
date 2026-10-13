@@ -180,7 +180,11 @@ function luhn(digits: string): boolean {
 // Strong identifiers become format-keeping stand-ins: a replayed answer still passes the validators of its fields.
 const STRONG_RES: [RegExp, (m: string) => string][] = [
   [/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, () => "user@example.com"],
-  [/\b\d{4}(?:[ -]?\d{4}){3}\b/g, (m) => (luhn(m.replace(/\D/g, "")) ? "0000 0000 0000 0000" : m)],
+  // Not inside a UUID or another id (00000002-0000-4000-8000-… passes Luhn): no word character or dash around.
+  [
+    /(?<![\w-])\d{4}(?:[ -]?\d{4}){3}(?![\w-])/g,
+    (m) => (luhn(m.replace(/\D/g, "")) ? "0000 0000 0000 0000" : m),
+  ],
   [/\b\d{3}-\d{3}-\d{3}[ -]\d{2}\b/g, () => "000-000-000 00"],
   [/(?:\+7|\b8)[\s(-]*\d{3}[\s)-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}\b/g, () => "+7 900 000-00-00"],
   [/(?<![\d-])\d{2}\s?\d{2}\s№?\s?\d{6}\b/g, () => "00 00 000000"],
@@ -396,16 +400,36 @@ export interface ReplayRouter extends Router {
   readonly misses: readonly RecordMiss[];
 }
 
+const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+/** A run of digits with the hex, separators and time marks around it: ids, timestamps, their redacted remains. */
+const DIGITS_RE = /\d[\da-f :.\-TZ]*/gi;
+
+/** Fingerprint of recorded messages: the ids, timestamps and numbers of a run do not count. */
+function requestPrint(messages: readonly LlmMessage[]): string {
+  return sha(stableStringify(messages).replace(UUID_RE, "#").replace(DIGITS_RE, "#"));
+}
+
 /**
  * A router that answers from records only (CI). A record matches by callType and prompt version (sources + tool
- * schemas); among those, the same scope and ordinal first, then the same ordinal of any scope, then — for a probe record
- * — its first one. No record → FIXTURE_MISS «нет записи для <callType>@<версия>» and the miss is kept: the caller fails
+ * schemas); among those, an unused record of the same scope with the same request first (parallel calls of one type —
+ * three art directions, sections — reach the router in any order), then the same scope and ordinal, then the same
+ * ordinal of any scope, then — for a probe record — its first one. No record → FIXTURE_MISS «нет записи для <callType>@<версия>» and the miss is kept: the caller fails
  * the run, the stage never takes its deterministic fallback silently.
  */
 export function replayRouter(o: ReplayOptions): ReplayRouter {
   const versions = o.versions ?? new PromptVersions();
   const scopes = o.scopes ?? new RecordScopes();
   const misses: RecordMiss[] = [];
+  const used = new Set<RecordLine>();
+  const prints = new WeakMap<RecordLine, string>();
+  const printOf = (l: RecordLine): string => {
+    let p = prints.get(l);
+    if (p === undefined) {
+      p = requestPrint(l.request.messages);
+      prints.set(l, p);
+    }
+    return p;
+  };
   return {
     mode: "fixture",
     registry: o.registry,
@@ -418,7 +442,9 @@ export function replayRouter(o: ReplayOptions): ReplayRouter {
         .filter((l) => l.callType === input.callType && l.promptVersion === promptVersion);
       const offered = new Set((input.tools ?? []).map((t) => t.name));
       const usable = all.filter((l) => l.response.toolCalls.every((c) => offered.has(c.name)));
+      const print = requestPrint(redact(withoutAttachmentBytes(input.messages)));
       const line =
+        usable.find((l) => l.scope === scope && !used.has(l) && printOf(l) === print) ??
         usable.find((l) => l.scope === scope && l.n === n) ??
         usable.find((l) => l.n === n) ??
         usable.find((l) => l.source === "probe");
@@ -443,6 +469,7 @@ export function replayRouter(o: ReplayOptions): ReplayRouter {
           hint: "Перезапишите записи: воркфлоу stage-probe (docs: tools/fixtures/records/README.md).",
         });
       }
+      used.add(line);
       o.onHit?.(line);
       if (line.error)
         throw new LlmError(line.error.code as LlmErrorCode, line.error.message, { callType: input.callType });

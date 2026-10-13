@@ -6,15 +6,16 @@ on:
   workflow_dispatch:
     inputs:
       probes:
-        description: "Пробы через запятую: llm (модели маршрута v4), art (арт-директор V4-07)"
+        description: "Пробы через запятую: llm (модели маршрута v4), art (арт-директор V4-07), page (страница кодом V4-06)"
         type: string
-        default: "art"
+        default: "page"
   push:
     branches: ["task/V4-0*"]
     paths:
       - "packages/*/test/stage-probe*.live.test.ts"
       - "packages/llm/src/registry.ts"
       - "packages/agents/src/builder/v3/art-director.ts"
+      - "packages/agents/src/builder/v3/compose/page-*.ts"
       - ".github/workflows/stage-probe-a.yml"
 permissions:
   contents: read
@@ -36,7 +37,7 @@ jobs:
       - name: Probe
         env:
           # Which probes run (each test skips unless named); a push runs the probe of the stage in work.
-          WIZARD_STAGE_PROBE: ${{ inputs.probes || 'art' }}
+          WIZARD_STAGE_PROBE: ${{ inputs.probes || 'page' }}
           WIZARD_LLM_MODE: live
           KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}

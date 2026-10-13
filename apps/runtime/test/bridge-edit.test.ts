@@ -15,6 +15,23 @@ const SOURCE_MAP = {
   "aaaaaaaa:50": { kind: "image", value: PHOTO, file: "ui/pages/site/Home.tsx" },
   "aaaaaaaa:90": { kind: "text", value: "Оставить заявку", file: "ui/pages/site/Home.tsx" },
   "aaaaaaaa:95": { kind: "text", value: "Оставить заявку", file: "ui/pages/site/Home.tsx" },
+  // The brand repeated by the hero heading and the footer: one value, three sections.
+  "cccccccc:5": { kind: "text", value: "Клиника в Казани", file: "ui/pages/site/Home.tsx", wz: "cccccccc:1" },
+  "cccccccc:40": {
+    kind: "text",
+    value: "Клиника в Казани",
+    file: "ui/pages/site/Home.tsx",
+    wz: "cccccccc:2",
+  },
+  "cccccccc:80": {
+    kind: "text",
+    value: "Клиника в Казани",
+    file: "ui/pages/site/Home.tsx",
+    wz: "cccccccc:4",
+  },
+  // Two equal labels of one section: told apart by their order.
+  "cccccccc:300": { kind: "text", value: "Подробнее", file: "ui/pages/site/Home.tsx", wz: "cccccccc:5" },
+  "cccccccc:200": { kind: "text", value: "Подробнее", file: "ui/pages/site/Home.tsx", wz: "cccccccc:5" },
 };
 
 type Posted = { msg: Record<string, unknown>; target: string };
@@ -71,7 +88,13 @@ beforeEach(() => {
       <img id="photo" src="${PHOTO}" alt="">
       <a id="cta" href="#form">Оставить заявку</a></section>
     <p id="free" data-wz-src="bbbbbbbb:7 bbbbbbbb:20">Свободный TSX</p>
-    <p id="plain">Текст из данных</p>`;
+    <p id="plain">Текст из данных</p>
+    <header data-wz-component="Header" data-wz-id="cccccccc:1"><a id="brand" href="/">Клиника в Казани</a></header>
+    <section data-wz-component="Hero" data-wz-id="cccccccc:2">
+      <div data-wz-component="Button" data-wz-id="dddddddd:3"><h1 id="hero-title">Клиника в Казани</h1></div></section>
+    <footer data-wz-component="Footer" data-wz-id="cccccccc:9"><p id="footer-brand">Клиника в Казани</p></footer>
+    <section data-wz-component="Services" data-wz-id="cccccccc:5">
+      <a id="more-1" href="#a">Подробнее</a><a id="more-2" href="#b">Подробнее</a></section>`;
   byId("cta").addEventListener("click", () => systemClicks++);
 });
 afterEach(async () => {
@@ -88,16 +111,35 @@ describe("V4-15: edit-mode of the preview bridge", () => {
     click("cta");
     click("free");
     click("plain");
-    const got = sent(posted, "literal-selected") as { refs: string[]; kind: string }[];
-    expect(got.map((g) => `${g.kind} ${g.refs.join(",")}`)).toEqual([
+    const got = sent(posted, "literal-selected") as { refs: string[]; kind: string; ambiguous?: boolean }[];
+    expect(got.map((g) => `${g.kind} ${g.refs.join(",")}${g.ambiguous ? " ambiguous" : ""}`)).toEqual([
       "text aaaaaaaa:10",
       "image aaaaaaaa:50",
-      "text aaaaaaaa:90,aaaaaaaa:95",
+      "text aaaaaaaa:90,aaaaaaaa:95 ambiguous",
       "text bbbbbbbb:7,bbbbbbbb:20",
     ]);
     expect(JSON.stringify(posted)).not.toContain("Лечим");
     expect(systemClicks).toBe(0);
     for (const p of posted) expect(p.target).toBe(PLATFORM);
+  });
+
+  test("a repeated value: the literal of the section shown (data-wz-id), then by order in its file", async () => {
+    const { posted, send } = boot();
+    send("edit-mode", { enabled: true });
+    await flush();
+    click("hero-title");
+    click("brand");
+    click("more-2");
+    click("more-1");
+    click("footer-brand");
+    const got = sent(posted, "literal-selected") as { refs: string[]; ambiguous?: boolean }[];
+    expect(got.map((g) => `${g.refs.join(",")}${g.ambiguous ? " ambiguous" : ""}`)).toEqual([
+      "cccccccc:40",
+      "cccccccc:5",
+      "cccccccc:300",
+      "cccccccc:200",
+      "cccccccc:80",
+    ]);
   });
 
   test("Esc cancels; off — clicks reach the system; highlight-literal outlines the elements of the refs", async () => {
