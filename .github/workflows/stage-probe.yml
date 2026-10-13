@@ -52,6 +52,8 @@ concurrency:
 
 jobs:
   probe:
+    # The records commits of this workflow's own token never start it again.
+    if: github.event_name == 'workflow_dispatch' || github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
@@ -85,7 +87,11 @@ jobs:
             if [ -z "$BEFORE" ] || [ "$BEFORE" = 0000000000000000000000000000000000000000 ]; then
               BEFORE=$(git merge-base origin/main HEAD)
             fi
-            git diff --name-only "$BEFORE" HEAD > "$RUNNER_TEMP/changed.txt"
+            # Only the branch's own prompt edits: files this push changed that also differ from main (a merge of main
+            # into the branch brings main's edits, already probed there).
+            base=$(git merge-base origin/main HEAD)
+            comm -12 <(git diff --name-only "$BEFORE" HEAD | sort) <(git diff --name-only "$base" HEAD | sort) \
+              > "$RUNNER_TEMP/changed.txt"
             stages=$(node tools/fixtures/probe.mjs --stages-for="$RUNNER_TEMP/changed.txt")
             e2e=$(node tools/fixtures/probe.mjs --e2e-for="$RUNNER_TEMP/changed.txt")
           fi
