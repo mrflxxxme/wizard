@@ -69,6 +69,20 @@ describe("scripts/check-code.mjs", () => {
     expect(r.status).toBe(0);
   });
 
+  test("браузерный тест без пропуска без Chromium → ошибка; с hasChromium или executablePath — ok", () => {
+    const suite = 'import { test } from "vitest";\ntest("x", async () => {});\n';
+    const bad = check({ "apps/y/test/a.browser.test.ts": suite });
+    expect(bad.status).toBe(1);
+    expect(bad.out).toContain("apps/y/test/a.browser.test.ts:1 [browser-test-unguarded]");
+    const ok = check({
+      "apps/y/test/a.browser.test.ts": `const hasChromium = false;\n${suite.replace("test(", "test.skipIf(!hasChromium)(")}`,
+      "packages/z/test/b.browser.test.tsx": `existsSync(chromium.executablePath());\n${suite}`,
+      "packages/z/test/c.test.ts": suite,
+    });
+    expect(ok.out).toContain("check-code: ok");
+    expect(ok.status).toBe(0);
+  });
+
   test("репозиторий проходит проверку", () => {
     const r = spawnSync(process.execPath, [CHECK], { encoding: "utf8" });
     expect(r.stdout + r.stderr).toContain("check-code: ok");
