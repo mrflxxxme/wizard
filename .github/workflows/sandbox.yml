@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: sandbox-${{ github.ref }}
@@ -24,10 +25,10 @@ env:
   # genuinetools/amicontained (MIT), release binary pinned by sha256.
   AMICONTAINED_VERSION: "v0.4.9"
   AMICONTAINED_SHA256: "d8c49e2cf44ee9668219acd092ed961fc1aa420a6e036e0822d7a31033776c9f"
-  # Shell and tools for the in-container checks (busybox: GPL-2.0, CI-only, unmodified), from the ECR Public mirror
-  # of the official images (anonymous Docker Hub pulls hit 429 on hosted runners).
-  PROBE_IMAGE: "public.ecr.aws/docker/library/busybox:1.36.1"
-  PG_IMAGE: "public.ecr.aws/docker/library/postgres:16"
+  # Shell and tools for the in-container checks (busybox: GPL-2.0, CI-only, unmodified), from the GHCR mirror of the
+  # official images (mirror-images.yml): anonymous pulls from Docker Hub and ECR Public hit 429 on hosted runners.
+  PROBE_IMAGE: "ghcr.io/${{ github.repository_owner }}/mirror/docker/library/busybox:1.36.1"
+  PG_IMAGE: "ghcr.io/${{ github.repository_owner }}/mirror/docker/library/postgres:16"
 
 jobs:
   sandbox:
@@ -73,9 +74,12 @@ jobs:
           chmod 0555 "$RUNNER_TEMP/amicontained"
           echo "AMICONTAINED_BIN=$RUNNER_TEMP/amicontained" >> "$GITHUB_ENV"
 
-      # ECR Public answers «Rate exceeded» to bursts of anonymous pulls: a few tries with a pause.
+      # From the GHCR mirror with the job token; a few tries with a pause for registry hiccups.
       - name: Pull the probe and database images
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           for img in "$PROBE_IMAGE" "$PG_IMAGE"; do
             for i in 1 2 3 4 5 6; do docker pull -q "$img" && break; [ "$i" = 6 ] && exit 1; sleep $((i * 10)); done
           done
