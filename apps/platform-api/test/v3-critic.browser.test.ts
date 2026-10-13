@@ -23,6 +23,7 @@ import { MemoryFileStorage, storeLibraryPhoto } from "@wizard/runtime";
 import { PATTERNS, type PatternMeta } from "@wizard/ui-kit/v3/patterns";
 import { afterAll, describe, expect, test } from "vitest";
 import { siteFacts, siteFiles } from "../../../packages/agents/src/builder/v3/compose/index.js";
+import { photoGrade } from "../../../packages/agents/src/stock/grade.js";
 import { briefSite, evalRequest } from "../../../packages/agents/test/v3-brief-site.js";
 import {
   criticContext,
@@ -173,12 +174,13 @@ describe.skipIf(!hasChromium)("V3-13 critic in Chromium", () => {
     ).toBe(true);
     // The design fonts themselves load (no fallback).
     expect(at("T16").every((p) => p.message_ru.includes("Несуществующий"))).toBe(true);
-    // The light grey holds on the dark page; problems of the dark theme say so.
-    expect(
-      at("C08")
-        .filter((p) => p.message_ru.includes("Светло-серый"))
-        .map((p) => p.scheme),
-    ).not.toContain("dark");
+    // V4-01 (D79): a public site keeps its direction's scheme — under a dark browser theme the clinic stays light, so
+    // the light grey fails there too; problems seen with the dark theme say so.
+    const grey = at("C08").filter((p) => p.message_ru.includes("Светло-серый"));
+    expect(grey.filter((p) => p.scheme === "dark").every((p) => p.message_ru.endsWith("(тёмная тема)"))).toBe(
+      true,
+    );
+    expect(grey.filter((p) => p.scheme === "light").map((p) => p.width)).toEqual([390, 768, 1440]);
     expect(at("L11").some((p) => p.scheme === "dark" && p.message_ru.endsWith("(тёмная тема)"))).toBe(true);
   }, 120_000);
 
@@ -265,8 +267,12 @@ describe.skipIf(!hasChromium)("V3-13 critic in Chromium", () => {
     const out = await platformCritic(browser, { registry, verify: null })({ ...ctx, route: fx.route });
     expect(out.status).toBe("done");
     expect(out.files?.size ?? 0).toBe(0);
-    expect(out.notes?.[0]).toMatch(
-      /^Посмотрел сайт на телефоне, планшете и компьютере глазами дизайнера: 1 круг, оценка 75 из 100\.$/,
+    // V4-09: the owner reads plain words; the round and the score stay in the staff line.
+    expect(out.notes?.[0]).toBe(
+      "Посмотрел сайт глазами дизайнера на телефоне и компьютере — править нечего.",
+    );
+    expect(out.note).toContain(
+      "Посмотрел сайт на телефоне, планшете и компьютере глазами дизайнера: 1 круг, оценка 75 из 100.",
     );
     expect(out.note).toContain("стоп pass");
   }, 120_000);
@@ -370,15 +376,28 @@ function solidPng(width: number, height: number, rgb: readonly [number, number, 
   );
 }
 
-/** Share of the pixels of a JPEG shot close to a colour (decoded in the browser). */
-async function colourShare(jpeg: string, rgb: readonly [number, number, number]): Promise<number> {
+/**
+ * Share of the pixels of a JPEG shot close to a colour (decoded in the browser). `filter` — the site's grade of its
+ * library photos (V4-10, a CSS filter): the colour is taken through it, as the page shows the photo.
+ */
+async function colourShare(
+  jpeg: string,
+  rgb: readonly [number, number, number],
+  filter = "none",
+): Promise<number> {
   const lease = await browser.acquire();
   if (!lease) throw new Error("no browser");
   const context = await lease.browser.newContext();
   try {
     const page = await context.newPage();
     return await page.evaluate(
-      async ({ b64, rgb }) => {
+      async ({ b64, rgb: raw, filter }) => {
+        // The colour as the page shows it: through the same CSS filter on a canvas.
+        const probe = new OffscreenCanvas(1, 1).getContext("2d") as OffscreenCanvasRenderingContext2D;
+        probe.filter = filter;
+        probe.fillStyle = `rgb(${raw[0]}, ${raw[1]}, ${raw[2]})`;
+        probe.fillRect(0, 0, 1, 1);
+        const rgb = [...probe.getImageData(0, 0, 1, 1).data.slice(0, 3)];
         const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
         const bmp = await createImageBitmap(new Blob([bytes], { type: "image/jpeg" }));
         const c = new OffscreenCanvas(bmp.width, bmp.height);
@@ -395,7 +414,7 @@ async function colourShare(jpeg: string, rgb: readonly [number, number, number])
             n++;
         return n / (d.length / 4);
       },
-      { b64: jpeg, rgb },
+      { b64: jpeg, rgb, filter },
     );
   } finally {
     await context.close();
@@ -561,8 +580,13 @@ describe.skipIf(!hasChromium)("V3-40 the critic sees the visitor's site", () => 
     // The screenshots the model gets show the photo, not the grey frame of a picture still loading.
     const first = r.shots.find((s) => s.kind === "screen");
     expect(first).toBeDefined();
-    expect(await colourShare(first?.data ?? "", colour)).toBeGreaterThan(0.15);
+    // V4-10: the site grades its library photos (one CSS filter); the shot shows the graded colour.
+    const grade = photoGrade({
+      treatment: ctx.design.imagery.treatment,
+      accent: ctx.design.palette[ctx.design.palette.scheme].accent,
+    }).filter;
+    expect(await colourShare(first?.data ?? "", colour, grade)).toBeGreaterThan(0.15);
     const page = r.shots.find((s) => s.kind === "page");
-    expect(await colourShare(page?.data ?? "", colour)).toBeGreaterThan(0.05);
+    expect(await colourShare(page?.data ?? "", colour, grade)).toBeGreaterThan(0.05);
   }, 180_000);
 });
