@@ -12,11 +12,16 @@ import { createAgentExecutors } from "../../../apps/platform-api/src/agents/exec
 import { chromiumProvider } from "../../../apps/platform-api/src/agents/goal-browser.ts";
 import { OutboxMailer } from "../../../apps/platform-api/src/auth/mailer.ts";
 import { platformCritic } from "../../../apps/platform-api/src/builds-v3/critic.ts";
-import { reportStorage } from "../../../apps/platform-api/src/builds-v3/report/index.ts";
 import { loadBuildReport } from "../../../apps/platform-api/src/builds-v3/report/store.ts";
 import type { BuildReport } from "../../../apps/platform-api/src/builds-v3/report/types.ts";
 import { buildPipelineOrgsOf } from "../../../apps/platform-api/src/config.ts";
 import { createTestDb, startApi, type TestApi } from "../../../apps/platform-api/test/helpers.ts";
+import {
+  createFileStorage,
+  type FileMeta,
+  type FileStorage,
+  type StoredFile,
+} from "../../../apps/runtime/src/files/storage.ts";
 import { closeExecutors } from "../../../apps/runtime/src/index.ts";
 import { createRegistry, createRouter } from "../../../packages/llm/src/index.ts";
 import { loadBriefs } from "../lib/briefs.mjs";
@@ -65,6 +70,34 @@ function bridge(api: TestApi) {
     signal.addEventListener("abort", () => void reader.cancel().catch(() => {}), { once: true });
     return new Response(body, { status: res.status, headers: res.headers });
   };
+}
+
+/**
+ * The storage of the acceptance run: reads go to the job's own files first, then to the shared storage of prod (the
+ * photo library, its index and model); writes and deletes stay in the job's files — prod's bucket is only read.
+ */
+export class ReadThroughStorage implements FileStorage {
+  readonly kind = "fs" as const;
+  constructor(
+    private readonly local: FileStorage,
+    private readonly remote: FileStorage,
+  ) {}
+  put(key: string, data: Uint8Array, meta: FileMeta): Promise<void> {
+    return this.local.put(key, data, meta);
+  }
+  async head(key: string): Promise<FileMeta | null> {
+    return (await this.local.head(key)) ?? this.remote.head(key);
+  }
+  async get(key: string): Promise<StoredFile | null> {
+    return (await this.local.get(key)) ?? this.remote.get(key);
+  }
+  delete(key: string): Promise<void> {
+    return this.local.delete(key);
+  }
+  async list(prefix: string): Promise<string[]> {
+    const [a, b] = await Promise.all([this.local.list(prefix), this.remote.list(prefix).catch(() => [])]);
+    return [...new Set([...a, ...b])].sort();
+  }
 }
 
 interface Row {
@@ -171,6 +204,15 @@ export function renderSummary(rows: readonly Row[], meta: { runUrl: string; shot
 export async function runAcceptance(o: { out: string; capRub: number; briefs?: readonly string[] }): Promise<Row[]> {
   const out = resolve(o.out);
   const artifactsDir = join(out, ".work", "artifacts");
+  // The platform's own files (reports, uploads) go to <out>/.work/files (where report routes look for them); with
+  // WIZARD_FILES_STORAGE=s3 (the job's library of prod) the executors read the library through, never write there.
+  const filesDir = join(out, ".work", "files");
+  const local = createFileStorage({ WIZARD_FILES_STORAGE: "fs", WIZARD_FILES_DIR: filesDir }, { defaultDir: filesDir });
+  const files: FileStorage =
+    process.env.WIZARD_FILES_STORAGE === "s3"
+      ? new ReadThroughStorage(local, createFileStorage(process.env, { defaultDir: filesDir }))
+      : local;
+  delete process.env.WIZARD_FILES_STORAGE;
   mkdirSync(artifactsDir, { recursive: true });
   const runid = newRunId();
   const { email } = evalIdentity(runid, undefined, "V3");
@@ -204,6 +246,7 @@ export async function runAcceptance(o: { out: string; capRub: number; briefs?: r
           pg,
           config,
           research: null,
+          files,
           v3: {
             enabled: true,
             hooks: { critic: platformCritic(browser) },
@@ -253,7 +296,7 @@ export async function runAcceptance(o: { out: string; capRub: number; briefs?: r
       log: (s: string) => console.log(s),
       g2: "skip",
     });
-    const files = reportStorage({ artifactsDir });
+    // The report was written through `files` (the job's own part).
     const rows: Row[] = [];
     {
       for (const r of doc.results as Record<string, any>[]) {
