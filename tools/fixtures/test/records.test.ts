@@ -22,7 +22,7 @@ import {
 import { root } from "./helpers.ts";
 import { critiqueSchema, critiqueScore } from "../../../packages/agents/src/builder/index.ts";
 import { e2eFor, forceModel, renderProbe, runProbe, stageInputs } from "../probe/run.ts";
-import { CRITIC_SPREAD, STAGES } from "../probe/stages.ts";
+import { CRITIC_SPREAD, OPEN, STAGES } from "../probe/stages.ts";
 
 const registry = createRegistry({ buildDefaultTier: "T1" });
 const tmp = () => mkdtempSync(join(tmpdir(), "wz-records-"));
@@ -204,7 +204,8 @@ describe("stage probe (V4-03)", () => {
 
   test("an unavailable model: every stage runs, takes its fallback and the probe fails loudly", async () => {
     const dir = tmp();
-    for (const stage of ["interview_v3", "brief_extract", "art_direction", "direction_texts", "page_compose", "techreview"]) {
+    const stages = ["interview_v3", "brief_extract", "art_direction", "direction_texts", "page_compose", "techreview", "point_edit"];
+    for (const stage of stages) {
       const book = new RecordBook(join(dir, `${stage}.jsonl`));
       const inner = fakeInner(() => new LlmError("LLM_UNAVAILABLE", "Модели сейчас недоступны. Попробуйте позже."));
       const r = await runProbe({
@@ -217,6 +218,8 @@ describe("stage probe (V4-03)", () => {
       // The stage reached its model with its own callType.
       expect(inner.calls.length, stage).toBeGreaterThan(0);
       expect(STAGES[stage]?.callTypes, stage).toContain(inner.calls[0]?.callType);
+      // As the platform's queue gives every call its org's policy: no stage call is held to T0 by a missing one.
+      for (const c of inner.calls) expect(c.orgPolicy, stage).toEqual(OPEN);
       expect(r.ok, stage).toBe(false);
       expect(r.results[0]?.ok).toBe(false);
       expect(r.results[0]?.calls).toEqual([]);
