@@ -7,6 +7,7 @@
 import { MAX_PLAN_PHOTOS, type PlanPhoto, type SystemPlan } from "@wizard/appspec";
 import { type PhotoSlot, photoSlots } from "@wizard/modules";
 import { STOCK_LICENSES, type StockClient, type StockHit, type StockProvider } from "../../stock/client.js";
+import { type PhotoPicker, type SemanticPhotoSource, semanticPhotos } from "../../stock/photos.js";
 import { stockQuery } from "../../stock/query.js";
 
 /** What the host gives the photos stage (platform-api: egress fetch, platform keys, runtime photo library). */
@@ -14,6 +15,10 @@ export interface PhotoHost {
   stock: StockClient;
   /** Copies the downloaded file into the platform photo library (runtime storeLibraryPhoto); id and size of the copy. */
   store(hit: StockHit, bytes: Uint8Array): Promise<{ id: string; width: number; height: number }>;
+  /** V4-10: the semantic library (search by the meaning of the brief); when set, the stock is not searched. */
+  semantic?: SemanticPhotoSource;
+  /** V4-10: the vision model that assigns the candidates to the slots (photo_pick); absent — rank order. */
+  picker?: PhotoPicker;
 }
 
 /** Time budget of the stage (searches, downloads, re-encoding). */
@@ -77,6 +82,36 @@ export async function runPhotosStage(o: {
     return done([], { note: "фото на сайте выключены" });
   const slots = photoSlots(o.plan, MAX_PLAN_PHOTOS);
   if (slots.length === 0) return done([], { note: "на странице нет мест для фото" });
+  // V4-10: the semantic library first; empty or unavailable (still filling) — the stock path below.
+  let semanticNote = "";
+  if (o.host?.semantic) {
+    try {
+      const r = await semanticPhotos({
+        plan: o.plan,
+        slots,
+        source: o.host.semantic,
+        picker: o.host.picker,
+        pickedAt: new Date(now()).toISOString().slice(0, 10),
+      });
+      if (r.photos.length > 0) {
+        const missing = slots.length - r.photos.length;
+        return done(r.photos, {
+          slots: slots.length,
+          providers: [...new Set(r.photos.map((p) => p.provider))].sort(),
+          note:
+            `фото из библиотеки: ${r.photos.length} из ${slots.length}` +
+            (r.picked ? " (выбрала модель)" : " (по сходству)") +
+            (missing > 0 ? `; ${missing} — графика оформления: мало подходящих фото` : "") +
+            (r.backfill ? "; ниша поставлена на докачку" : ""),
+        });
+      }
+      semanticNote = "библиотека по смыслу пуста; ";
+    } catch (e) {
+      semanticNote =
+        `библиотека по смыслу недоступна (${e instanceof Error ? e.message : String(e)})`.slice(0, 120) +
+        "; ";
+    }
+  }
   const stock = o.host?.stock;
   if (!o.host || !stock || stock.providers.length === 0)
     return done([], {
@@ -167,6 +202,7 @@ export async function runPhotosStage(o: {
     providers: [...providers].sort(),
     fallback: missing > 0 && (errors > 0 || late()),
     note:
+      semanticNote +
       `фото со стока: ${photos.length} из ${slots.length}` +
       (providers.size ? ` (${[...providers].sort().join(", ")})` : "") +
       (missing > 0 ? `; ${missing} — графика оформления: ${why}` : ""),

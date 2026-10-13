@@ -3,6 +3,7 @@
 // ui/seo.json for the build (title, description and og:image per route) and the site model ui/site.json.
 import { type DesignSystemV3, designSystemCss } from "@wizard/ui-kit/v3/design";
 import { PATTERNS, type PatternMeta, patternById, patternFiles } from "@wizard/ui-kit/v3/patterns";
+import { photoGrade, photoGradeCss } from "../../../stock/grade.js";
 import { fitPhotos, siteRules } from "./content.js";
 import {
   SECTIONS_DIR,
@@ -26,6 +27,10 @@ export function designCss(ds: DesignSystemV3): string {
   return [
     designSystemCss(ds, { fonts: true, autoScheme: false }),
     "html{background-color:var(--color-background);color:var(--color-foreground);font-family:var(--font-sans);}",
+    // V4-10: one grade for every library photo of the site (the direction's treatment and accent).
+    photoGradeCss(
+      photoGrade({ treatment: ds.imagery.treatment, accent: ds.palette[ds.palette.scheme].accent }),
+    ),
     "",
   ].join("\n");
 }

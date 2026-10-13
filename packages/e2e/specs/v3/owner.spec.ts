@@ -133,8 +133,10 @@ test("v3: интервью → бриф → три направления → «
   await expect(style).toContainText("выбран вами");
   await expect(style).toHaveAttribute("data-archetype", /.+/);
 
-  // «Собрать»: the live build on the canvas — what is going on, the stages and the scenario checklist of the brief.
+  // «Собрать»: the live build over the canvas (V4-11: under the ring of the island) — what is going on, the stages
+  // and the scenario checklist of the brief.
   await page.getByTestId("canvas-v3-approve").click();
+  await page.getByTestId("canvas-island-build").click({ timeout: 30_000 });
   const live = page.getByTestId("canvas-v3-live");
   await expect(live).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("canvas-v3-live-title")).toBeVisible();
@@ -144,10 +146,10 @@ test("v3: интервью → бриф → три направления → «
   await page.getByTestId("canvas-v3-live-more").locator("summary").click();
   await expect(page.getByTestId("canvas-v3-live-stages").locator("li").first()).toBeVisible();
 
-  // The preview of the site opens in the canvas once the skeleton passes G0.
-  const frame = page.getByTestId("canvas-v3-live-frame");
+  // The site fills the canvas once the skeleton passes G0.
+  const frame = page.getByTestId("canvas-frame-site");
   await expect(frame).toBeVisible({ timeout: 120_000 * SLOW });
-  await expect(page.frameLocator('[data-testid="canvas-v3-live-frame"]').locator("h1").first()).toBeVisible({
+  await expect(page.frameLocator('[data-testid="canvas-frame-site"]').locator("h1").first()).toBeVisible({
     timeout: 30_000,
   });
 
@@ -159,6 +161,7 @@ test("v3: интервью → бриф → три направления → «
     statuses.every((s) => s === "passed"),
     statuses.join(","),
   ).toBe(true);
+  await page.getByTestId("canvas-island-chat").click();
   await expect(page.getByTestId("canvas-v3-live-ready")).toContainText("Система готова");
   await expect(page.getByTestId("canvas-v3-live-ready")).toContainText(
     `Готово ${statuses.length} из ${statuses.length}`,
@@ -168,8 +171,10 @@ test("v3: интервью → бриф → три направления → «
   expect(letters(email).find((l) => l.kind === "notice")?.subject).toMatch(/собрана/);
   await page.getByTestId("canvas-v3-live-look").click();
   await expect(frame).toBeVisible();
+  await expect(page.getByTestId("canvas-sheet")).toHaveCount(0);
 
   // An edit by words after the build: the wish goes into the brief, «Собрать» is offered again.
+  await page.getByTestId("canvas-island-chat").click();
   await say(page, V3_WISH);
   await expect(page.getByTestId("canvas-v3-build")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("canvas-v3-style")).toContainText("выбран вами");
@@ -183,6 +188,7 @@ test("v3: интервью → бриф → три направления → «
   await expect
     .poll(() => letters(email).filter((l) => l.kind === "notice").length, { timeout: 150_000 * SLOW })
     .toBe(2);
+  await page.getByTestId("canvas-island-build").click();
   await expect(page.getByTestId("canvas-v3-live-checkpoints")).toContainText("Взято из прошлой сборки", {
     timeout: 30_000,
   });
@@ -191,13 +197,16 @@ test("v3: интервью → бриф → три направления → «
   await expect(page.getByTestId("canvas-v3-live-scenario-status").first()).toHaveText(
     "готово в прошлой сборке",
   );
+  await page.getByTestId("canvas-island-chat").click();
   await expect(page.getByTestId("canvas-v3-live-ready")).toContainText("Система готова");
   await expect(frame).toBeVisible();
 
   // V3-19: publication from the canvas. The system keeps patients' data, so the server asks the operator's data
   // (OPERATOR_*): the owner gives it in the chat card, «Опубликовать» turns on, the publish run ends with the version in
   // prod, the site and the owner's cabinet open.
+  await page.getByTestId("canvas-island-more").click();
   await expect(page.getByTestId("canvas-settings")).toHaveAttribute("href", /\/s\/[0-9a-f-]{36}\/settings$/);
+  await page.getByTestId("canvas-island-publish").click();
   const publish = page.getByTestId("canvas-v3-publish");
   await expect(publish).toBeVisible({ timeout: 30_000 });
   const submit = page.getByTestId("canvas-v3-publish-submit");

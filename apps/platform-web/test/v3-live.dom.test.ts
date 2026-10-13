@@ -3,8 +3,9 @@
 // V3-17 (DOM, API doubles): the live v3 build of the canvas from the structured snapshot of the run events — the latest
 // snapshot is the state (no text parsing), the clock goes on from the event time and stops at the cap, the checklist
 // says each scenario's state in words with the reason of those moved to «Запросы на развитие», the money and the
-// time against the caps, «Подробнее» with stages, gates and checkpoints; the growing system reloads with a new
-// revision and waits out PREVIEW_NOT_READY; a fresh end gives the toast and the browser notice once, a replayed old
+// time against the caps, «Подробнее» with stages, gates and checkpoints; the system frame of the canvas v4 swaps a new
+// revision in only once it has loaded, batches revisions during a build and waits out PREVIEW_NOT_READY; «Открыть в
+// новой вкладке» takes a fresh one-time URL; a fresh end gives the toast and the browser notice once, a replayed old
 // one stays quiet; status changes are announced only when fresh.
 import { act, type ComponentProps, createElement as h, type ReactNode, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -12,8 +13,8 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { type ApiClient, ApiError } from "../src/api/client.js";
 import type { Message, PreviewUrl, RunEvent, V3BuildProgress, V3ProgressScenario } from "../src/api/types.js";
 import { PlatformProvider } from "../src/app/context.js";
+import { BATCH_MS, openPreviewTab, SystemFrame } from "../src/preview/SystemFrame.js";
 import {
-  LivePreview,
   lastReportRun,
   liveClock,
   useV3Live,
@@ -329,16 +330,18 @@ describe("the panel of the live build", () => {
   });
 });
 
-describe("the growing system", () => {
-  test("a new revision reloads the frame; PREVIEW_NOT_READY is waited out", async () => {
+describe("the system on the canvas (V4-11 SystemFrame)", () => {
+  test("a new revision loads under the shown one and replaces it once loaded; PREVIEW_NOT_READY is waited out", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     let rev = 3;
     let notReady = 1;
+    let token = 0;
     const getPreviewUrl = vi.fn(async (): Promise<PreviewUrl> => {
       if (notReady-- > 0)
         throw new ApiError(409, { code: "PREVIEW_NOT_READY", message_ru: "Превью ещё не готово" });
+      token += 1;
       return {
-        url: "http://v3--draft.localhost:4100/_wizard/dev-logout?next=/",
+        url: `http://v3--draft.localhost:4100/_wizard/preview-login?t=tok${token}&next=/`,
         revision: rev,
         roles: [],
         expiresAt: "",
@@ -348,24 +351,110 @@ describe("the growing system", () => {
     function Wrap(): ReactNode {
       const [r, setR] = useState<number | null>(null);
       set = setR;
-      return h(LivePreview, { systemId: SYS, revision: r });
+      return h(SystemFrame, {
+        systemId: SYS,
+        revision: r,
+        device: "desktop",
+        title: "Ваша система",
+        placeholder: h("p", null, "Каркас страниц появится здесь"),
+      });
     }
     await mount({ getPreviewUrl } as unknown as Partial<ApiClient>, h(Wrap));
-    expect($("canvas-v3-live-preview-pending")?.textContent).toContain("Каркас страниц появится здесь");
+    expect($("canvas-frame-pending")?.textContent).toContain("Каркас страниц появится здесь");
     expect(getPreviewUrl).not.toHaveBeenCalled();
     await act(async () => set(3));
     await act(async () => vi.advanceTimersByTimeAsync(2000));
     await settle();
-    const frame = () => $("canvas-v3-live-frame") as HTMLIFrameElement | null;
     expect(getPreviewUrl).toHaveBeenCalledTimes(2);
-    expect(frame()?.getAttribute("src")).toContain("wzrev=3");
-    expect(frame()?.getAttribute("title")).toBe("Превью собираемой системы");
+    // Loading: hidden under the placeholder until the frame says it has loaded.
+    const next = () => $("canvas-frame-next") as HTMLIFrameElement | null;
+    const site = () => $("canvas-frame-site") as HTMLIFrameElement | null;
+    expect(next()?.getAttribute("src")).toContain("wzrev=3");
+    expect(site()).toBeNull();
+    await act(async () => next()?.dispatchEvent(new Event("load")));
+    expect(site()?.getAttribute("src")).toContain("wzrev=3");
+    expect(site()?.getAttribute("title")).toBe("Ваша система");
+    expect($("canvas-frame-pending")).toBeNull();
+    // A new revision: a fresh one-time URL in a second frame; the shown one stays until it loads.
     rev = 5;
     await act(async () => set(5));
     await act(async () => vi.advanceTimersByTimeAsync(1000));
     await settle();
-    expect(frame()?.getAttribute("src")).toContain("wzrev=5");
-    expect($("canvas-v3-live-preview")?.dataset.revision).toBe("5");
+    expect(site()?.getAttribute("src")).toContain("wzrev=3");
+    expect(next()?.getAttribute("src")).toContain("wzrev=5");
+    expect(next()?.getAttribute("src")).toContain("t=tok2");
+    await act(async () => next()?.dispatchEvent(new Event("load")));
+    expect(site()?.getAttribute("src")).toContain("wzrev=5");
+    expect(next()).toBeNull();
+    expect($("canvas-frame")?.dataset.revision).toBe("5");
+  });
+
+  test("during a build revisions are batched: one swap at most every BATCH_MS", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let rev = 1;
+    const getPreviewUrl = vi.fn(
+      async (): Promise<PreviewUrl> => ({
+        url: "http://v3--draft.localhost:4100/_wizard/preview-login?t=x&next=/",
+        revision: rev,
+        roles: [],
+        expiresAt: "",
+      }),
+    );
+    let set: (r: number) => void = () => {};
+    function Wrap(): ReactNode {
+      const [r, setR] = useState<number>(1);
+      set = setR;
+      return h(SystemFrame, {
+        systemId: SYS,
+        revision: r,
+        device: "phone",
+        batching: true,
+        title: "x",
+        placeholder: null,
+      });
+    }
+    await mount({ getPreviewUrl } as unknown as Partial<ApiClient>, h(Wrap));
+    await settle();
+    await act(async () => $("canvas-frame-next")?.dispatchEvent(new Event("load")));
+    expect($("canvas-frame")?.dataset.device).toBe("phone");
+    rev = 2;
+    await act(async () => set(2));
+    await act(async () => vi.advanceTimersByTimeAsync(2000));
+    await settle();
+    expect(getPreviewUrl).toHaveBeenCalledTimes(1);
+    await act(async () => vi.advanceTimersByTimeAsync(BATCH_MS));
+    await settle();
+    expect(getPreviewUrl).toHaveBeenCalledTimes(2);
+    expect($("canvas-frame-next")?.getAttribute("src")).toContain("wzrev=2");
+  });
+
+  test("«Открыть в новой вкладке» takes a new one-time URL on every open", async () => {
+    let n = 0;
+    const getPreviewUrl = vi.fn(async (): Promise<PreviewUrl> => {
+      n += 1;
+      return {
+        url: `http://v3--draft.localhost:4100/_wizard/preview-login?t=tok${n}&next=/`,
+        revision: 7,
+        roles: [],
+        expiresAt: "",
+      };
+    });
+    const tabs: { opener: unknown; location: { href: string } }[] = [];
+    vi.stubGlobal("open", () => {
+      const w = { opener: {} as unknown, location: { href: "about:blank" }, close: vi.fn() };
+      tabs.push(w);
+      return w;
+    });
+    expect(await openPreviewTab({ getPreviewUrl }, SYS, "/catalog")).toBe(true);
+    expect(await openPreviewTab({ getPreviewUrl }, SYS)).toBe(true);
+    expect(tabs.map((t) => new URL(t.location.href).searchParams.get("t"))).toEqual(["tok1", "tok2"]);
+    expect(new URL(tabs[0]?.location.href ?? "").searchParams.get("next")).toBe("/catalog");
+    expect(tabs.every((t) => t.opener === null)).toBe(true);
+    const failing = vi.fn(async () => {
+      throw new ApiError(409, { code: "PREVIEW_NOT_READY", message_ru: "нет" });
+    });
+    expect(await openPreviewTab({ getPreviewUrl: failing }, SYS)).toBe(false);
+    vi.unstubAllGlobals();
   });
 });
 
@@ -373,7 +462,7 @@ describe("useV3Live: the toast, the browser notice and the announcements", () =>
   function Probe({ events, onView }: { events: RunEvent[]; onView(v: V3LiveView): void }): ReactNode {
     const v = useV3Live({ systemId: SYS, name: "Стоматология", events, announce: (t) => said.push(t) });
     onView(v);
-    return h("div", null, v.main, v.ready, v.toast);
+    return h("div", null, v.panel, v.ready, v.toast);
   }
   let said: string[] = [];
 
@@ -515,7 +604,6 @@ describe("useV3Live: the toast, the browser notice and the announcements", () =>
     );
     const events = [stageEv(snap({ stage: "design" }))];
     await mount({}, h(Probe, { events, onView: () => {} }));
-    expect($("canvas-v3-live-preview-pending")).not.toBeNull();
     await act(async () => $("canvas-v3-live-notify")?.click());
     await settle();
     expect($("canvas-v3-live-notify")).toBeNull();
