@@ -189,13 +189,15 @@ function wizardBridge(win, config) {
       .then((m) => {
         const text = new Map();
         const image = new Map();
+        const wz = new Map();
         for (const [ref, l] of Object.entries(m && typeof m === "object" ? m : {})) {
           if (!REF_RE.test(ref) || !l || typeof l.value !== "string") continue;
           const index = l.kind === "image" ? image : text;
           const key = l.kind === "image" ? l.value : l.value.replace(/\s+/g, " ").trim();
           index.set(key, [...(index.get(key) || []), ref]);
+          if (typeof l.wz === "string") wz.set(ref, l.wz);
         }
-        return { text, image };
+        return { text, image, wz };
       });
     return literals;
   };
@@ -204,6 +206,23 @@ function wizardBridge(win, config) {
     let t = "";
     for (const n of el.childNodes) if (n.nodeType === 3) t += n.nodeValue;
     return t.replace(/\s+/g, " ").trim();
+  };
+  /**
+   * Of the literals sharing a value, those of the section `el` is shown in: the nearest ui-kit or pattern element above
+   * it (data-wz-id) holding one of them — a heading that repeats the brand of the header edits the heading only.
+   */
+  const anchored = (el, refs) => {
+    if (refs.length < 2) return refs;
+    for (
+      let cur = el.closest("[data-wz-id]");
+      cur;
+      cur = cur.parentElement?.closest("[data-wz-id]") ?? null
+    ) {
+      const id = cur.getAttribute("data-wz-id");
+      const own = refs.filter((r) => index.wz.get(r) === id);
+      if (own.length) return own;
+    }
+    return refs;
   };
   /** The element showing a literal at or above `target` and its refs (up to 3 ancestors). */
   const literalOf = (target) => {
@@ -218,10 +237,10 @@ function wizardBridge(win, config) {
           path = new win.URL(el.currentSrc || el.src, win.location.href).pathname;
         } catch (_e) {}
         const refs = index.image.get(path) || index.image.get(el.getAttribute("src") || "");
-        if (refs) return { el, refs, kind: "image" };
+        if (refs) return { el, refs: anchored(el, refs), kind: "image" };
       }
       const refs = index.text.get(ownText(el));
-      if (refs) return { el, refs, kind: "text" };
+      if (refs) return { el, refs: anchored(el, refs), kind: "text" };
     }
     return null;
   };

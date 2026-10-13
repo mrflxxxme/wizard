@@ -15,6 +15,20 @@ const SOURCE_MAP = {
   "aaaaaaaa:50": { kind: "image", value: PHOTO, file: "ui/pages/site/Home.tsx" },
   "aaaaaaaa:90": { kind: "text", value: "Оставить заявку", file: "ui/pages/site/Home.tsx" },
   "aaaaaaaa:95": { kind: "text", value: "Оставить заявку", file: "ui/pages/site/Home.tsx" },
+  // The brand repeated by the hero heading and the footer: one value, three sections.
+  "cccccccc:5": { kind: "text", value: "Клиника в Казани", file: "ui/pages/site/Home.tsx", wz: "cccccccc:1" },
+  "cccccccc:40": {
+    kind: "text",
+    value: "Клиника в Казани",
+    file: "ui/pages/site/Home.tsx",
+    wz: "cccccccc:2",
+  },
+  "cccccccc:80": {
+    kind: "text",
+    value: "Клиника в Казани",
+    file: "ui/pages/site/Home.tsx",
+    wz: "cccccccc:4",
+  },
 };
 
 type Posted = { msg: Record<string, unknown>; target: string };
@@ -71,7 +85,11 @@ beforeEach(() => {
       <img id="photo" src="${PHOTO}" alt="">
       <a id="cta" href="#form">Оставить заявку</a></section>
     <p id="free" data-wz-src="bbbbbbbb:7 bbbbbbbb:20">Свободный TSX</p>
-    <p id="plain">Текст из данных</p>`;
+    <p id="plain">Текст из данных</p>
+    <header data-wz-component="Header" data-wz-id="cccccccc:1"><a id="brand" href="/">Клиника в Казани</a></header>
+    <section data-wz-component="Hero" data-wz-id="cccccccc:2">
+      <div data-wz-component="Button" data-wz-id="dddddddd:3"><h1 id="hero-title">Клиника в Казани</h1></div></section>
+    <footer data-wz-component="Footer" data-wz-id="cccccccc:9"><p id="footer-brand">Клиника в Казани</p></footer>`;
   byId("cta").addEventListener("click", () => systemClicks++);
 });
 afterEach(async () => {
@@ -98,6 +116,21 @@ describe("V4-15: edit-mode of the preview bridge", () => {
     expect(JSON.stringify(posted)).not.toContain("Лечим");
     expect(systemClicks).toBe(0);
     for (const p of posted) expect(p.target).toBe(PLATFORM);
+  });
+
+  test("a value shared by several sections picks the literal of the section shown (data-wz-id), else all", async () => {
+    const { posted, send } = boot();
+    send("edit-mode", { enabled: true });
+    await flush();
+    click("hero-title");
+    click("brand");
+    click("footer-brand");
+    const got = sent(posted, "literal-selected") as { refs: string[] }[];
+    expect(got.map((g) => g.refs.join(","))).toEqual([
+      "cccccccc:40",
+      "cccccccc:5",
+      "cccccccc:5,cccccccc:40,cccccccc:80",
+    ]);
   });
 
   test("Esc cancels; off — clicks reach the system; highlight-literal outlines the elements of the refs", async () => {

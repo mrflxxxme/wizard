@@ -8,6 +8,7 @@ import { createPageComposer } from "../../agents/src/builder/index.js";
 import { composeContext } from "../../agents/test/v3-compose-fixtures.js";
 import { PATTERNS } from "../../ui-kit/src/v3/patterns/index.js";
 import { annotateSource, applyLiteralEdits, buildSourceMap, fileLiterals } from "../src/source-map/index.js";
+import { injectWzIds } from "../src/wz-id.js";
 
 const FREE = `import { LeadForm } from "@wizard/sdk/v4";
 export default function Home() {
@@ -79,6 +80,38 @@ describe("V4-15: source map", () => {
     expect(home.some((x) => x.kind === "image" && x.value.startsWith("/_wizard/photos/"))).toBe(true);
     expect(values).not.toContain("/services");
     expect(values).not.toContain("lead");
+  });
+
+  test("each literal of a section carries the wzId of its innermost pattern: one value in two sections stays apart", async () => {
+    const files = await clinic();
+    const file = "ui/pages/site/Home.tsx";
+    const source = files.get(file) as string;
+    const ids = new Map(injectWzIds(file, annotateSource(file, source)).entries);
+    const home = fileLiterals(file, source);
+    expect(home.length).toBeGreaterThan(0);
+    for (const l of home) expect(ids.has(l.wz as string)).toBe(true);
+    const title = home.find((x) => x.value === "Лечим зубы без боли и очередей");
+    expect(ids.get(title?.wz as string)?.componentName).toMatch(/hero/i);
+
+    const twice = `import Header from "../../patterns/header-simple";
+import Hero from "../../patterns/hero-split";
+export default function Home() {
+  return (
+    <>
+      <Header brand="Клиника в Казани" />
+      <Hero title="Клиника в Казани" lead="Без очередей" />
+      <p>Клиника в Казани</p>
+    </>
+  );
+}
+`;
+    const l = fileLiterals(file, twice);
+    expect(l.map((x) => `${x.value}@${x.wz ?? "-"}`)).toEqual([
+      `Клиника в Казани@${l[0]?.ref.split(":")[0]}:1`,
+      `Клиника в Казани@${l[0]?.ref.split(":")[0]}:2`,
+      `Без очередей@${l[0]?.ref.split(":")[0]}:2`,
+      "Клиника в Казани@-",
+    ]);
   });
 
   test("an instant edit replaces exactly its literal; quotes and braces stay valid TSX; bad values are refused", async () => {
