@@ -100,6 +100,7 @@ export function pageCodeSchema(kept: readonly string[]) {
 }
 export type PageCodeAnswer = z.output<ReturnType<typeof pageCodeSchema>>;
 type CodeItem = Extract<PageCodeAnswer["sections"][number], { kind: "code" }>;
+type KeepItem = Extract<PageCodeAnswer["sections"][number], { kind: "keep" }>;
 
 /** Key of a page in section file names: «home» for /, else the route's words. */
 export function pageKey(page: Pick<SitePage, "route">): string {
@@ -133,8 +134,10 @@ export function applyPageCode(
     }
     const was = byId.get(s.id) as SiteSection;
     if (!s.props) return was;
+    // The binding of a kept component comes from the page as it was, never from the model (a key it added included).
     const fixed = Object.fromEntries(Object.entries(was.props).filter(([k]) => BINDING.has(k)));
-    const merged = { ...was.props, ...s.props, ...fixed };
+    const texts = Object.fromEntries(Object.entries(s.props).filter(([k]) => !BINDING.has(k)));
+    const merged = { ...was.props, ...texts, ...fixed };
     const parsed = library.find((p) => p.id === was.pattern)?.slots.safeParse(merged);
     return { ...was, props: (parsed?.success ? parsed.data : was.props) as Record<string, unknown> };
   });
@@ -157,21 +160,22 @@ const code = (i: number, c: string, message: string, path = `sections.${i}`): To
   message,
 });
 
+interface PageCheckCtx {
+  site: SiteModel;
+  page: SitePage;
+  facts: SiteFacts;
+  library: readonly PatternMeta[];
+  /** Sources of the code sections already on the site (other pages). */
+  signatures: ReadonlyMap<string, string>;
+}
+
 /**
- * Checks of submit_page_code: the first section is the hero written as code, ids unique, every SDK component kept with
- * its binding (the SDK gate), photos only from the list, copy of the props and SEO by the facts; then the page lint of
- * the result (pattern rules of each code section, headings, links, layout, facts).
+ * The shape of the page whatever its code: the first section is the hero written as code, ids unique, every SDK
+ * component kept with its binding (the SDK gate), photos only from the list, copy of the props and SEO by the facts.
  */
-export function pageCodeIssues(
-  v: PageCodeAnswer,
-  ctx: {
-    site: SiteModel;
-    page: SitePage;
-    facts: SiteFacts;
-    library: readonly PatternMeta[];
-    /** Sources of the code sections already on the site (other pages). */
-    signatures: ReadonlyMap<string, string>;
-  },
+export function pageShapeIssues(
+  v: Pick<PageCodeAnswer, "seo"> & { sections: readonly (Omit<CodeItem, "source"> | KeepItem)[] },
+  ctx: Omit<PageCheckCtx, "signatures">,
 ): ToolIssue[] {
   const out: ToolIssue[] = [];
   const seen = new Set<string>();
@@ -206,9 +210,18 @@ export function pageCodeIssues(
   ] as const)
     for (const i of copyIssues(text, ctx.facts.numbers).filter((c) => c.severity === "error"))
       out.push({ path: k, code: i.code.toUpperCase().replace(/-/g, "_"), message: i.evidence });
-  const { page: next, sources } = applyPageCode(ctx.page, v, ctx.library);
+  const placeholder = {
+    seo: v.seo,
+    sections: v.sections.map((s) => (s.kind === "code" ? { ...s, source: "" } : s)),
+  } as PageCodeAnswer;
+  const { page: next } = applyPageCode(ctx.page, placeholder, ctx.library);
   for (const p of sdkGate(ctx.page, next)) out.push({ path: "sections", code: "SDK_REQUIRED", message: p });
-  if (out.length) return out;
+  return out;
+}
+
+/** The page lint of the applied answer, each issue at its section (source, or props for facts and alt texts). */
+export function pageLintIssues(v: PageCodeAnswer, ctx: PageCheckCtx): ToolIssue[] {
+  const { page: next, sources } = applyPageCode(ctx.page, v, ctx.library);
   const site = { ...ctx.site, pages: ctx.site.pages.map((p) => (p.route === next.route ? next : p)) };
   const all = new Map([...ctx.signatures, ...sources]);
   const body = next.sections.filter((s) => s.type !== "header" && s.type !== "footer");
@@ -227,6 +240,15 @@ export function pageCodeIssues(
       message: `${i.message_ru}${i.evidence ? `: ${i.evidence}` : ""}`,
     };
   });
+}
+
+/**
+ * Checks of submit_page_code: the shape of the page (pageShapeIssues), then the page lint of the result (pattern rules
+ * of each code section, headings, links, layout, facts).
+ */
+export function pageCodeIssues(v: PageCodeAnswer, ctx: PageCheckCtx): ToolIssue[] {
+  const shape = pageShapeIssues(v, ctx);
+  return shape.length ? shape : pageLintIssues(v, ctx);
 }
 
 /** Rules of the code (React 19 + Tailwind v4 on the tokens + Motion), the same checks the linter runs. */
@@ -305,7 +327,7 @@ export function codeExamples(library: readonly PatternMeta[], archetype: string,
   return [pick("hero"), pick("services") ?? pick("about")].filter((p): p is PatternMeta => !!p).slice(0, n);
 }
 
-function scenarioText(s: BriefScenario): string {
+export function scenarioText(s: BriefScenario): string {
   return `Когда ${s.when.replace(/^когда\s+/i, "")}, система: ${s.then.join("; ")}.`;
 }
 
@@ -399,4 +421,4 @@ export function pageCodeRequest(o: {
   };
 }
 
-export type { CodeItem };
+export type { CodeItem, KeepItem };

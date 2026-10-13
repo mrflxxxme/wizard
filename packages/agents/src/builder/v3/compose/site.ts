@@ -105,6 +105,8 @@ export interface SitePage {
   module?: string;
   seo: SeoMeta;
   sections: SiteSection[];
+  /** The model that wrote the page as code: the critic and the judge are of another family. */
+  author?: string;
 }
 
 export interface SiteModel {
