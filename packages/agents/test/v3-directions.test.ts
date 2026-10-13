@@ -22,6 +22,7 @@ import { describe, expect, test } from "vitest";
 import { dentalBrief, shopBrief } from "../../appspec/test/brief-fixtures.js";
 import {
   ART_DIRECTION_CALL_TYPE,
+  ART_DIRECTION_TOOL,
   briefDesign,
   briefFacts,
   colorsInText,
@@ -75,6 +76,9 @@ const llm = createRegistry({ buildDefaultTier: "T1" });
 function scripted(tool: string, answers: (Record<string, unknown> | null | Error)[], credits = 0.2) {
   const calls: RouteInput[] = [];
   const route = async (input: RouteInput): Promise<RouteOutput> => {
+    // V4-07: these tests are about the texts and the words; the design call fails and the archetypes of code stay.
+    if (input.tools?.[0]?.name === ART_DIRECTION_TOOL && tool !== ART_DIRECTION_TOOL)
+      throw new Error("design off");
     calls.push(input);
     const a = answers[Math.min(calls.length - 1, answers.length - 1)] ?? null;
     if (a instanceof Error) throw a;
@@ -302,7 +306,7 @@ describe("texts: one model call for three voices", () => {
         input.signal?.addEventListener("abort", () => reject(new Error("timeout")));
       });
     const t0 = performance.now();
-    const late = await proposeDirections(INPUT, { route: hang, deadlineMs: 50 });
+    const late = await proposeDirections(INPUT, { route: hang, deadlineMs: 50, designDeadlineMs: 50 });
     expect(late.fallback).toBe(true);
     expect(performance.now() - t0).toBeLessThan(2000);
     const ctl = new AbortController();
@@ -411,9 +415,9 @@ describe("refinement by words", () => {
     const lex = scripted(REFINEMENT_TOOL, [answer]);
     await refineDirections(p, "теплее", { route: lex.route });
     expect(lex.calls).toHaveLength(0);
-    // Out of money (the proposal already spent 38 ₽): the hint without a call.
+    // Out of money (the proposal already spent 68 ₽ of 70): the hint without a call.
     const poor = scripted(REFINEMENT_TOOL, [answer]);
-    const r2 = await refineDirections({ ...p, costRub: 38 }, "сделайте как у Apple", { route: poor.route });
+    const r2 = await refineDirections({ ...p, costRub: 68 }, "сделайте как у Apple", { route: poor.route });
     expect(poor.calls).toHaveLength(0);
     expect(r2.reply).toBe(REFINE_HINT);
   });
