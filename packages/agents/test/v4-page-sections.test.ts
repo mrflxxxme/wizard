@@ -7,6 +7,7 @@ import { describe, expect, test } from "vitest";
 import { createPageComposer, readSite, type SiteModel } from "../src/builder/v3/compose/index.js";
 import {
   autofixSection,
+  normalizePlan,
   PAGE_PLAN_TOOL,
   type PagePlan,
   SECTION_CODE_TOOL,
@@ -189,6 +190,44 @@ describe("V4-06 speed: the page by sections", () => {
     expect(fixed).toContain("<LazyMotion features={domAnimation}>");
     expect(fixed).toMatch(/import \{[^}]*LazyMotion[^}]*\} from "motion\/react"/);
     expect(sectionIssues(fixed, { id: "hero", hero: true }).map((i) => i.code)).not.toContain("MOTION_LAZY");
+  });
+
+  test("bare return with m.*, a link without colour, two arguments of fitWords — fixed by code", () => {
+    const src = [
+      'import { m } from "motion/react";',
+      'import { fitWords } from "@wizard/ui-kit/v3/headless";',
+      "",
+      "export default function Hero({ title }: { title: string }) {",
+      "  const fit = fitWords(title, 3);",
+      '  return <section className="bg-background px-gutter py-section text-foreground">',
+      '      <m.h1 animate={{ opacity: 1 }} className="font-display text-hero">{fit.chars}{title}</m.h1>',
+      '      <a href="tel:+70000000000" className="font-medium underline">Позвонить</a>',
+      "    </section>;",
+      "}",
+      "",
+    ].join("\n");
+    const fixed = autofixSection(src);
+    expect(fixed).toContain("fitWords(title)");
+    expect(fixed).toContain('className="text-inherit font-medium underline"');
+    expect(fixed).toContain("<LazyMotion features={domAnimation}>");
+    const codes = sectionIssues(fixed, { id: "hero", hero: true }).map((i) => i.code);
+    expect(codes).not.toContain("MOTION_LAZY");
+    expect(codes).not.toContain("LINK_COLOR");
+  });
+
+  test("the plan: sections as a JSON string are parsed, «01» ordinals leave props", () => {
+    const plan = normalizePlan({
+      sections: JSON.stringify([
+        {
+          kind: "code",
+          id: "steps",
+          title: "Как записаться",
+          props: { items: [{ n: "01", title: "Звонок" }, "02"] },
+        },
+      ]),
+      seo: { title: "t", description: "d" },
+    }) as { sections: { props: unknown }[] };
+    expect(plan.sections[0]?.props).toEqual({ items: [{ title: "Звонок" }] });
   });
 
   test("a kept component's binding comes from the page, whatever the plan wrote", async () => {

@@ -142,15 +142,61 @@ export function autofixSection(source: string): string {
   }
   if (/\bLazyMotion\b/.test(s)) s = s.replace(/<(\/?)motion\./g, "<$1m.");
   else if (/<m\./.test(s)) s = withLazyMotion(s);
-  return withoutUnknownHeadless(s);
+  // Every helper a section may take has one argument (G0 TS2554 «Expected 1 arguments, but got 2»: fitWords(t, 3)).
+  s = s.replace(
+    /\b(fitWords|useFitWords|srcSetOf|safeHref|richInline|richPlain)(<[^<>()]*>)?\(([^(),]+),[^()]*\)/g,
+    "$1$2($3)",
+  );
+  return withLinkColor(withoutUnknownHeadless(s));
+}
+
+/**
+ * A link without a theme text colour (the linter's LINK_COLOR): the flagged <a> gets text-inherit — the colour of its
+ * parent, what the model meant by leaving it out. Only the tags the linter names are touched.
+ */
+function withLinkColor(source: string): string {
+  let lines: number[];
+  try {
+    lines = lintPattern(source, "section.tsx")
+      .filter((i) => i.code === "link-color")
+      .map((i) => i.line);
+  } catch {
+    return source;
+  }
+  if (!lines.length) return source;
+  const rows = source.split("\n");
+  for (const n of new Set(lines)) {
+    const row = rows[n - 1];
+    if (row === undefined) continue;
+    const at = row.search(/<a\b/);
+    if (at < 0) continue;
+    const head = row.slice(at);
+    const fixed = /^<a\b[^>]*?\sclassName="/.test(head)
+      ? head.replace(/^(<a\b[^>]*?\sclassName=")/, "$1text-inherit ")
+      : /^<a\b[^>]*\sclassName=/.test(head)
+        ? head
+        : head.replace(/^<a\b/, '<a className="text-inherit"');
+    rows[n - 1] = row.slice(0, at) + fixed;
+  }
+  return rows.join("\n");
 }
 
 /**
  * m.* without <LazyMotion> (the linter's MOTION_LAZY, the most frequent refusal of the probe): the JSX the default
  * export returns gets the wrapper and the import. The source is left as it was when the return cannot be found.
  */
-function withLazyMotion(source: string): string {
+function withLazyMotion(input: string): string {
+  let source = input;
   const start = source.search(/export\s+default\s+function/);
+  if (start >= 0 && source.indexOf("return (", start) < 0) {
+    // `return <section>…</section>;` without parentheses: the last statement of the default export gets them.
+    const bare = source.indexOf("return <", start);
+    const close = source.lastIndexOf("}");
+    const semi = source.lastIndexOf(";", close);
+    const end = semi > bare ? semi : source.lastIndexOf(">", close) + 1;
+    if (bare < 0 || close < bare || end <= bare) return source;
+    source = `${source.slice(0, bare)}return (${source.slice(bare + "return ".length, end)});${source.slice(semi > bare ? end + 1 : end)}`;
+  }
   const ret = start < 0 ? -1 : source.indexOf("return (", start);
   if (ret < 0) return source;
   let depth = 0;
@@ -213,6 +259,7 @@ const PLAN_RULES = [
   "У секции кодом: id (латиница через дефис), title (что показывает), idea — 1–2 предложения о раскладке и приёме (что крупно, где фото, как читается на телефоне), props — все тексты и фото секции ровно в том виде, в каком их получит код.",
   "Первая секция — первый экран (kind code, id hero). Шапку и подвал не пиши. Соседние секции — разных раскладок; у страницы одна сильная идея.",
   "Все компоненты SDK из списка обязаны остаться (kind keep с их id); в их props можно переписать тексты по схеме, привязку не трогай.",
+  "Не нумеруй пункты в props («01», «02»): номер шага, если он нужен, рисует код секции.",
   "seo.title — до 70 знаков, seo.description — 50–160 знаков, по фактам страницы.",
   `Отвечай только вызовом ${PAGE_PLAN_TOOL}.`,
 ];
@@ -336,6 +383,40 @@ export function sectionMessages(o: {
   ];
 }
 
+/**
+ * Mechanical slips of the plan: sections or seo sent as a JSON string (MiMo), zero-padded ordinals «01», «02» in props
+ * (UNTRACED_NUMBER: the brief has no such numbers — the code draws a step number itself).
+ */
+export function normalizePlan(args: unknown): unknown {
+  if (!args || typeof args !== "object") return args;
+  const out: Record<string, unknown> = { ...(args as Record<string, unknown>) };
+  for (const key of ["sections", "seo"])
+    if (typeof out[key] === "string")
+      try {
+        out[key] = JSON.parse(out[key] as string);
+      } catch {
+        // left as is: the schema names the field
+      }
+  const strip = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.filter((x) => !(typeof x === "string" && ORDINAL.test(x))).map(strip);
+    if (v && typeof v === "object")
+      return Object.fromEntries(
+        Object.entries(v)
+          .filter(([, x]) => !(typeof x === "string" && ORDINAL.test(x)))
+          .map(([k, x]) => [k, strip(x)]),
+      );
+    return v;
+  };
+  if (Array.isArray(out.sections))
+    out.sections = out.sections.map((x) =>
+      x && typeof x === "object" && "props" in x
+        ? { ...x, props: strip((x as { props: unknown }).props) }
+        : x,
+    );
+  return out;
+}
+const ORDINAL = /^0\d\.?$/;
+
 /** The plan request: the tool with the page shape checks (no code yet). */
 export function pagePlanRequest(o: {
   facts: SiteFacts;
@@ -350,6 +431,7 @@ export function pagePlanRequest(o: {
     description:
       "The plan of the public page: code sections with their idea and props, the kept SDK components, SEO.",
     input: pagePlanSchema(sdkSections(o.page).map((s) => s.id)),
+    normalize: normalizePlan,
     check: (v) => pageShapeIssues(v, o),
   });
   return { tool, messages: pagePlanMessages(o) };

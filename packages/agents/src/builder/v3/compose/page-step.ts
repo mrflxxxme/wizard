@@ -186,6 +186,9 @@ export async function pageCode(
   return null;
 }
 
+/** Checks of the assembled page by sections: the first and two rounds of rewriting the failing sections. */
+const SECTION_ROUNDS = 3;
+
 /** Section ids named by problems of the page lint (path sections.<i>…) or of G0 (the section file in the text). */
 function failingSections(
   plan: PagePlan,
@@ -212,7 +215,7 @@ function failingSections(
 /**
  * The page step by sections (V4-06 speed): a short plan call (sections, ideas, props, SDK components, SEO), every
  * code section by its own call at once, the page assembled by code; the page lint and G0 send only the failing
- * sections back (one round each). Null — the page stays as it was; "stop" — the scenario stops.
+ * sections back (up to two rounds). Null — the page stays as it was; "stop" — the scenario stops.
  */
 export async function pageSections(
   ctx: V3BuildContext,
@@ -293,7 +296,7 @@ export async function pageSections(
     return null;
   }
   const check = { site: s.site, page: s.page, facts: s.facts, library: s.library, signatures: s.signatures };
-  for (let round = 0; round < 2; round++) {
+  for (let round = 0; round < SECTION_ROUNDS; round++) {
     const answer = planAnswer(plan, sources);
     const lint = pageLintIssues(answer, check);
     let problems = lint.map((i) => ({ path: i.path, message: i.message }));
@@ -314,7 +317,7 @@ export async function pageSections(
       }
       problems = g0.problems.map((m) => ({ path: "", message: m }));
     }
-    if (round === 1) break;
+    if (round === SECTION_ROUNDS - 1) break;
     const failing = failingSections(plan, s.page, problems);
     if (!failing.size) break;
     await Promise.all(items.filter((it) => failing.has(it.id)).map((it) => write(it, failing.get(it.id))));
