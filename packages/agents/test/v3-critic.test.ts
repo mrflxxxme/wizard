@@ -511,7 +511,7 @@ describe("V3-13 critic", () => {
     expect(r.cycles[0]?.rejected[0]?.reason_ru).toContain("откат: сборка: G0-TS-01");
   });
 
-  test("the score falls after a batch: the batch is rolled back and the critic stops", async () => {
+  test("V4-09: the score falls after a batch — the critic stops, but the checks accepted the batch: it stays", async () => {
     const fx = fixtureRoute(critiqueLines(prompt, [critique(3, [F.swap]), critique(2, [F.reorder])]));
     const r = await runCritic(
       { ...ctx, route: fx.route },
@@ -519,8 +519,9 @@ describe("V3-13 critic", () => {
     );
     expect(r.stop).toBe("no_gain");
     expect(r.cycles.map((c) => c.score)).toEqual([69, 48]);
-    expect(r.rolledBack).toEqual(["/#services: вариант services-editorial → services-price-list"]);
-    expect(r.files.size).toBe(0);
+    // The model's opinion never rolls an edit back: the deterministic checks decide.
+    expect(r.rolledBack).toEqual([]);
+    expect(r.files.size).toBeGreaterThan(0);
   });
 
   test("the founder's floor: under 30 an unchanged score does not stop the loop; at 30 and above it does", async () => {
@@ -532,8 +533,9 @@ describe("V3-13 critic", () => {
       { ...ctx, route: low.route },
       { inspect: fakeInspector([]), verify: null, registry },
     );
-    expect(r.cycles.map((c) => c.score)).toEqual([19, 19, 50]);
-    expect(low.calls).toHaveLength(3);
+    // V4-09: at most 2 cycles — under the floor the second cycle still runs.
+    expect(r.cycles.map((c) => c.score)).toEqual([19, 19]);
+    expect(low.calls).toHaveLength(2);
     const high = fixtureRoute(
       critiqueLines(prompt, [critique(2, [F.swap]), critique(2, [P1reorder]), critique(3, [])]),
     );
@@ -545,7 +547,7 @@ describe("V3-13 critic", () => {
     expect(h.stop).toBe("no_gain");
   });
 
-  test("at most 3 cycles, each paid by its own call", async () => {
+  test("V4-09: at most 2 cycles, each paid by its own call", async () => {
     const fx = fixtureRoute(
       critiqueLines(prompt, [
         critique(1, [F.swap]),
@@ -559,15 +561,15 @@ describe("V3-13 critic", () => {
       { inspect: fakeInspector([]), verify: null, registry },
     );
     expect(r.stop).toBe("cycles");
-    expect(fx.calls).toHaveLength(3);
-    expect(r.cycles.map((c) => c.applied.length)).toEqual([1, 1, 1]);
+    expect(fx.calls).toHaveLength(2);
+    expect(r.cycles.map((c) => c.applied.length)).toEqual([1, 1]);
     expect(r.spentRub).toBeLessThanOrEqual(40);
-    // A fourth cycle is not asked for even when the stage allows more.
+    // A third cycle is not asked for even when the stage allows more.
     const more = await runCritic(
       { ...ctx, route: fixtureRoute(critiqueLines(prompt, Array(5).fill(critique(1, [F.swap])))).route },
       { inspect: fakeInspector([]), verify: null, registry, maxCycles: 5 },
     );
-    expect(more.cycles.length).toBeLessThanOrEqual(3);
+    expect(more.cycles.length).toBeLessThanOrEqual(2);
   });
 
   test("budget: a call whose upper bound does not fit is not made; the checks still run", async () => {

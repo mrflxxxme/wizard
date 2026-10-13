@@ -6,27 +6,42 @@ import {
   type SystemBrief,
   systemBriefSchema,
 } from "../../../packages/appspec/src/index.ts";
-import type {
-  LlmMessage,
+import {
+  createRegistry,
+  type LlmMessage,
   LlmTool,
   OrgPolicy,
   RouteInput,
   RouteOutput,
 } from "../../../packages/llm/src/index.ts";
 import { PATTERNS } from "../../../packages/ui-kit/src/v3/patterns/index.ts";
+import { type ArchetypeId, designSystemV3 } from "../../../packages/ui-kit/src/v3/design/index.ts";
 import { dentalBrief, shopBrief } from "../../../packages/appspec/test/brief-fixtures.ts";
 import { composeContext } from "../../../packages/agents/test/v3-compose-fixtures.ts";
 import { extractBriefDraft } from "../../../packages/agents/src/brief-extract/index.ts";
 import {
   type ArtDirectorInput,
+  CRITIC_CALL_TYPE,
   createPageComposer,
+  critiqueMessages,
+  critiqueScore,
+  critiqueTool,
   directionsNiche,
+  shotPlan,
   pointEditV3,
+  withSitePages,
   proposeDirections,
   runArtDirector,
   runTechreview,
 } from "../../../packages/agents/src/builder/index.ts";
 import type { V3BuildContext } from "../../../packages/agents/src/builder/v3/contract.ts";
+import { siteFacts } from "../../../packages/agents/src/builder/v3/compose/index.ts";
+import { readSite } from "../../../packages/agents/src/builder/v3/compose/site.ts";
+import { callTool } from "../../../packages/agents/src/core/loop.ts";
+import { defaultAuthorFamilies } from "../../../packages/agents/src/builder/v3/critic/hook.ts";
+import { chromiumProvider } from "../../../apps/platform-api/src/agents/goal-browser.ts";
+import { criticInspector } from "../../../apps/platform-api/src/builds-v3/critic.ts";
+import { CRITIC_VIEWPORTS } from "../../../packages/agents/src/builder/v3/critic/checks.ts";
 import {
   createInterviewV3,
   newInterviewV3Session,
@@ -59,8 +74,20 @@ function brief(name: unknown): SystemBrief {
 }
 
 /** The fixture clinic after the skeleton, with the probe's route (page_compose, techreview). */
-async function builtClinic(route: RouteFn, systemId: string, photos = true): Promise<V3BuildContext> {
-  const base = { ...composeContext({ photos, systemId }), route, budgetRub: 40 };
+/** Points the critic's score of the same shots may differ by between calls of one model. */
+export const CRITIC_SPREAD = 20;
+
+async function builtClinic(
+  route: RouteFn,
+  systemId: string,
+  photos = true,
+  archetype?: ArchetypeId,
+): Promise<V3BuildContext> {
+  const fixture = composeContext({ photos, systemId });
+  const design = archetype
+    ? designSystemV3({ archetype, brandColor: "#2a7f9e", seed: 7, niche: fixture.plan.niche })
+    : fixture.design;
+  const base = { ...fixture, design, route, budgetRub: 40 };
   const out = await createPageComposer({ patterns: PATTERNS }).skeleton(base);
   const files = new Map(base.files);
   for (const [p, v] of out.files) {
@@ -168,6 +195,93 @@ export const STAGES: Record<string, Stage> = {
         ctx,
       });
       return { fallback: !r.ok, summary: r.ok ? r.summary : `отказ: ${r.reason}` };
+    },
+  },
+  // V4-09: the critic on the real screenshots 390/1440 of the clinic, asked `repeats` times on the same shots — its
+  // latency per call (target ≤ 90 s) and the spread of its score (≤ 10 points, the stability of the critic).
+  critic_visual: {
+    callTypes: ["critic_visual"],
+    async run(input, route, ctx) {
+      const built = await builtClinic(
+        route,
+        ctx.systemId,
+        input.photos !== false,
+        input.archetype as ArchetypeId | undefined,
+      );
+      const site = readSite(built.files);
+      if (!site) throw new Error("в клинике нет модели сайта");
+      const browser = chromiumProvider({ slots: 1 });
+      try {
+        const shots = shotPlan(site);
+        const insp = await criticInspector({ browser })({
+          // As the critic hook: the spec routes the site's pages (without them every route is «не найдена»).
+          spec: withSitePages(built.spec, site),
+          files: built.files,
+          routes: [...new Set(shots.map((x) => x.route))],
+          viewports: CRITIC_VIEWPORTS,
+          shots,
+          fonts: [built.design.fonts.display.family, built.design.fonts.text.family],
+        });
+        if (!insp.ok) throw new Error(`снимки не сняты: ${insp.error ?? ""}`);
+        const messages = critiqueMessages({
+          facts: siteFacts(built),
+          brief: built.brief,
+          site,
+          design: built.design,
+          library: PATTERNS,
+          shots: insp.shots,
+          found: insp.problems,
+          stubPhotos: insp.stubPhotos === true,
+          history: [],
+          code: new Map(
+            [...new Set(shots.map((x) => x.route))].flatMap((rt) => {
+              const file = site.pages.find((pg) => pg.route === rt)?.file;
+              const src = file ? built.files.get(file) : undefined;
+              return file && src !== undefined ? [[file, src] as const] : [];
+            }),
+          ),
+        });
+        // Score and model of each answer: the spread is judged among the answers of one model (a fallback model
+        // under the provider's rate limit is another critic, shown apart).
+        const answers: { model: string; score: number }[] = [];
+        const ms: number[] = [];
+        const repeats = Math.max(1, Math.min(3, Number(input.repeats ?? 3)));
+        for (let i = 0; i < repeats; i++) {
+          const t0 = Date.now();
+          let model = "";
+          const r = await callTool({
+            // As on the platform: the critic is never of the page writer's family.
+            route: async (ri) => {
+              const out = await route({ ...ri, avoidFamilies: defaultAuthorFamilies(createRegistry()) });
+              model = out.model;
+              return out;
+            },
+            callType: CRITIC_CALL_TYPE,
+            orgPolicy: OPEN,
+            ctx,
+            stepName: `critic_visual:${i + 1}`,
+            messages,
+            tool: critiqueTool,
+            maxRepairs: 1,
+          });
+          ms.push(Date.now() - t0);
+          if (r.ok) answers.push({ model, score: critiqueScore(r.value) });
+        }
+        const byModel = new Map<string, number[]>();
+        for (const a of answers) byModel.set(a.model, [...(byModel.get(a.model) ?? []), a.score]);
+        const main = [...byModel.values()].sort((a, b) => b.length - a.length)[0] ?? [];
+        const spread = main.length ? Math.max(...main) - Math.min(...main) : 0;
+        const slowest = Math.max(...ms);
+        const median = [...ms].sort((x, y) => x - y)[Math.floor(ms.length / 2)] as number;
+        const scores = [...byModel].map(([m, xs]) => `${m}: ${xs.join(", ")}`).join("; ");
+        // The score only stops the cycles (the checks accept edits): a model's noise up to CRITIC_SPREAD is tolerated.
+        return {
+          fallback: answers.length < repeats || main.length < 2 || spread > CRITIC_SPREAD || median > 90_000,
+          summary: `оценки ${scores || "—"} (разброс у одной модели ${spread}); вызов: медиана ${Math.round(median / 1000)} с, самый долгий ${Math.round(slowest / 1000)} с`,
+        };
+      } finally {
+        await browser.close();
+      }
     },
   },
   raw: {

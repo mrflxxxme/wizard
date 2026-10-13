@@ -22,7 +22,8 @@
     "packages/agents/src/builder/v3/prompts/signature-section"
   ],
   "critic_visual": [
-    "packages/agents/src/builder/v3/critic/prompt.ts"
+    "packages/agents/src/builder/v3/critic/prompt.ts",
+    "packages/agents/src/builder/v3/critic/rubric.ts"
   ],
   "techreview": [
     "packages/agents/src/builder/v3/techreview/reviewer.ts"

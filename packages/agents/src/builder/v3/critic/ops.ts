@@ -18,6 +18,7 @@ import { actionLink, slotShape } from "../compose/content.js";
 import { copyIssues } from "../compose/lint.js";
 import type { SectionPhotos, SiteModel, SitePage, SiteSection } from "../compose/site.js";
 import { choosePattern } from "../compose/skeleton.js";
+import type { CodePatch } from "./rubric.js";
 
 const route = z.string().trim().min(1).max(200);
 const section = z.string().trim().min(1).max(60);
@@ -51,6 +52,8 @@ export type EditOp = z.output<typeof editOpSchema>;
 export interface CriticState {
   site: SiteModel;
   design: DesignSystemV3;
+  /** V4-09: code edits over the generated files, in order (a patch whose fragment is gone no longer applies). */
+  code?: readonly CodePatch[];
 }
 
 export interface EditEnv {
