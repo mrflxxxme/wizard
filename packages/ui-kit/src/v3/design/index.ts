@@ -80,6 +80,7 @@ export {
  * designLint) → designFromProposal → DesignSystemV3; pickDistinct takes the most different of k verbalized directions.
  */
 export {
+  autofixProposal,
   type DesignProposal,
   designFromProposal,
   PROPOSAL_BASES,

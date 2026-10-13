@@ -19,6 +19,10 @@ export const DIRECTIONS_CALL_DEADLINE_MS = 75_000;
  * route's own timeout: Kimi K3 thinks 60–130 s on it (stage probe 13.10.2026), a shorter cut leaves no answer at all.
  */
 export const DESIGN_CALL_DEADLINE_MS = 240_000;
+/** V4-17: deadline of the short ideas call; past it — the archetypes of code. */
+export const IDEAS_CALL_DEADLINE_MS = 90_000;
+/** V4-17: deadline of one direction's call (its system and texts); past it — that direction by its archetype. */
+export const DIRECTION_CALL_DEADLINE_MS = 120_000;
 
 export class RubWallet {
   #spent = 0;
