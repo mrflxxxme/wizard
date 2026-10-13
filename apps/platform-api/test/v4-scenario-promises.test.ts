@@ -8,12 +8,13 @@ import { checkScenario, scenarioPromiseCheck } from "../src/builds-v3/host.js";
 import { checkPromises, keeps, type SectionView, scenarioPromises } from "../src/builds-v3/promises.js";
 import type { BuildHost } from "../src/runs/types.js";
 
-const S1 = {
-  then: [
-    "Посетитель видит услуги с ценами «от», врачей с фото и опытом, отзывы, контакты, адрес",
-    "Записывается на приём к врачу",
-  ],
-};
+/** A scenario's `then` steps. */
+const steps = (...then: string[]): { then: string[] } => ({ then });
+
+const S1 = steps(
+  "Посетитель видит услуги с ценами «от», врачей с фото и опытом, отзывы, контакты, адрес",
+  "Записывается на приём к врачу",
+);
 
 /** ui/site.json of a site with the given sections on the home page (and a contacts page when asked). */
 function site(home: string[], extra: Record<string, string[]> = {}): Map<string, string> {
@@ -45,12 +46,10 @@ describe("V4-21 scenario promises", () => {
       "reviews",
       "contacts",
     ]);
-    expect(scenarioPromises({ then: ["Оставляет заявку на услугу", "Записывается к врачу"] })).toEqual([]);
+    expect(scenarioPromises(steps("Оставляет заявку на услугу", "Записывается к врачу"))).toEqual([]);
     // Photos and experience promise people only with people in the step.
-    expect(scenarioPromises({ then: ["Видит фото интерьера и опыт клиники"] })).toEqual([]);
-    expect(scenarioPromises({ then: ["Смотрит расписание занятий"] }).map((p) => p.kind)).toEqual([
-      "schedule",
-    ]);
+    expect(scenarioPromises(steps("Видит фото интерьера и опыт клиники"))).toEqual([]);
+    expect(scenarioPromises(steps("Смотрит расписание занятий")).map((p) => p.kind)).toEqual(["schedule"]);
   });
 
   test("by the site model: no section of doctors, reviews or contacts — each said in words", () => {
@@ -127,7 +126,7 @@ describe("V4-21 scenario promises", () => {
 
   test("a signature section (free code) may keep any promise: by the site model it stands, the browser judges it", () => {
     const files = site(["header", "hero", "signature", "footer"]);
-    const doctors = { then: ["Посетитель видит врачей"] };
+    const doctors = steps("Посетитель видит врачей");
     expect(checkPromises(doctors, files, null).problems).toEqual([]);
     const shown = (v: Partial<SectionView>) => new Map([["/", [view("signature-2", v)]]]);
     expect(
@@ -161,7 +160,13 @@ function host(files: Map<string, string>): BuildHost {
 
 describe("V4-21 checkScenario with promises", () => {
   const input = (then: string[]) => ({
-    scenario: { id: "s1", title: "Видит клинику", given: "Пациент", when: "открывает сайт", then } as never,
+    scenario: {
+      id: "s1",
+      title: "Видит клинику",
+      given: "Пациент",
+      when: "открывает сайт",
+      ...steps(...then),
+    } as never,
     goalScenarios: [],
     routes: ["/"],
     revision: 3,

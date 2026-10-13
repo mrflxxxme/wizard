@@ -43,7 +43,12 @@ function smallBrief() {
     // about the pipeline (v4-scenario-promises tests the promises).
     scenarios: (b.scenarios ?? [])
       .filter((s) => ["s_book", "s_lead", "s_doctors"].includes(s.id))
-      .map((s) => (s.id === "s_doctors" ? { ...s, then: ["записывает к выбранному врачу"] } : s)),
+      .map((s) =>
+        s.id === "s_doctors"
+          ? // biome-ignore lint/suspicious/noThenProperty: field name fixed by builder-v3.md §3 C1
+            { ...s, then: ["записывает к выбранному врачу"] }
+          : s,
+      ),
   };
 }
 

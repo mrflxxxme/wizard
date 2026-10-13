@@ -12,6 +12,9 @@ import { chromiumProvider } from "../src/agents/goal-browser.js";
 import { draftDemoRows } from "../src/builds-v3/critic.js";
 import { checkPromises, promiseRoutes, siteViews } from "../src/builds-v3/promises.js";
 
+/** A scenario's `then` steps. */
+const steps = (...then: string[]): { then: string[] } => ({ then });
+
 const hasChromium = (() => {
   try {
     return existsSync(chromium.executablePath());
@@ -23,9 +26,7 @@ const hasChromium = (() => {
 const browser = chromiumProvider({ slots: 1 });
 afterAll(() => browser.close());
 
-const S1 = {
-  then: ["Пациент видит услуги с ценами «от», врачей с фото и опытом, отзывы, контакты, адрес"],
-};
+const S1 = steps("Пациент видит услуги с ценами «от», врачей с фото и опытом, отзывы, контакты, адрес");
 
 describe.skipIf(!hasChromium)("V4-21 scenario promises in the browser", () => {
   test("s1 on the clinic's site: each promise not kept is said in words", async () => {
@@ -51,7 +52,7 @@ describe.skipIf(!hasChromium)("V4-21 scenario promises in the browser", () => {
   test("«Услуга 1» in the list of services is no list; the owner's names are", async () => {
     const site = await briefSite("v4-21-dental", DENTAL_BOOKING);
     const spec = withSitePages(site.spec, site.site);
-    const scenario = { then: ["Пациент видит список услуг"] };
+    const scenario = steps("Пациент видит список услуг");
     // The draft's demo rows without the brief's names: a generator's «Услуга 1/2/3» (the rehearsal's catalog).
     const stand = draftDemoRows(spec, "v4-21-dental", []);
     expect((stand.service ?? []).map((r) => r.name)).toEqual(["Услуга 1", "Услуга 2", "Услуга 3"]);
