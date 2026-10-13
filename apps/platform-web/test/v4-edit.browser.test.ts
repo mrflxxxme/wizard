@@ -182,7 +182,7 @@ describe.skipIf(!hasChromium)("edits in three layers on the canvas (chromium)", 
       await field.fill("Улыбка — стоматология у дома");
       await page.screenshot({ path: join(ARTIFACTS, `v4-edit-${vp.width}-1-text.png`) });
       await page.getByTestId("edit-text-save").click();
-      await expect.poll(() => page.getByTestId("edit-note").textContent()).toBe("Готово за 0.4 с");
+      await expect.poll(() => page.getByTestId("edit-note").textContent()).toBe("Готово за 0,4 с");
       expect(fake.literalPosts).toEqual([
         { revision: 5, edits: [{ ref: HEAD, value: "Улыбка — стоматология у дома" }] },
       ]);
