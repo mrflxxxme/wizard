@@ -347,24 +347,32 @@ async function designDirections(
     notes.push("бюджет шага исчерпан: направления по архетипам");
     return null;
   }
-  const r = await proposeDesignDirections({
-    input: {
-      niche: input.niche,
-      goals: input.brief.goals.map((g) => g.text),
-      ...(input.brief.audience ? { audience: input.brief.audience } : {}),
-      seed: input.seed,
-      recent: input.recent ?? [],
-      references,
-      ...(brandColor ? { brandColor } : {}),
-    },
-    route: wallet.route(model.route),
-    ...(model.orgPolicy !== undefined ? { orgPolicy: model.orgPolicy } : {}),
-    ...(model.ctx ? { ctx: model.ctx } : {}),
-    signal: deadlineSignal(model.signal, model.designDeadlineMs ?? DESIGN_CALL_DEADLINE_MS),
-    ...(model.runStep ? { runStep: model.runStep } : {}),
-    stepName: "design_directions",
-    maxRepairs: Math.min(2, attempts - 1),
-  });
+  let r: Awaited<ReturnType<typeof proposeDesignDirections>>;
+  try {
+    r = await proposeDesignDirections({
+      input: {
+        niche: input.niche,
+        goals: input.brief.goals.map((g) => g.text),
+        ...(input.brief.audience ? { audience: input.brief.audience } : {}),
+        seed: input.seed,
+        recent: input.recent ?? [],
+        references,
+        ...(brandColor ? { brandColor } : {}),
+      },
+      route: wallet.route(model.route),
+      ...(model.orgPolicy !== undefined ? { orgPolicy: model.orgPolicy } : {}),
+      ...(model.ctx ? { ctx: model.ctx } : {}),
+      signal: deadlineSignal(model.signal, model.designDeadlineMs ?? DESIGN_CALL_DEADLINE_MS),
+      ...(model.runStep ? { runStep: model.runStep } : {}),
+      stepName: "design_directions",
+      maxRepairs: Math.min(2, attempts - 1),
+    });
+  } catch (e) {
+    // The step deadline is not the caller's abort: past it the archetypes of code stay.
+    if (model.signal?.aborted) throw e;
+    notes.push("модель не успела предложить направления: направления по архетипам");
+    return null;
+  }
   if (r.directions) return r.directions;
   notes.push(`${r.note ?? "ответ модели не прошёл проверку"}: направления по архетипам`);
   return null;

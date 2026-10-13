@@ -36,7 +36,11 @@ const NIGHT: DesignProposal = {
   base: "night_contrast",
   scheme: "dark",
   colors: { bg: "#14161A", ink: "#F2F0EB", accent: "#E0A030", accent2: "#3FA796" },
-  fonts: { display: "Unbounded", text: "Source Sans 3", why: "Широкий гротеск держит короткие ночные вывески." },
+  fonts: {
+    display: "Unbounded",
+    text: "Source Sans 3",
+    why: "Широкий гротеск держит короткие ночные вывески.",
+  },
   type: { scale: "dramatic", upper: true },
   radius: "sharp",
   density: "compact",
@@ -83,7 +87,10 @@ describe("V4-07 design proposal: code checks, the model chooses", () => {
   });
 
   test("low contrast of the text and the accent comes back with the ratio and the way to fix it", () => {
-    const issues = proposalIssues({ ...BAKERY, colors: { bg: "#F7F5F2", ink: "#9A948E", accent: "#F2D9C9" } });
+    const issues = proposalIssues({
+      ...BAKERY,
+      colors: { bg: "#F7F5F2", ink: "#9A948E", accent: "#F2D9C9" },
+    });
     expect(issues.map((i) => i.code)).toEqual(["TEXT_CONTRAST", "ACCENT_CONTRAST"]);
     expect(issues[0]?.message).toMatch(/4,5:1/);
     expect(contrast("#9A948E", "#F7F5F2")).toBeLessThan(4.5);
@@ -115,7 +122,10 @@ describe("V4-07 design proposal: code checks, the model chooses", () => {
   test("verbalized sampling: of five directions the three most different are taken, the likeliest first", () => {
     const near = { ...BAKERY, name: "Почти то же", probability: 0.35, radius: "round" as const };
     const near2 = { ...BAKERY, name: "И это", probability: 0.3, density: "airy" as const };
-    const list = [BAKERY, near, near2, NIGHT, SWISS].map((p) => ({ ...p, design: designFromProposal(p, opts) }));
+    const list = [BAKERY, near, near2, NIGHT, SWISS].map((p) => ({
+      ...p,
+      design: designFromProposal(p, opts),
+    }));
     const picked = pickDistinct(list, 3);
     expect(picked.map((x) => x.name)).toEqual(["Тёплая витрина", "Ночная пекарня", "Чистая сетка"]);
     for (let i = 0; i < 3; i++)

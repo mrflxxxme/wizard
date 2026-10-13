@@ -341,7 +341,8 @@ describe("harness v3: features, skeleton preview, algorithms ahead of models", (
     expect(r.previewMs as number).toBeLessThanOrEqual(5 * MIN);
     expect(sys.checkpoints.get("design")?.data).toMatchObject({
       source: "model",
-      styleName: "Спокойная клиника",
+      // V4-07: the likeliest of the model's directions.
+      styleName: "Тёплая витрина",
     });
   });
 

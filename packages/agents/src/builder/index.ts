@@ -206,10 +206,12 @@ export {
   designDirectionsIssues,
   designDirectionsMessages,
   designDirectionsSchema,
+  designDirectionsTool,
   designProposalSchema,
   type ModelDirection,
   proposeDesignDirections,
   runArtDirector,
+  storedProposal,
   toProposal,
 } from "./v3/art-director.js";
 /**

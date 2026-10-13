@@ -348,6 +348,20 @@ export function acceptedDirections(v: DesignDirectionsAnswer, input: ArtDirector
   return pickDistinct(valid, ART_DIRECTIONS, (x) => x.proposal.base);
 }
 
+/** The submit_design_directions tool with its checks; `seen` gets every parsed answer (the last one survives repairs). */
+export function designDirectionsTool(input: ArtDirectorInput, seen?: (v: DesignDirectionsAnswer) => void) {
+  return defineTool({
+    name: ART_DIRECTION_TOOL,
+    description:
+      "Design directions of the client's site: palette, a catalog font pair, scale, grid, rhythm, motion, imagery, probability.",
+    input: designDirectionsSchema(),
+    check: (v) => {
+      seen?.(v);
+      return designDirectionsIssues(v, input);
+    },
+  });
+}
+
 /**
  * One model call: ART_DIRECTION_K directions, checked by code (≤ 2 repairs with the issues). Directions that never
  * passed are dropped; fewer than three left — null (the caller falls back to the archetypes of code).
@@ -363,15 +377,8 @@ export async function proposeDesignDirections(o: {
   maxRepairs?: number;
 }): Promise<{ directions: ModelDirection[] | null; stats: CallStats | null; note?: string }> {
   let last: DesignDirectionsAnswer | null = null;
-  const tool = defineTool({
-    name: ART_DIRECTION_TOOL,
-    description:
-      "Design directions of the client's site: palette, a catalog font pair, scale, grid, rhythm, motion, imagery, probability.",
-    input: designDirectionsSchema(),
-    check: (v) => {
-      last = v;
-      return designDirectionsIssues(v, o.input);
-    },
+  const tool = designDirectionsTool(o.input, (v) => {
+    last = v;
   });
   try {
     const r = await callTool({

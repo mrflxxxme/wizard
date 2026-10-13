@@ -1,23 +1,32 @@
-// V3-07: the art director stage. Three candidate directions by code (pickArchetypes with the niche memory) and their
-// design systems (designSystemV3, no model); the model only picks one of them and interprets the brand colour and the
-// voice through submit_art_direction (recorded answer through the fixture router, suite unit — the request key must
-// match the real prompt); without a model, on a refusal or an error — the deterministic choice. No live calls.
+// V3-07 / V4-07: the art director stage. With a model it designs five directions (verbalized sampling) and code checks
+// them — AA contrast, catalog fonts, the brand colour, designLint — sends issues back and keeps the three most
+// different (recorded answer through the fixture router, suite unit — the request key must match the real prompt);
+// without a model, on a refusal or an error — three archetype candidates of code and the first of them. No live calls.
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createRegistry, createRouter, type RouteInput, type RouteOutput } from "@wizard/llm";
-import { ARCHETYPE_IDS, cssHex, designLintErrors, designSystemV3 } from "@wizard/ui-kit/v3/design";
+import { createRegistry, createRouter, decideTier, type RouteInput, type RouteOutput } from "@wizard/llm";
+import { ARCHETYPE_IDS, cssHex, designDiversity, designLintErrors } from "@wizard/ui-kit/v3/design";
 import { describe, expect, test } from "vitest";
 import {
   ART_DIRECTION_CALL_TYPE,
+  ART_DIRECTION_TOOL,
   type ArtDirectorInput,
+  acceptedDirections,
   artDirectionCandidates,
-  artDirectionMessages,
-  artDirectionSchema,
+  type DesignDirectionAnswer,
+  type DesignDirectionsAnswer,
+  designDirectionsIssues,
+  designDirectionsMessages,
+  designDirectionsTool,
+  designProposalSchema,
   runArtDirector,
+  storedProposal,
+  toProposal,
 } from "../src/builder/index.js";
 import { defineTool } from "../src/core/tool.js";
 import { fixtureLine } from "./build-v2-fixtures.js";
+import { fiveDirections } from "./v4-art-fixtures.js";
 
 const INPUT: ArtDirectorInput = {
   niche: "Пекарня-кондитерская, торты на заказ",
@@ -28,6 +37,7 @@ const INPUT: ArtDirectorInput = {
 };
 
 const llm = createRegistry({ buildDefaultTier: "T1" });
+const OPEN = { ruOnly: false, t1Restricted: false };
 
 /** A scripted model: each call gets the next answer (null — a text answer; Error — thrown). */
 function scripted(answers: (Record<string, unknown> | null | Error)[]) {
@@ -41,7 +51,7 @@ function scripted(answers: (Record<string, unknown> | null | Error)[]) {
       model: "glm-5.3",
       result: a
         ? {
-            toolCalls: [{ id: `c${calls.length}`, name: "submit_art_direction", args: a }],
+            toolCalls: [{ id: `c${calls.length}`, name: "submit_design_directions", args: a }],
             finishReason: "tool-calls",
           }
         : { toolCalls: [], text: "Не могу выбрать.", finishReason: "stop" },
@@ -112,33 +122,21 @@ describe("without a model", () => {
   });
 });
 
-describe("with a model (recorded answer through the fixture router)", () => {
-  test("the model picks the second candidate, voice and use of the brand colour; tokens stay code", async () => {
-    const { candidates } = artDirectionCandidates(INPUT);
-    const second = candidates[1]?.archetype as string;
-    const answer = {
-      archetype: second,
-      voice: "warm",
-      accentUse: "band",
-      styleName: "Тёплая витрина",
-      why: "Торты продают фото и честные цены: спокойная сетка и одна цветная полоса с фирменным цветом.",
-    };
-    const tool = defineTool({
-      name: "submit_art_direction",
-      description: "art direction",
-      input: artDirectionSchema(candidates.map((c) => c.archetype)),
-    });
+describe("with a model: the model designs, code checks (V4-07)", () => {
+  test("recorded answer: five directions → the three most different on different bases; the likeliest is the design", async () => {
+    const answer = fiveDirections("#B5541B");
+    const tool = designDirectionsTool(INPUT);
     const dir = mkdtempSync(join(tmpdir(), "wz-art-"));
     mkdirSync(join(dir, "unit"), { recursive: true });
-    const line = fixtureLine(
-      ART_DIRECTION_CALL_TYPE,
-      artDirectionMessages(INPUT, candidates),
-      [tool.definition],
-      {
-        name: "submit_art_direction",
-        args: answer,
-      },
-    );
+    // Request keys are taken over the scrubbed messages (font names like «Sofia Sans» read as names there).
+    const keyed = decideTier(
+      { callType: ART_DIRECTION_CALL_TYPE, messages: designDirectionsMessages(INPUT), orgPolicy: OPEN },
+      llm,
+    ).scrubbedMessages;
+    const line = fixtureLine(ART_DIRECTION_CALL_TYPE, keyed, [tool.definition], {
+      name: ART_DIRECTION_TOOL,
+      args: answer,
+    });
     writeFileSync(join(dir, "unit", "art-director.jsonl"), `${JSON.stringify(line)}\n`);
     const router = createRouter({
       mode: "fixture",
@@ -160,71 +158,90 @@ describe("with a model (recorded answer through the fixture router)", () => {
       return out;
     };
     const r = await runArtDirector({ input: INPUT, route });
+    expect(r.note).toBeUndefined();
     expect(r.fallback).toBe(false);
-    expect(r.choice).toEqual({ ...answer, source: "model" });
-    expect(r.design.archetype).toBe(second);
-    expect(r.design.voice).toBe("warm");
-    expect(r.design.palette.accentUse).toBe("band");
-    expect(r.design).toEqual(
-      designSystemV3({
-        archetype: second as (typeof ARCHETYPE_IDS)[number],
-        brandColor: "#B5541B",
-        seed: INPUT.seed,
-        niche: INPUT.niche,
-        voice: "warm",
-        accentUse: "band",
-      }),
-    );
+    expect(r.candidates.map((c) => c.name)).toEqual(["Тёплая витрина", "Ночная пекарня", "Чистая сетка"]);
+    expect(new Set(r.candidates.map((c) => c.archetype)).size).toBe(3);
+    expect(r.choice).toMatchObject({ archetype: "warm_craft", styleName: "Тёплая витрина", source: "model" });
+    expect(r.proposal?.name).toBe("Тёплая витрина");
+    // The model's own fonts and colours, the client's colour kept; tokens pass designLint.
+    expect([r.design.fonts.display.family, r.design.fonts.text.family]).toEqual(["Alegreya", "Onest"]);
     expect(cssHex(r.design.palette.light.accent)).toBe("#B5541B");
-    expect(designLintErrors(r.design)).toEqual([]);
-    expect(r.candidates.find((c) => c.archetype === second)?.design).toEqual(r.design);
+    expect(cssHex(r.design.palette.light.bg)).toBe("#F7F5F2");
+    for (const c of r.candidates) expect(designLintErrors(c.design)).toEqual([]);
+    const d = designDiversity(r.candidates.map((c) => c.design));
+    expect(d.minDistance).toBeGreaterThan(0.5);
     // V4-05 (D79 (3)): a build stage goes abroad as is; one call.
     expect(scrubbed).toEqual([false]);
     expect(r.stats?.calls).toBe(1);
     console.info(
-      `V3-07 арт-директор на записанном ответе: ${((milli / 1000) * llm.rubPerCredit).toFixed(3)} ₽`,
+      `V4-07 арт-директор на записанном ответе: ${((milli / 1000) * llm.rubPerCredit).toFixed(3)} ₽`,
     );
   });
 
-  test("the prompt lists only the three candidates and the brand colour; no other archetype can be chosen", () => {
-    const { candidates } = artDirectionCandidates(INPUT);
-    const [system, user] = artDirectionMessages(INPUT, candidates);
-    for (const c of candidates) expect(system?.content).toContain(`${c.archetype} — «${c.name}»`);
-    const others = ARCHETYPE_IDS.filter((id) => !candidates.some((c) => c.archetype === id));
-    for (const id of others) expect(system?.content).not.toContain(`- ${id} —`);
+  test("the prompt: taste rules, verbalized sampling, only catalog fonts, the brand colour and references", () => {
+    const [system, user] = designDirectionsMessages({
+      ...INPUT,
+      references: ["Как у пекарни «Хлеб насущный»"],
+    });
+    expect(system?.content).toContain("probability");
+    expect(system?.content).toContain("фиолетовых");
+    expect(system?.content).toContain("Alegreya (антиква)");
+    expect(system?.content).not.toMatch(/Inter Tight \(/);
+    for (const id of ARCHETYPE_IDS) expect(system?.content).toContain(`- ${id} —`);
     expect(user?.content).toContain("#B5541B");
-    const schema = artDirectionSchema(candidates.map((c) => c.archetype));
-    expect(
-      schema.safeParse({
-        archetype: others[0],
-        voice: "warm",
-        accentUse: "fill",
-        styleName: "Тест",
-        why: "1234567890",
-      }).success,
-    ).toBe(false);
+    expect(user?.content).toContain("Хлеб насущный");
+    const schema = designProposalSchema();
+    const one = fiveDirections().directions[0];
+    expect(schema.safeParse(one).success).toBe(true);
+    expect(schema.safeParse({ ...one, fonts: { display: "Playfair Display", text: "Onest" } }).success).toBe(
+      false,
+    );
   });
 
-  test("repairs: an archetype outside the three and invented colours go back to the model", async () => {
-    const { candidates } = artDirectionCandidates(INPUT);
-    const outside = ARCHETYPE_IDS.find((id) => !candidates.some((c) => c.archetype === id));
-    const ok = {
-      archetype: candidates[2]?.archetype,
-      voice: "friendly",
-      accentUse: "signal",
-      styleName: "Домашняя кухня",
-      why: "Покупатели выбирают по фото тортов и цене, поэтому главное — снимки и понятный прайс.",
-    };
+  test("repairs: low contrast, a changed brand colour and colour codes in the name go back to the model", async () => {
+    const ok = fiveDirections("#B5541B");
+    const broken: DesignDirectionsAnswer = structuredClone(ok);
+    (broken.directions[0] as DesignDirectionAnswer).colors.ink = "#B8B0A8";
+    (broken.directions[1] as DesignDirectionAnswer).colors.accent = "#3F7D3A";
+    (broken.directions[2] as DesignDirectionAnswer).name = "Белый #FFFFFF";
     const { route, calls } = scripted([
-      { ...ok, archetype: outside },
-      { ...ok, why: "Фон #FFF3E0 и акцент rgb(200, 80, 20) сделают сайт тёплым и аппетитным." },
-      ok,
+      broken as unknown as Record<string, unknown>,
+      ok as unknown as Record<string, unknown>,
     ]);
     const r = await runArtDirector({ input: INPUT, route });
-    expect(calls).toHaveLength(3);
+    expect(calls).toHaveLength(2);
     expect(calls[0]?.callType).toBe("art_direction");
-    expect(JSON.stringify(calls[2]?.messages)).toContain("NO_COLOURS");
-    expect(r.choice).toMatchObject({ archetype: ok.archetype, source: "model", styleName: "Домашняя кухня" });
+    const repair = JSON.stringify(calls[1]?.messages);
+    for (const code of ["TEXT_CONTRAST", "BRAND_COLOR", "NO_COLOURS"]) expect(repair).toContain(code);
+    expect(r.fallback).toBe(false);
+    expect(r.choice.source).toBe("model");
+  });
+
+  test("an answer that never passes keeps its valid directions when three remain; fewer → the archetypes of code", () => {
+    const answer = fiveDirections();
+    (answer.directions[1] as DesignDirectionAnswer).colors.ink = "#C8C8C8";
+    const issues = designDirectionsIssues(answer, { ...INPUT, brandColor: undefined });
+    expect(issues.map((i) => i.path)).toEqual(["directions.1.colors.ink"]);
+    const kept = acceptedDirections(answer, { ...INPUT, brandColor: undefined });
+    expect(kept.map((d) => d.proposal.name)).not.toContain("Почти витрина");
+    expect(kept).toHaveLength(3);
+    const few = fiveDirections();
+    for (const d of few.directions.slice(1)) d.colors.ink = d.colors.bg;
+    expect(designDirectionsIssues(few, { ...INPUT, brandColor: undefined }).map((i) => i.code)).toContain(
+      "TOO_FEW_DISTINCT",
+    );
+    expect(acceptedDirections(few, { ...INPUT, brandColor: undefined })).toHaveLength(1);
+  });
+
+  test("a stored proposal is checked again before use", () => {
+    const p = toProposal(fiveDirections().directions[0] as DesignDirectionAnswer);
+    expect(storedProposal(p, { seed: 1, niche: "пекарня" })).toEqual(p);
+    expect(
+      storedProposal({ ...p, colors: { ...p.colors, ink: p.colors.bg } }, { seed: 1, niche: "x" }),
+    ).toBeNull();
+    expect(storedProposal({ archetype: "swiss" }, { seed: 1, niche: "x" })).toBeNull();
+    expect(storedProposal(undefined, { seed: 1, niche: "x" })).toBeNull();
   });
 
   test("a refusal or an error of the model → the deterministic choice; an abort is not swallowed", async () => {
