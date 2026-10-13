@@ -26,7 +26,8 @@ import { type Captured, okToolCall, type Responder, type Stub, startStub } from 
 
 const DS_MODELS = ["deepseek-v4.1-flash", "deepseek-v4-pro-0813"];
 /** V4-05 routes that hold DeepSeek models (plan v4 §3). */
-const DS_ROUTES: readonly string[] = ["page_compose", "signature_section", "page_edit"];
+// V4: the v4 page routes and the techreview (DeepSeek V4-Pro is the reserve of MiMo there, 13.10.2026).
+const DS_ROUTES: readonly string[] = ["page_compose", "signature_section", "page_edit", "techreview"];
 const OPEN = { ruOnly: false, t1Restricted: false };
 const ctx = { orgId: "00000000-0000-4000-8000-000000000001", runId: "00000000-0000-4000-8000-0000000000bb" };
 const TOOLS: LlmTool[] = [
@@ -104,7 +105,7 @@ describe("registry: deepseek is a T1 provider of the v4 roles", () => {
     expect(getModel(reg, "deepseek-v4-pro-0813").providerModel).toBe("deepseek-v4-pro");
   });
 
-  test("models are enabled, T1/external, only in the v4 page routes; legacy builds stay GLM-5.3 on Z.ai", () => {
+  test("models are enabled, T1/external, only in the v4 page routes and the techreview; legacy builds stay GLM-5.3 on Z.ai", () => {
     const reg = createRegistry({}, {});
     for (const id of DS_MODELS) {
       expect(getModel(reg, id)).toMatchObject({ provider: "deepseek", tier: "T1", enabled: true });
@@ -122,7 +123,7 @@ describe("registry: deepseek is a T1 provider of the v4 roles", () => {
     expect(ROUTES.runtime_ai_generate.defaultTier).toBe("T0");
   });
 
-  test("default registry with a DeepSeek key set: call types outside the v4 page routes never reach DeepSeek", async () => {
+  test("default registry with a DeepSeek key set: call types outside the v4 page routes and the techreview never reach DeepSeek", async () => {
     const { router } = mk({ registry: createRegistry({}, {}) });
     for (const callType of CALL_TYPES.filter((ct) => !DS_ROUTES.includes(ct))) {
       const out = await router.route({
