@@ -88,7 +88,7 @@ describe("plan v4 §3: every role on its model with a reserve", () => {
       (ROUTES.page_compose.chain.T1 ?? []).map((id) => modelFamilyOf(createRegistry({}, {}), id)),
     );
     expect([...fams]).toEqual(expect.arrayContaining(["kimi", "glm", "deepseek"]));
-    expect(ROUTES.signature_section.chain.T1?.[0]).toBe("deepseek-v4-pro-0813");
+    expect(ROUTES.signature_section.chain.T1?.[0]).toBe("glm-5.3");
   });
 
   test("runtime_ai_*, support, import_mapping: RF chains as in v3", () => {

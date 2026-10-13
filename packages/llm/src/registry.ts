@@ -417,7 +417,7 @@ export const ROUTES: Record<CallType, RouteDef> = {
   signature_section: r(
     "builder",
     "T1",
-    { T1: ["deepseek-v4-pro-0813", "kimi-k3", "glm-5.3"], T0: PAGE_T0 },
+    { T1: ["glm-5.3", "kimi-k3", "deepseek-v4-pro-0813"], T0: PAGE_T0 },
     0.4,
     16000,
     480000,
