@@ -20,6 +20,7 @@ import {
   toolsHash,
 } from "../../../packages/llm/src/index.ts";
 import { root } from "./helpers.ts";
+import { critiqueSchema, critiqueScore } from "../../../packages/agents/src/builder/index.ts";
 import { e2eFor, forceModel, renderProbe, runProbe, stageInputs } from "../probe/run.ts";
 import { STAGES } from "../probe/stages.ts";
 
@@ -278,5 +279,24 @@ describe("stage probe (V4-03)", () => {
     const manifest = { critic_visual: ["packages/agents/src/builder/v3/critic/prompt.ts"], interview_v3: ["x.ts"] };
     expect(e2eFor(["packages/agents/src/builder/v3/critic/prompt.ts"], manifest)).toBe(true);
     expect(e2eFor(["x.ts", "README.md"], manifest)).toBe(false);
+  });
+
+  // V4-09: the critic's score on the same screenshots in three repeats differs by at most 10 points (the records of the
+  // live probe critic_visual; its stage needs Chromium, so the scores are read from the records).
+  test("the critic's score is stable: three repeats on the same shots within 10 points", () => {
+    const book = RecordBook.named("probe/critic_visual", root);
+    const byLabel = new Map<string, number[]>();
+    for (const l of book.all()) {
+      const call = l.response.toolCalls.find((c) => c.name === "submit_critique");
+      if (!call || !l.label) continue;
+      const parsed = critiqueSchema.safeParse(call.args);
+      if (!parsed.success) continue;
+      byLabel.set(l.label, [...(byLabel.get(l.label) ?? []), critiqueScore(parsed.data)]);
+    }
+    expect(byLabel.size, "нет записей пробы critic_visual: запустите stage-probe").toBeGreaterThan(0);
+    for (const [label, scores] of byLabel) {
+      expect(scores.length, label).toBeGreaterThanOrEqual(3);
+      expect(Math.max(...scores) - Math.min(...scores), `${label}: ${scores.join(", ")}`).toBeLessThanOrEqual(10);
+    }
   });
 });

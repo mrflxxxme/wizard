@@ -9,6 +9,7 @@ import {
   createPageComposer,
   erroredBlockers,
   failedBlockers,
+  familyOf,
   type LibraryIndex,
   type PageComposer,
   type PhotoHost,
@@ -313,6 +314,14 @@ export async function checkScenario(
   return { ok: true, problems: [], browser: withBrowser };
 }
 
+/** V4-09: model families that wrote the pages of run `runId` (its successful page_compose calls). */
+export async function pageAuthorFamilies(pg: postgres.Sql, runId: string): Promise<string[]> {
+  const rows = await pg<{ model_id: string }[]>`
+    select distinct c.model_id from platform.llm_calls c
+    where c.run_id = ${runId} and c.call_type = 'page_compose' and c.status = 'ok'`;
+  return [...new Set(rows.map((r) => familyOf(r.model_id)).filter((f): f is string => f !== null))];
+}
+
 /** The ready notice (D77 (10)): one letter per run to the one who started the build, with the link to the system. */
 export async function notifyReady(
   db: Db,
@@ -462,6 +471,8 @@ export async function buildByBrief(
               ...(o.files ? { photo: criticLibraryPhotos(o.files) } : {}),
               data: demoRows,
               log: criticLog(host.run.id, systemId),
+              // V4-09: the critic is never of the family of the model that wrote this build's pages.
+              authorFamilies: () => pageAuthorFamilies(o.pg, host.run.id),
             }),
           }
         : {}),

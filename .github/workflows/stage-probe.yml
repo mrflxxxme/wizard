@@ -102,6 +102,10 @@ jobs:
             echo "Промпты этапов не менялись — проба не нужна." >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      # V4-09: the critic's probe takes real screenshots in Chromium.
+      - name: Chromium for the critic
+        if: contains(steps.stages.outputs.stages, 'critic_visual')
+        run: pnpm --filter @wizard/e2e exec playwright install --with-deps chromium
       - name: Live probe
         id: probe
         if: steps.stages.outputs.stages != ''

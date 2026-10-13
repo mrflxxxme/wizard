@@ -6,8 +6,9 @@ import {
   type SystemBrief,
   systemBriefSchema,
 } from "../../../packages/appspec/src/index.ts";
-import type {
-  LlmMessage,
+import {
+  createRegistry,
+  type LlmMessage,
   LlmTool,
   OrgPolicy,
   RouteInput,
@@ -19,14 +20,26 @@ import { composeContext } from "../../../packages/agents/test/v3-compose-fixture
 import { extractBriefDraft } from "../../../packages/agents/src/brief-extract/index.ts";
 import {
   type ArtDirectorInput,
+  CRITIC_CALL_TYPE,
   createPageComposer,
+  critiqueMessages,
+  critiqueScore,
+  critiqueTool,
   directionsNiche,
+  shotPlan,
   pointEditV3,
   proposeDirections,
   runArtDirector,
   runTechreview,
 } from "../../../packages/agents/src/builder/index.ts";
 import type { V3BuildContext } from "../../../packages/agents/src/builder/v3/contract.ts";
+import { siteFacts } from "../../../packages/agents/src/builder/v3/compose/index.ts";
+import { readSite } from "../../../packages/agents/src/builder/v3/compose/site.ts";
+import { callTool } from "../../../packages/agents/src/core/loop.ts";
+import { defaultAuthorFamilies } from "../../../packages/agents/src/builder/v3/critic/hook.ts";
+import { chromiumProvider } from "../../../apps/platform-api/src/agents/goal-browser.ts";
+import { criticInspector } from "../../../apps/platform-api/src/builds-v3/critic.ts";
+import { CRITIC_VIEWPORTS } from "../../../packages/agents/src/builder/v3/critic/checks.ts";
 import {
   createInterviewV3,
   newInterviewV3Session,
@@ -168,6 +181,73 @@ export const STAGES: Record<string, Stage> = {
         ctx,
       });
       return { fallback: !r.ok, summary: r.ok ? r.summary : `отказ: ${r.reason}` };
+    },
+  },
+  // V4-09: the critic on the real screenshots 390/1440 of the clinic, asked `repeats` times on the same shots — its
+  // latency per call (target ≤ 90 s) and the spread of its score (≤ 10 points, the stability of the critic).
+  critic_visual: {
+    callTypes: ["critic_visual"],
+    async run(input, route, ctx) {
+      const built = await builtClinic(route, ctx.systemId, input.photos !== false);
+      const site = readSite(built.files);
+      if (!site) throw new Error("в клинике нет модели сайта");
+      const browser = chromiumProvider({ slots: 1 });
+      try {
+        const shots = shotPlan(site);
+        const insp = await criticInspector({ browser })({
+          spec: built.spec,
+          files: built.files,
+          routes: [...new Set(shots.map((x) => x.route))],
+          viewports: CRITIC_VIEWPORTS,
+          shots,
+          fonts: [built.design.fonts.display.family, built.design.fonts.text.family],
+        });
+        if (!insp.ok) throw new Error(`снимки не сняты: ${insp.error ?? ""}`);
+        const messages = critiqueMessages({
+          facts: siteFacts(built),
+          brief: built.brief,
+          site,
+          design: built.design,
+          library: PATTERNS,
+          shots: insp.shots,
+          found: insp.problems,
+          history: [],
+          code: new Map(
+            [...new Set(shots.map((x) => x.route))].flatMap((rt) => {
+              const file = site.pages.find((pg) => pg.route === rt)?.file;
+              const src = file ? built.files.get(file) : undefined;
+              return file && src !== undefined ? [[file, src] as const] : [];
+            }),
+          ),
+        });
+        const scores: number[] = [];
+        const ms: number[] = [];
+        const repeats = Math.max(1, Math.min(3, Number(input.repeats ?? 3)));
+        for (let i = 0; i < repeats; i++) {
+          const t0 = Date.now();
+          const r = await callTool({
+            // As on the platform: the critic is never of the page writer's family.
+            route: (ri) => route({ ...ri, avoidFamilies: defaultAuthorFamilies(createRegistry()) }),
+            callType: CRITIC_CALL_TYPE,
+            orgPolicy: OPEN,
+            ctx,
+            stepName: `critic_visual:${i + 1}`,
+            messages,
+            tool: critiqueTool,
+            maxRepairs: 1,
+          });
+          ms.push(Date.now() - t0);
+          if (r.ok) scores.push(critiqueScore(r.value));
+        }
+        const spread = scores.length ? Math.max(...scores) - Math.min(...scores) : 0;
+        const slowest = Math.max(...ms);
+        return {
+          fallback: scores.length < repeats || spread > 10 || slowest > 90_000,
+          summary: `оценки ${scores.join(", ") || "—"} (разброс ${spread}); самый долгий вызов ${Math.round(slowest / 1000)} с`,
+        };
+      } finally {
+        await browser.close();
+      }
     },
   },
   raw: {
