@@ -407,7 +407,7 @@ describe("V3-15 techreview: the reviewer of another family, ≤ 2 rounds, blocke
     expect(r.blockers).toEqual([]);
     expect(seen.map((s) => s.callType)).toEqual(["techreview"]);
     expect(seen[0]?.avoidFamilies).toEqual(["glm", "kimi"]);
-    // V4-05 (plan v4 §3): MiMo V2.6 Pro heads the techreview.
+    // V4: MiMo V2.6 Pro (reasoning off) heads the techreview, DeepSeek V4-Pro is its reserve (13.10.2026).
     expect(outs[0]).toMatchObject({ tier: "T1", model: "mimo-v2.6-pro" });
     expect(familyOf(outs[0]?.model ?? "")).toBe("mimo");
     expect(r.reviewer).toMatchObject({ status: "done", calls: 1, model: "mimo-v2.6-pro" });
@@ -416,8 +416,8 @@ describe("V3-15 techreview: the reviewer of another family, ≤ 2 rounds, blocke
     const again = reviewed([{ findings: [] }]);
     const r2 = await runTechreview(again.ctx, { builderFamilies: async () => ["mimo"] });
     expect(again.seen[0]?.avoidFamilies).toEqual(["glm", "kimi", "mimo"]);
-    expect(again.outs[0]?.model).toBe("gpt-oss-120b");
-    expect(r2.reviewer.model).toBe("gpt-oss-120b");
+    expect(again.outs[0]?.model).toBe("deepseek-v4-pro-0813");
+    expect(r2.reviewer.model).toBe("deepseek-v4-pro-0813");
   }, 120_000);
 
   test("a deterministic blocker fixed by the reviewer's patch in functions/custom/**; round 2 is clean → published", async () => {

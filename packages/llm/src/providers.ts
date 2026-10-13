@@ -113,6 +113,12 @@ export function transformBody(
     // error: Unimplemented keys: ["propertyNames"]» (shape probe 2026-10-09). The answer is checked by our schema anyway.
     out.tools = out.tools.map((t) => withoutSchemaKeys(t, UNSUPPORTED_SCHEMA_KEYS));
   }
+  // MiMo with reasoning off (models.yaml#models[].thinking): the same switch as zai, no effort.
+  if (providerId === "xiaomi" && thinking === "off") {
+    delete out.reasoning_effort;
+    delete out.enable_thinking;
+    out.thinking = { type: "disabled" };
+  }
   return out;
 }
 
