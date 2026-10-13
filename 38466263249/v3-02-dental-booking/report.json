@@ -1,0 +1,6849 @@
+{
+  "v": 1,
+  "runId": "494ddd88-2808-404b-9496-c2b3da157b68",
+  "systemId": "191442e4-17ea-4dbe-9cc8-3a5dfbea3a71",
+  "systemName": "Стоматологическая клиника",
+  "orgId": "dc1ef5b7-4424-479b-9f74-15675b054369",
+  "orgKind": "eval",
+  "startedBy": "20d0d634-dc24-4d29-8c7f-b6ba3bad2f7a",
+  "status": "succeeded",
+  "failure": null,
+  "startedAt": "2026-10-13T20:55:04.712Z",
+  "finishedAt": null,
+  "minutes": 6.6,
+  "rub": 28.78,
+  "stages": [
+    {
+      "stage": "brief",
+      "status": "done",
+      "rub": 0,
+      "minutes": 0
+    },
+    {
+      "stage": "gates",
+      "status": "done",
+      "rub": 0,
+      "minutes": 0.3
+    },
+    {
+      "stage": "critic",
+      "status": "done",
+      "rub": 1.23,
+      "minutes": 0.7,
+      "calls": 2,
+      "note": "циклов 2, оценка 55→61, проверки 0→0, правок 4, 1.23 ₽, стоп cycles | Посмотрел сайт на телефоне, планшете и компьютере глазами дизайнера: 2 круга, оценка 55 → 61 из 100. Поправил 4 места: /#hero: текст title → «Стоматология в Казани»; токены: плотность airy → regular; /#hero: текст title → «Стомато"
+    },
+    {
+      "stage": "design",
+      "status": "done",
+      "rub": 0,
+      "minutes": 0
+    },
+    {
+      "stage": "backend",
+      "status": "done",
+      "rub": 0,
+      "minutes": 0
+    },
+    {
+      "stage": "skeleton",
+      "status": "done",
+      "rub": 0,
+      "minutes": 0.1,
+      "note": "память ниши пуста"
+    },
+    {
+      "stage": "scenarios",
+      "status": "done",
+      "rub": 25.8,
+      "minutes": 5,
+      "calls": 12,
+      "note": "готово 7 из 7; стоп: done"
+    },
+    {
+      "stage": "techreview",
+      "status": "done",
+      "rub": 1.76,
+      "minutes": 0.3,
+      "calls": 2,
+      "note": "проверок 47, предупреждений 6, блокеров 0; ревьюер deepseek-v4-pro-0813; находок 10 (важное, важное, важное, важное, важное, важное, важное, важное, важное, мелкое); раундов исправлений 1"
+    },
+    {
+      "stage": "template_gate",
+      "status": "done",
+      "rub": 0,
+      "minutes": 0.1,
+      "note": "память ниши пуста"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "s1",
+      "status": "passed",
+      "problems": [],
+      "http": [
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/data/site_photo?limit=50",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=sort_order&page=1&limit=6",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/cabinet/photos",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=sort_order&page=1&limit=6",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/data/site_photo?limit=50",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/data/site_photo?limit=50",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/cabinet/photos",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/data/site_photo?limit=50",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s1",
+          "method": "POST",
+          "url": "/api/files",
+          "status": 201,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "POST",
+          "url": "/api/data/site_photo",
+          "status": 201,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/data/site_photo?limit=50",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "POST",
+          "url": "/api/files",
+          "status": 201,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "POST",
+          "url": "/api/data/site_photo",
+          "status": 201,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=sort_order&page=1&limit=6",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/data/site_photo?limit=50",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/data/site_photo?limit=50",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/data/site_photo?limit=50",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=sort_order&page=1&limit=6",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/cabinet/staff",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/cabinet/photos",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/cabinet/notifications",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/data/site_photo?limit=50",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/cabinet",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/cabinet-staff",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/data/site_photo?limit=50",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"306eff94-3153-46c0-a854-636d4b007d05\"}}"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=sort_order&page=1&limit=6",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"e81a93f1-5736-4753-8e34-9149f601acb8\"}}"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/data/site_photo?limit=50",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"d5a74a53-83ed-43f8-b95b-ec8541d77fa4\"}}"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=sort_order&page=1&limit=8",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"810bb9a2-8c8e-4c4e-bf5c-a8f98b7bd7b2\"}}"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"4de8e55c-1738-4808-8f05-559d091a100d\"}}"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"5db3bd52-de85-4766-a73f-cd18f4c27d5d\"}}"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s1",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        }
+      ]
+    },
+    {
+      "id": "s2",
+      "status": "passed",
+      "problems": [],
+      "http": [
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/booking",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/booking",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/booking",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s2",
+          "method": "POST",
+          "url": "/api/data/booking",
+          "status": 201,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s2",
+          "method": "POST",
+          "url": "/api/data/booking",
+          "status": 201,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s2",
+          "method": "POST",
+          "url": "/api/data/booking",
+          "status": 201,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/cabinet",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/booking",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/data/service?sort=-created_at&page=1&limit=25",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/booking",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "POST",
+          "url": "/api/data/booking",
+          "status": 409,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"CONFLICT\",\"message\":\"Такое значение уже есть\",\"details\":{\"fields\":[{\"field\":\"starts_at\",\"code\":\"CONFLICT\",\"message\":\"Такое значение уже есть\"}]},\"requestId\":\"bd5ff8ea-7700-46f8-b863-4ad69a509672\"}}"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "POST",
+          "url": "/api/data/booking",
+          "status": 409,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"CONFLICT\",\"message\":\"Такое значение уже есть\",\"details\":{\"fields\":[{\"field\":\"starts_at\",\"code\":\"CONFLICT\",\"message\":\"Такое значение уже есть\"}]},\"requestId\":\"9f949fb5-1c0f-44e5-aa1f-f8f468b4cc9e\"}}"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/data/site_photo?limit=50",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"276b720e-5824-4b2e-a242-9bf3a55ad543\"}}"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=sort_order&page=1&limit=6",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"bd20fefc-0553-4283-9a80-4cf0093ccdd6\"}}"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/data/site_photo?limit=50",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"fda8045a-55e3-429e-a1a2-bb2c02827091\"}}"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=sort_order&page=1&limit=8",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"0c9556b3-4e64-4da9-b497-903a71e0afb5\"}}"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"b4bddcb8-3189-44e7-b80b-dd07765c2e6b\"}}"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"85201f0c-10f0-4c18-8995-e092dbe01a95\"}}"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s2",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        }
+      ]
+    },
+    {
+      "id": "s3",
+      "status": "passed",
+      "problems": [],
+      "http": [
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/booking",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/cabinet/notifications",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/booking",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/cabinet/notifications",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/booking",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s3",
+          "method": "POST",
+          "url": "/api/data/booking",
+          "status": 201,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s3",
+          "method": "POST",
+          "url": "/api/data/booking",
+          "status": 201,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/booking",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/data/site_photo?limit=50",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"dbdaede0-7de4-4621-9a1e-06384b2c5d4c\"}}"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=sort_order&page=1&limit=6",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"c00fba78-178a-48f1-be3a-b4e4771c6164\"}}"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/data/site_photo?limit=50",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"ab337195-401d-43b6-a63b-89903ab03c43\"}}"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=sort_order&page=1&limit=8",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"068a5ebc-4d47-40ab-9550-850efc5d6507\"}}"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"ed84747b-61b3-4bd6-b774-d54ff51bb071\"}}"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"8e291797-4c32-4910-ba87-7df68a9eb086\"}}"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s3",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        }
+      ]
+    },
+    {
+      "id": "s4",
+      "status": "passed",
+      "problems": [],
+      "http": [
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/booking",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/cabinet/notifications",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/booking",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/cabinet/notifications",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/booking",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s4",
+          "method": "POST",
+          "url": "/api/data/booking",
+          "status": 201,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s4",
+          "method": "POST",
+          "url": "/api/data/booking",
+          "status": 201,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/booking",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/data/site_photo?limit=50",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"786f2acb-a9f2-40b4-831f-378203c01c5c\"}}"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=sort_order&page=1&limit=6",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"5dbd889a-13dd-4788-a73e-b802f05a9fa1\"}}"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/data/site_photo?limit=50",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"bca6cdc4-f303-4c44-9e70-ddab2c923190\"}}"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=sort_order&page=1&limit=8",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"61478b02-1355-4894-9944-ab636a6d1e85\"}}"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"f13265c8-4698-459b-83bb-161c6e4b9b73\"}}"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"d98dcf66-b4f4-45ab-8811-7debef0b87d8\"}}"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s4",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        }
+      ]
+    },
+    {
+      "id": "s5",
+      "status": "passed",
+      "problems": [],
+      "http": [
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/booking",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/booking",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s5",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s5",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s5",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s5",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "POST",
+          "url": "/api/data/booking",
+          "status": 201,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/login?role=visitor&next=%2Fme",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s5",
+          "method": "POST",
+          "url": "/api/data/booking",
+          "status": 201,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 401,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"UNAUTHENTICATED\",\"message\":\"Войдите в систему\",\"details\":{},\"requestId\":\"395248ca-5e4f-49c0-aa10-9998920d6149\"}}"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/login?role=visitor&next=%2Fme",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 401,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"UNAUTHENTICATED\",\"message\":\"Войдите в систему\",\"details\":{},\"requestId\":\"cb40c6e9-bff0-483d-89ed-2ff391c1de86\"}}"
+        },
+        {
+          "scenario": "s5",
+          "method": "POST",
+          "url": "/api/auth/otp/start",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "POST",
+          "url": "/api/auth/otp/start",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "POST",
+          "url": "/api/auth/otp/verify",
+          "status": 422,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"CONSENT_REQUIRED\",\"message\":\"Нужно согласие на обработку персональных данных\",\"details\":{},\"requestId\":\"ad48c02a-7860-498d-b2cb-fcb2160cbb7d\"}}"
+        },
+        {
+          "scenario": "s5",
+          "method": "POST",
+          "url": "/api/auth/otp/verify",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/data/booking?sort=-created_at&page=1&limit=24",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/data/service?page=1&limit=96",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"6bb35e35-ec7f-4192-adf3-15f39889c48c\"}}"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/data/booking?sort=-created_at&page=1&limit=24",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "POST",
+          "url": "/api/auth/otp/verify",
+          "status": 422,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"CONSENT_REQUIRED\",\"message\":\"Нужно согласие на обработку персональных данных\",\"details\":{},\"requestId\":\"27a0621f-8b32-4c2d-be95-64901fa31b0f\"}}"
+        },
+        {
+          "scenario": "s5",
+          "method": "POST",
+          "url": "/api/auth/otp/verify",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/data/service?page=1&limit=96",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"093f4caa-e66d-4095-8f3c-abcbe7964673\"}}"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/data/booking?sort=-created_at&page=1&limit=24",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/data/booking?sort=-created_at&page=1&limit=24",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/data/booking?limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/data/booking?limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/cabinet/photos",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/cabinet/notifications",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/data/site_photo?limit=50",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"8781f11e-0a21-409c-beeb-70c344ff9baa\"}}"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/data/site_photo?limit=50",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"f5ca7b7b-0665-46d2-b710-b159dd71e074\"}}"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=sort_order&page=1&limit=6",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"25e97c70-ff96-4197-9ee2-8837b4d2352d\"}}"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=sort_order&page=1&limit=8",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"52dbfc6a-c289-4066-851f-18f651943945\"}}"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"e0567dca-5aa7-4242-a1d7-6149db99b366\"}}"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"fa896e80-ad04-42e5-9e35-d2298a2ea25f\"}}"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s5",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        }
+      ]
+    },
+    {
+      "id": "s6",
+      "status": "passed",
+      "problems": [],
+      "http": [
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/cabinet/staff",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/cabinet/staff",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/_wizard/team",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/_wizard/team",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s6",
+          "method": "POST",
+          "url": "/api/admin/invite",
+          "status": 201,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/login?role=staff&next=%2Fcabinet-staff",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s6",
+          "method": "POST",
+          "url": "/api/admin/invite",
+          "status": 201,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/login?role=staff&next=%2Fcabinet-staff",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 401,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"UNAUTHENTICATED\",\"message\":\"Войдите в систему\",\"details\":{},\"requestId\":\"36143937-e172-44ba-9748-34bb82c6a176\"}}"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 401,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"UNAUTHENTICATED\",\"message\":\"Войдите в систему\",\"details\":{},\"requestId\":\"88f0b237-bc73-4727-b091-8105333374ce\"}}"
+        },
+        {
+          "scenario": "s6",
+          "method": "POST",
+          "url": "/api/auth/otp/start",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "POST",
+          "url": "/api/auth/otp/start",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "POST",
+          "url": "/api/auth/otp/verify",
+          "status": 422,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"CONSENT_REQUIRED\",\"message\":\"Нужно согласие на обработку персональных данных\",\"details\":{},\"requestId\":\"dc422075-c395-4b90-9e95-4ce7afa6a987\"}}"
+        },
+        {
+          "scenario": "s6",
+          "method": "POST",
+          "url": "/api/auth/otp/verify",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/data/service?sort=-created_at&page=1&limit=25",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "POST",
+          "url": "/api/auth/otp/verify",
+          "status": 422,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"CONSENT_REQUIRED\",\"message\":\"Нужно согласие на обработку персональных данных\",\"details\":{},\"requestId\":\"763b46d0-311e-4dc7-988b-ddeb8d0da66c\"}}"
+        },
+        {
+          "scenario": "s6",
+          "method": "POST",
+          "url": "/api/auth/otp/verify",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/data/service?sort=-created_at&page=1&limit=25",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/cabinet/staff",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/cabinet/staff",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/_wizard/team",
+          "status": 403,
+          "type": "document"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "POST",
+          "url": "/api/admin/invite",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"688e87bc-62af-47c6-8c9d-e9267467f9f9\"}}"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/_wizard/team",
+          "status": 403,
+          "type": "document"
+        },
+        {
+          "scenario": "s6",
+          "method": "POST",
+          "url": "/api/admin/invite",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"25d0826c-47db-4aac-a1e6-eafddd22299b\"}}"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/cabinet/photos",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/cabinet/notifications",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/cabinet/staff",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/data/site_photo?limit=50",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/cabinet",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/cabinet-staff",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/data/site_photo?limit=50",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"c6d75166-f5e6-4789-8eb4-6d8c11c21f15\"}}"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=sort_order&page=1&limit=6",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"8a2729c1-f329-4373-a2cf-30aa5211f976\"}}"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/data/site_photo?limit=50",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"7754e913-b71b-40a2-9c92-7cdf85775088\"}}"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=sort_order&page=1&limit=8",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"be27716f-2cb2-42d7-8b91-a2fcb66a7d3f\"}}"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"bf2d9092-b77a-42f6-a285-e11de70d2c87\"}}"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"bac05442-edf7-4fbe-bc54-c0e30b907e2d\"}}"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s6",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        }
+      ]
+    },
+    {
+      "id": "s7",
+      "status": "passed",
+      "problems": [],
+      "http": [
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/booking",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/booking",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/booking",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "POST",
+          "url": "/api/fn/busySlots",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s7",
+          "method": "POST",
+          "url": "/api/data/booking",
+          "status": 201,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s7",
+          "method": "POST",
+          "url": "/api/data/booking",
+          "status": 201,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/cabinet",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s7",
+          "method": "POST",
+          "url": "/api/data/booking",
+          "status": 201,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/cabinet",
+          "status": 200,
+          "type": "document"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/data/service?sort=-created_at&page=1&limit=25",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/_wizard/spec",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/auth/me",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/data/service?sort=-created_at&page=1&limit=25",
+          "status": 200,
+          "type": "fetch"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "POST",
+          "url": "/api/data/booking",
+          "status": 409,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"CONFLICT\",\"message\":\"Такое значение уже есть\",\"details\":{\"fields\":[{\"field\":\"starts_at\",\"code\":\"CONFLICT\",\"message\":\"Такое значение уже есть\"}]},\"requestId\":\"304b3e65-4d97-4f13-852a-8dab822fc9a5\"}}"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "POST",
+          "url": "/api/data/booking",
+          "status": 409,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"CONFLICT\",\"message\":\"Такое значение уже есть\",\"details\":{\"fields\":[{\"field\":\"starts_at\",\"code\":\"CONFLICT\",\"message\":\"Такое значение уже есть\"}]},\"requestId\":\"14a5ed53-496a-41e4-ba3b-1392b39c4a95\"}}"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/data/site_photo?limit=50",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"03e3f9d1-d223-4cca-9455-a8f2a4d3d955\"}}"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=sort_order&page=1&limit=6",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"ccaab633-9351-4c9a-9dec-6ba3d4aadab7\"}}"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/data/site_photo?limit=50",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"e14f6af7-a3d6-41e8-bea5-266553b9df49\"}}"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=sort_order&page=1&limit=8",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"699d7283-f9ea-44e5-817a-56adda198c80\"}}"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"d977a934-5ce1-4918-b399-258b9bf0a3f8\"}}"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/data/service?filter%5Bactive%5D=true&sort=name&limit=100",
+          "status": 403,
+          "type": "fetch",
+          "body": "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Недостаточно прав для этого действия\",\"details\":{},\"requestId\":\"f23babac-4836-4289-bb56-80627dae1b8d\"}}"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 0,
+          "type": "fetch",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "scenario": "s7",
+          "method": "GET",
+          "url": "/api/events",
+          "status": 503,
+          "type": "fetch",
+          "body": ""
+        }
+      ]
+    }
+  ],
+  "gates": [
+    {
+      "level": "G0",
+      "revision": 5,
+      "passed": true,
+      "failed": []
+    },
+    {
+      "level": "G1",
+      "revision": 5,
+      "passed": true,
+      "failed": []
+    },
+    {
+      "level": "G2",
+      "revision": 5,
+      "passed": false,
+      "failed": [
+        {
+          "id": "G2-PII-06",
+          "status": "fail",
+          "message": "Не указано: название оператора ПДн (юрлицо, ИП или ФИО). Без этого систему с персональными данными нельзя опубликовать"
+        },
+        {
+          "id": "G2-PII-06",
+          "status": "fail",
+          "message": "Не указано: контакт оператора для обращений. Без этого систему с персональными данными нельзя опубликовать"
+        }
+      ]
+    }
+  ],
+  "critic": {
+    "scores": [
+      55,
+      61
+    ],
+    "stop": "cycles",
+    "note": "Посмотрел сайт глазами дизайнера и улучшил 3 места: заголовок первого экрана главной, плотность вёрстки, вид блока с призывом главной."
+  },
+  "techreview": {
+    "status": "done",
+    "blockers": [],
+    "notes": [
+      "Проверил код системы: сборку, права доступа, персональные данные, интеграции, скорость и доступность; некритичных замечаний: 6.",
+      "Проверка кода второй моделью: 10 замечаний."
+    ]
+  },
+  "calls": [
+    {
+      "step": "scenario:s1:1",
+      "callType": "page_compose",
+      "model": "kimi-k3",
+      "tier": "T1",
+      "status": "ok",
+      "errorCode": null,
+      "rub": 4.92,
+      "latencyMs": 23585
+    },
+    {
+      "step": "scenario:s1:2",
+      "callType": "page_compose",
+      "model": "kimi-k3",
+      "tier": "T1",
+      "status": "ok",
+      "errorCode": null,
+      "rub": 2.55,
+      "latencyMs": 19999
+    },
+    {
+      "step": "scenario:s1:3",
+      "callType": "signature_section",
+      "model": "glm-5.3",
+      "tier": "T1",
+      "status": "ok",
+      "errorCode": null,
+      "rub": 0.67,
+      "latencyMs": 13137
+    },
+    {
+      "step": "scenario:s1:4",
+      "callType": "signature_section",
+      "model": "glm-5.3",
+      "tier": "T1",
+      "status": "ok",
+      "errorCode": null,
+      "rub": 0.89,
+      "latencyMs": 11465
+    },
+    {
+      "step": "scenario:s1:5",
+      "callType": "signature_section",
+      "model": "glm-5.3",
+      "tier": "T1",
+      "status": "ok",
+      "errorCode": null,
+      "rub": 0.93,
+      "latencyMs": 13091
+    },
+    {
+      "step": "scenario:s2:1",
+      "callType": "page_compose",
+      "model": "kimi-k3",
+      "tier": "T1",
+      "status": "ok",
+      "errorCode": null,
+      "rub": 5.74,
+      "latencyMs": 34350
+    },
+    {
+      "step": "scenario:s2:2",
+      "callType": "signature_section",
+      "model": "glm-5.3",
+      "tier": "T1",
+      "status": "ok",
+      "errorCode": null,
+      "rub": 0.44,
+      "latencyMs": 8991
+    },
+    {
+      "step": "scenario:s5:1",
+      "callType": "page_compose",
+      "model": "kimi-k3",
+      "tier": "T1",
+      "status": "ok",
+      "errorCode": null,
+      "rub": 4.36,
+      "latencyMs": 36972
+    },
+    {
+      "step": "scenario:s5:2",
+      "callType": "signature_section",
+      "model": "glm-5.3",
+      "tier": "T1",
+      "status": "ok",
+      "errorCode": null,
+      "rub": 0.95,
+      "latencyMs": 17654
+    },
+    {
+      "step": "scenario:s5:3",
+      "callType": "signature_section",
+      "model": "glm-5.3",
+      "tier": "T1",
+      "status": "ok",
+      "errorCode": null,
+      "rub": 1.49,
+      "latencyMs": 16895
+    },
+    {
+      "step": "scenario:s5:4",
+      "callType": "signature_section",
+      "model": "glm-5.3",
+      "tier": "T1",
+      "status": "ok",
+      "errorCode": null,
+      "rub": 1.51,
+      "latencyMs": 14520
+    },
+    {
+      "step": "scenario:s5:5",
+      "callType": "signature_section",
+      "model": "glm-5.3",
+      "tier": "T1",
+      "status": "ok",
+      "errorCode": null,
+      "rub": 1.32,
+      "latencyMs": 13592
+    },
+    {
+      "step": "critic:1",
+      "callType": "critic_visual",
+      "model": "glm-5v-turbo",
+      "tier": "T1",
+      "status": "ok",
+      "errorCode": null,
+      "rub": 0.64,
+      "latencyMs": 11875
+    },
+    {
+      "step": "critic:2",
+      "callType": "critic_visual",
+      "model": "glm-5v-turbo",
+      "tier": "T1",
+      "status": "ok",
+      "errorCode": null,
+      "rub": 0.58,
+      "latencyMs": 13044
+    },
+    {
+      "step": "techreview:1",
+      "callType": "techreview",
+      "model": "deepseek-v4-pro-0813",
+      "tier": "T1",
+      "status": "ok",
+      "errorCode": null,
+      "rub": 1.02,
+      "latencyMs": 8614
+    },
+    {
+      "step": "techreview:2",
+      "callType": "techreview",
+      "model": "deepseek-v4-pro-0813",
+      "tier": "T1",
+      "status": "ok",
+      "errorCode": null,
+      "rub": 0.73,
+      "latencyMs": 5978
+    }
+  ],
+  "shots": [
+    {
+      "width": 390,
+      "mime": "image/jpeg",
+      "key": "wz_reports/664338ac-bc19-4ee8-a8c2-8326d01c12bd"
+    },
+    {
+      "width": 1440,
+      "mime": "image/jpeg",
+      "key": "wz_reports/cbf1e7d1-e547-4825-809d-6a19bfb132f2"
+    }
+  ],
+  "records": "wz_reports/15a6b7b8-d686-4896-bba3-51b3c2bd2dcf",
+  "gaps": [],
+  "createdAt": "2026-10-13T21:01:39.803Z"
+}
