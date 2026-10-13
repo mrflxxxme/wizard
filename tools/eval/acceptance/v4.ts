@@ -79,7 +79,21 @@ interface Row {
   report: BuildReport | null;
   shots: string[];
   error: string | null;
+  /** The gates as the owner saw them last (the driver): blockers, or only the owner's data still to give. */
+  gates: Record<string, { passed?: boolean; blockers?: unknown[]; ownerActions?: { id: string }[] }>;
 }
+
+/** Why the critic stopped, in words. */
+const STOP_RU: Record<string, string> = {
+  cycles: "2 круга",
+  no_edits: "правок нет",
+  no_gain: "без улучшения",
+  budget: "бюджет",
+  time: "время",
+  inspections: "лимит снимков",
+  model: "модель не ответила",
+  none: "—",
+};
 
 const round = (x: number, d = 1) => Math.round(x * 10 ** d) / 10 ** d;
 const mark = (ok: boolean | null) => (ok === null ? "—" : ok ? "✅" : "❌");
@@ -96,10 +110,22 @@ export function renderSummary(rows: readonly Row[], meta: { runUrl: string; shot
   ];
   for (const r of rows) {
     const rep = r.report;
-    const gates = rep?.gates.length
-      ? rep.gates.map((g) => `${g.level} ${g.passed ? "✅" : `❌ ${g.failed.map((f) => f.id).join(", ")}`}`).join("; ")
+    // The driver's last gates: a gate that waits only on the owner's own data (the operator of personal data) is not a
+    // failure of the build.
+    const gates = Object.entries(r.gates).length
+      ? Object.entries(r.gates)
+          .map(([level, g]) => {
+            if (g.passed) return `${level} ✅`;
+            if (!g.blockers?.length && g.ownerActions?.length) return `${level} ✅ (ждёт данных владельца)`;
+            return `${level} ❌ ${[...new Set((g.blockers ?? []).map((b) => String((b as { id?: string }).id ?? b)))].join(", ")}`;
+          })
+          .join("; ")
+      : rep?.gates.length
+        ? rep.gates.map((g) => `${g.level} ${g.passed ? "✅" : `❌ ${[...new Set(g.failed.map((f) => f.id))].join(", ")}`}`).join("; ")
+        : "—";
+    const critic = rep?.critic?.scores.length
+      ? `${rep.critic.scores.join(" → ")} (${STOP_RU[rep.critic.stop ?? "none"] ?? rep.critic.stop})`
       : "—";
-    const critic = rep?.critic?.scores.length ? `${rep.critic.scores.join(" → ")} (${rep.critic.stop ?? "—"})` : "—";
     const shots = r.shots.map((s) => `[${s.replace(/\.jpg$/, "")}](${meta.shotsBase}/${r.brief}/${s})`).join(" · ") || "—";
     out.push(
       `| ${r.brief} | ${r.status}${r.error ? `: ${r.error.slice(0, 80)}` : ""} | ${r.screensSec ?? "—"} ${mark(r.screensSec === null ? null : r.screensSec <= V4_TARGETS.screensSec)} | ${r.systemMin ?? "—"} ${mark(r.systemMin === null ? null : r.systemMin <= V4_TARGETS.systemMin)} | ${round(r.rub)} ${mark(r.rub <= V4_TARGETS.rub)} | ${critic} | ${gates} | ${shots} |`,
@@ -263,6 +289,7 @@ export async function runAcceptance(o: { out: string; capRub: number; briefs?: r
           report,
           shots,
           error: r.error ?? null,
+          gates: (r.gates ?? {}) as Row["gates"],
         };
         writeFileSync(join(dir, "result.json"), `${JSON.stringify(r, null, 2)}\n`);
         if (report) writeFileSync(join(dir, "report.json"), `${JSON.stringify(report, null, 2)}\n`);

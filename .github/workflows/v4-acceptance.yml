@@ -82,7 +82,7 @@ jobs:
           MOONSHOT_API_KEY: ${{ secrets.KIMI_API_KEY }}
           KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
           MOONSHOT_BASE_URL: https://api.moonshot.ai/v1
-          MIMO_API_KEY: ${{ secrets.MIMO_SECOND_API_KEY }}
+          MIMO_API_KEY: ${{ secrets.MIMO_API_KEY }}
         run: pnpm --filter @wizard/e2e exec tsx ../../tools/eval/acceptance/v4.ts
       - name: Summary
         if: ${{ !cancelled() }}
