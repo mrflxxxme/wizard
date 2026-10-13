@@ -16,6 +16,8 @@ export interface DesignCssOptions {
   fontBase?: string;
   /** The Tailwind `@theme inline` block (default true; false for extra scopes on a page that has it). */
   theme?: boolean;
+  /** The other scheme by prefers-color-scheme for data-scheme=auto (default true; public sites keep their direction's scheme, D79). */
+  autoScheme?: boolean;
 }
 
 /** Variable name of a colour role: surfaceAlt → --ds-color-surface-alt. */
@@ -229,7 +231,9 @@ export function designSystemCss(ds: DesignSystemV3, opts: DesignCssOptions = {})
     `${root}{${decl(designSystemVars(ds))}${colors(first)}}`,
     `${on(first)}{${colors(first)}}`,
     `${on(other)}{${colors(other)}}`,
-    `@media (prefers-color-scheme: ${other}){${on("auto")}{${colors(other)}}}`,
+    opts.autoScheme === false
+      ? ""
+      : `@media (prefers-color-scheme: ${other}){${on("auto")}{${colors(other)}}}`,
     `@media (prefers-reduced-motion: reduce){${root}{${reduced}}}`,
     KEYFRAMES,
     opts.theme === false ? "" : FIT_WORDS_CSS,

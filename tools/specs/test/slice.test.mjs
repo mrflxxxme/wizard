@@ -24,7 +24,7 @@ const load = (file) => {
   return structuredClone(parsed.get(file));
 };
 const rank = (m) => Number(/^M(\d+)/.exec(String(m))?.[1]);
-const tasks = () => load("specs/backlog.yaml").tasks;
+const tasks = () => [...load("specs/backlog.yaml").tasks, ...(load("specs/backlog-archive.yaml")?.tasks ?? [])];
 
 describe("slice.mjs: --milestone", () => {
   it("api.yaml: only operations x-milestone ≤ M0 and the components they reach by $ref", () => {
@@ -159,8 +159,11 @@ describe("validate.mjs and repo files", () => {
   it("reports a broken anchor in backlog specs", () => {
     const root = join(tmp, "repo");
     cpSync(join(ROOT, "specs"), join(root, "specs"), { recursive: true });
-    const p = join(root, "specs/backlog.yaml");
-    writeFileSync(p, readFileSync(p, "utf8").replace('"specs/platform/workflows.yaml#execution"', '"specs/platform/workflows.yaml#no_such_anchor"'));
+    // M0-15 may live in the archive of done tasks (V4-02): break the anchor wherever the task is.
+    for (const f of ["specs/backlog.yaml", "specs/backlog-archive.yaml"]) {
+      const p = join(root, f);
+      writeFileSync(p, readFileSync(p, "utf8").replace('"specs/platform/workflows.yaml#execution"', '"specs/platform/workflows.yaml#no_such_anchor"'));
+    }
     const { errors } = runChecks(root);
     expect(errors).toContain('backlog M0-15: якорь не найден: specs/platform/workflows.yaml#no_such_anchor');
     expect(runChecks(ROOT).errors).toEqual([]);

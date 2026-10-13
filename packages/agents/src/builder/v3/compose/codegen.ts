@@ -19,12 +19,12 @@ export const DESIGN_CSS = "ui/design.css";
 export const SEO_JSON = "ui/seo.json";
 
 /**
- * ui/design.css: the design system variables with the visitor's colour scheme (prefers-color-scheme picks the other
- * palette — nothing sets data-scheme on a public page), fonts from /_wizard/fonts and the document base colours.
+ * ui/design.css: the design system variables in the scheme of the chosen direction — the visitor's OS theme does not
+ * switch a public site to the other palette (D79) — fonts from /_wizard/fonts and the document base colours.
  */
 export function designCss(ds: DesignSystemV3): string {
   return [
-    designSystemCss(ds, { fonts: true }).replaceAll(":root[data-scheme=auto]", ":root"),
+    designSystemCss(ds, { fonts: true, autoScheme: false }),
     "html{background-color:var(--color-background);color:var(--color-foreground);font-family:var(--font-sans);}",
     "",
   ].join("\n");
