@@ -859,10 +859,6 @@ export function createCriticHook(o: CriticOptions): V3StageHook {
         stop: r.stop,
         fixes: r.fixes,
         cycles: r.cycles.map((c) => ({ n: c.n, score: c.score, axes: c.axes, polish: c.polish, top: c.top })),
-        // V4-20: the deterministic problems left (stubs S01–S04 among them) for the build report.
-        left: problemDigest(r.left)
-          .slice(0, 40)
-          .map((d) => ({ code: d.code, where: d.where, message_ru: d.message_ru })),
       },
       // Model calls went through ctx.route: the harness wallet has them.
       spentRub: 0,

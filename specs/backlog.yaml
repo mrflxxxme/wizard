@@ -2597,7 +2597,7 @@ tasks:
 
   # ---------------- M4: запуск ----------------
   - id: V4-20
-    title: "Приёмка клиники: «Услуга N» и пустая секция — находки заглушек; демо-строки каталога из специалистов брифа; заглушки в отчёте сборки"
+    title: "Приёмка клиники: «Услуга N» и пустая секция — находки заглушек; демо-строки каталога из специалистов брифа"
     milestone: V4
     deps: [V4-18]
     specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4", "specs/product.yaml#decisions.D49_no_fabrication"]
@@ -2606,17 +2606,16 @@ tasks:
     estimate_days: 0.5
     status: done
     claimed_by: session_01HWKT1m6cHQBBtUV7d9pQhf
-    owns: ["packages/gates/src/stubs/**", "packages/gates/test/stubs*.ts", "packages/agents/src/builder/v3/compose/seed-hints.ts (запасной путь: специалисты из слов владельца)", "packages/agents/test/v4-seed-staff.test.ts", "packages/agents/src/builder/v3/critic/hook.ts (review.left)", "apps/platform-api/src/builds-v3/report/{collect,types}.ts (critic.left)", "tools/eval/acceptance/v4.ts (строка «Заглушки S01–S04»)"]
+    owns: ["packages/gates/src/stubs/**", "packages/gates/test/stubs*.ts", "packages/agents/src/builder/v3/compose/seed-hints.ts (запасной путь: специалисты из слов владельца)", "packages/agents/test/v4-seed-staff.test.ts"]
     description: >
       Поток Б, по репетиции приёмки Г (прогон 38466263249, клиника). Каталог показывал «Услуга 1/2/3» (генератор
       демо-данных без подсказок брифа), секция «Как работает запись» — только заголовок и кнопка, а отчёт писал
       «Заглушки: не найдены». Проверка V4-18 ловит «<сущность> N» (S02) и секцию с заголовком-обещанием без содержимого
       (S03); подсказки сида берут направления специалистов из слов владельца («терапевт, два хирурга…» → «Терапия,
-      Хирургия…»); оставшиеся проблемы критика попадают в отчёт сборки и в итог приёмки.
+      Хирургия…»). Заглушки в отчёте сборки и итоге приёмки (critic.left) — у потока Г (#177).
     acceptance:
       - "«Услуга 1», «Товар №12» и карточки «Врач 1, Врач 2» — S02; «Как работает запись» + кнопка — S03; призыв «Запишитесь сегодня» + кнопка — без находки (тесты)"
       - "Бриф клиники со словами владельца даёт строки каталога «Терапия, Хирургия, Ортодонтия, Детская стоматология», без «Услуга N» и без цен (тест)"
-      - "Отчёт сборки содержит critic.left, итог приёмки показывает S01–S04 из него"
   - id: V4-19
     title: "Записи e2e v3 по этапам и частичная перезапись record-stale"
     milestone: V4

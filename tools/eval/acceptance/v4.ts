@@ -123,13 +123,8 @@ export function renderSummary(rows: readonly Row[], meta: { runUrl: string; shot
       for (const s of r.report.stages) out.push(`| ${s.stage} | ${s.status} | ${round(s.rub, 2)} | ${round(s.minutes)} |`);
       out.push("");
     }
-    // V4-18 stubs are the critic's deterministic checks: what it left on the site (V4-20), plus any gate that names them.
-    const stubs = [
-      ...(r.report?.critic?.left ?? []).filter((p) => /^S0[1-4]$/.test(p.code)).map((p) => `${p.code} ${p.where}: ${p.message_ru}`),
-      ...(r.report?.gates ?? []).flatMap((g) => g.failed.filter((f) => /^S0[1-4]/.test(f.id)).map((f) => `${f.id} ${f.message}`)),
-    ];
-    const critiqued = r.report?.critic?.left !== undefined;
-    out.push(`Заглушки S01–S04: ${stubs.length ? stubs.join("; ") : critiqued ? "не найдены" : "критик не отчитался о проверках"}.`);
+    const stubs = (r.report?.gates ?? []).flatMap((g) => g.failed.filter((f) => /^S0[1-4]/.test(f.id)));
+    out.push(`Заглушки S01–S04: ${stubs.length ? stubs.map((f) => `${f.id} ${f.message}`).join("; ") : "не найдены или проверка ещё не подключена (V4-18)"}.`);
     if (r.report?.techreview) out.push(`Техревью: ${r.report.techreview.status ?? "—"}, блокеров ${r.report.techreview.blockers.length}.`);
     if (r.report?.gaps.length) out.push(`Пробелы отчёта: ${r.report.gaps.join("; ")}.`);
     out.push("");

@@ -75,13 +75,7 @@ export interface BuildReport {
   stages: ReportStage[];
   scenarios: ReportScenario[];
   gates: ReportGate[];
-  critic: {
-    scores: number[];
-    stop: string | null;
-    note: string | null;
-    /** V4-20: deterministic problems the critic left (code, where, what), stubs S01–S04 among them. */
-    left?: { code: string; where: string; message_ru: string }[];
-  } | null;
+  critic: { scores: number[]; stop: string | null; note: string | null } | null;
   techreview: { status: string | null; blockers: string[]; notes: string[] } | null;
   calls: ReportCall[];
   shots: ReportShot[];
