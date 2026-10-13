@@ -101,6 +101,22 @@ export class ReadThroughStorage implements FileStorage {
   }
 }
 
+/** The outcome of a brief for the table: ready, or not ready with the build's status and its failed must scenarios. */
+export function rowStatus(r: {
+  ready?: boolean;
+  status: string;
+  build?: { status?: string; scenarios?: { list?: { id: string; priority?: string; status?: string }[] } } | null;
+}): string {
+  if (r.ready === true) return "готова";
+  const failed = (r.build?.scenarios?.list ?? [])
+    .filter((s) => s.priority === "must" && s.status === "failed")
+    .map((s) => s.id);
+  const why = [r.build?.status ? `сборка ${r.build.status}` : "", failed.length ? `must ✗ ${failed.join(", ")}` : ""]
+    .filter(Boolean)
+    .join("; ");
+  return `не готова (${r.status}${why ? `; ${why}` : ""})`;
+}
+
 interface Row {
   brief: string;
   status: string;
@@ -327,7 +343,7 @@ export async function runAcceptance(o: { out: string; capRub: number; briefs?: r
         const sc = r.systemId ? screens.get(r.systemId) : undefined;
         const row: Row = {
           brief: r.id,
-          status: r.build?.status ?? r.status,
+          status: rowStatus(r),
           screensSec: sc?.sec ?? null,
           screensFromStartSec: sc && r.startedAt ? round((sc.at - Date.parse(r.startedAt)) / 1000) : null,
           systemMin: typeof r.minutes === "number" ? round(r.minutes) : null,
