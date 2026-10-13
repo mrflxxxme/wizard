@@ -90,6 +90,12 @@ export function transformBody(
     delete out.thinking;
     delete out.enable_thinking;
     delete out.chat_template_kwargs;
+    // EXPERIMENT (V4-09 follow-up): the vision model without reasoning.
+    if (out.model === "glm-5v-turbo") {
+      delete out.reasoning_effort;
+      out.thinking = { type: "disabled" };
+      return out;
+    }
     out.reasoning_effort = reasoning;
     // Reasoning tokens count against max_tokens: without headroom a short answer budget is spent on thinking alone
     // (finish=length, empty text — the 30-token probe on the pilot server).
