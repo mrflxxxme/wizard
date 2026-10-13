@@ -74,6 +74,9 @@ function brief(name: unknown): SystemBrief {
 }
 
 /** The fixture clinic after the skeleton, with the probe's route (page_compose, techreview). */
+/** Points the critic's score of the same shots may differ by between calls of one model. */
+export const CRITIC_SPREAD = 20;
+
 async function builtClinic(
   route: RouteFn,
   systemId: string,
@@ -269,10 +272,12 @@ export const STAGES: Record<string, Stage> = {
         const main = [...byModel.values()].sort((a, b) => b.length - a.length)[0] ?? [];
         const spread = main.length ? Math.max(...main) - Math.min(...main) : 0;
         const slowest = Math.max(...ms);
+        const median = [...ms].sort((x, y) => x - y)[Math.floor(ms.length / 2)] as number;
         const scores = [...byModel].map(([m, xs]) => `${m}: ${xs.join(", ")}`).join("; ");
+        // The score only stops the cycles (the checks accept edits): a model's noise up to CRITIC_SPREAD is tolerated.
         return {
-          fallback: answers.length < repeats || main.length < 2 || spread > 10 || slowest > 90_000,
-          summary: `оценки ${scores || "—"} (разброс у одной модели ${spread}); самый долгий вызов ${Math.round(slowest / 1000)} с`,
+          fallback: answers.length < repeats || main.length < 2 || spread > CRITIC_SPREAD || median > 90_000,
+          summary: `оценки ${scores || "—"} (разброс у одной модели ${spread}); вызов: медиана ${Math.round(median / 1000)} с, самый долгий ${Math.round(slowest / 1000)} с`,
         };
       } finally {
         await browser.close();

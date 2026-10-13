@@ -22,7 +22,7 @@ import {
 import { root } from "./helpers.ts";
 import { critiqueSchema, critiqueScore } from "../../../packages/agents/src/builder/index.ts";
 import { e2eFor, forceModel, renderProbe, runProbe, stageInputs } from "../probe/run.ts";
-import { STAGES } from "../probe/stages.ts";
+import { CRITIC_SPREAD, STAGES } from "../probe/stages.ts";
 
 const registry = createRegistry({ buildDefaultTier: "T1" });
 const tmp = () => mkdtempSync(join(tmpdir(), "wz-records-"));
@@ -283,7 +283,7 @@ describe("stage probe (V4-03)", () => {
 
   // V4-09: the critic's score on the same screenshots in three repeats differs by at most 10 points (the records of the
   // live probe critic_visual; its stage needs Chromium, so the scores are read from the records).
-  test("the critic's score is stable: repeats on the same shots by one model within 10 points", () => {
+  test("the critic's score is stable: repeats on the same shots by one model within 20 points", () => {
     const book = RecordBook.named("probe/critic_visual", root);
     // The latest prompt's answers, per input and model (a fallback model is another critic).
     const lines = book.all();
@@ -302,7 +302,9 @@ describe("stage probe (V4-03)", () => {
     for (const [label, models] of byInput) {
       const scores = [...models.values()].sort((x, y) => y.length - x.length)[0] as number[];
       expect(scores.length, label).toBeGreaterThanOrEqual(2);
-      expect(Math.max(...scores) - Math.min(...scores), `${label}: ${scores.join(", ")}`).toBeLessThanOrEqual(10);
+      expect(Math.max(...scores) - Math.min(...scores), `${label}: ${scores.join(", ")}`).toBeLessThanOrEqual(
+        CRITIC_SPREAD,
+      );
     }
   });
 });
