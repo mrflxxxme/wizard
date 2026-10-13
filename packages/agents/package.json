@@ -15,13 +15,15 @@
     "./brief-extract": "./src/brief-extract/index.ts",
     "./interview-v3": "./src/interview-v3/index.ts",
     "./integrations": "./src/integrations/index.ts",
-    "./repo": "./src/repo/index.ts"
+    "./repo": "./src/repo/index.ts",
+    "./stock": "./src/stock/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "assets": "node scripts/gen-builder-assets.mjs && node scripts/gen-qa-assets.mjs"
   },
   "dependencies": {
+    "@huggingface/tokenizers": "0.2.0",
     "@mozilla/readability": "^0.6.0",
     "@wizard/appspec": "workspace:*",
     "@wizard/gates": "workspace:*",
@@ -31,6 +33,7 @@
     "@wizard/ui-kit": "workspace:*",
     "fflate": "^0.8.3",
     "linkedom": "^0.18.13",
+    "onnxruntime-node": "1.30.0",
     "postgres": "^3.4.9",
     "turndown": "^7.2.4",
     "unpdf": "^1.8.1",

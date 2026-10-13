@@ -1,0 +1,86 @@
+# V4-10 (D79 (6)): the semantic photo library of v4 (tools/stock/fill.mjs). The stocks are closed for the server in RF,
+# so this runner fills the systems' files bucket of the environment: copies of Pexels and Pixabay photos with
+# attribution, their SigLIP embeddings (one shard per niche) and the SigLIP text tower the platform encodes queries
+# with. Every action is idempotent and resumable:
+#   model    — the text tower files (pinned revision and checksums) into the bucket; once per model change;
+#   fill     — catalog niches in priority order, to NICHE_TARGET photos each (a run stops at its time budget, the next
+#              one goes on where it stopped; a full library makes a run a no-op);
+#   backfill — niches the builds asked for (a build with too few photos on its topic queues its niche).
+# Schedule: backfill every two hours, fill every six hours (both no-ops when there is nothing to do), prod only.
+# Secrets reach only the step that uses them, masked first; output is counts only. A failure is a warning: the
+# platform keeps working with the photos it has.
+name: stock-library
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "model — загрузить модель SigLIP в хранилище; fill — наполнить библиотеку по каталогу ниш; backfill — докачать ниши, запрошенные сборками"
+        type: choice
+        options: [fill, backfill, model]
+        default: fill
+      env:
+        description: "Окружение (бакет files)"
+        type: choice
+        options: [prod, staging]
+        default: prod
+      minutes:
+        description: "Бюджет времени, минут (пусто — 330 для fill, 60 для backfill)"
+        type: string
+        default: ""
+      max_photos:
+        description: "Не больше стольких новых фото за запуск (пусто — без лимита)"
+        type: string
+        default: ""
+      niches:
+        description: "Только эти ниши каталога, через запятую (slug из packages/agents/src/stock/catalog.ts; пусто — все по порядку)"
+        type: string
+        default: ""
+  schedule:
+    - cron: "17 */2 * * *"
+    - cron: "41 1-23/6 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stock-library-${{ inputs.env || 'prod' }}
+  cancel-in-progress: false
+
+jobs:
+  library:
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.env || 'prod' }}
+    timeout-minutes: 350
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      # No secrets in the environment of dependency installation.
+      - run: pnpm install --frozen-lockfile
+      - name: Photo library
+        env:
+          ACTION: ${{ inputs.action || (github.event.schedule == '17 */2 * * *' && 'backfill' || 'fill') }}
+          MINUTES: ${{ inputs.minutes }}
+          MAX_PHOTOS: ${{ inputs.max_photos }}
+          NICHES: ${{ inputs.niches }}
+          DEPLOY_ENV: ${{ inputs.env || 'prod' }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          WIZARD_S3_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          WIZARD_S3_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          WIZARD_S3_BUCKET: ${{ vars.WIZARD_FILES_BUCKET }}
+          WIZARD_FILES_STORAGE: s3
+        run: |
+          for v in "$PEXELS_API_KEY" "$PIXABAY_API_KEY" "$WIZARD_S3_ACCESS_KEY_ID" "$WIZARD_S3_SECRET_ACCESS_KEY"; do if [ -n "$v" ]; then echo "::add-mask::$v"; fi; done
+          args=("$ACTION")
+          if [ "$ACTION" = "backfill" ] && [ -z "$MINUTES" ]; then MINUTES=60; fi
+          if [ -n "$MINUTES" ]; then args+=("--minutes=$MINUTES"); fi
+          if [ -n "$MAX_PHOTOS" ]; then args+=("--max-photos=$MAX_PHOTOS"); fi
+          if [ -n "$NICHES" ]; then args+=("--niches=$NICHES"); fi
+          node tools/stock/fill.mjs "${args[@]}"
