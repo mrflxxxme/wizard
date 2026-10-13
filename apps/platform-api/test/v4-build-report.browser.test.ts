@@ -1,7 +1,9 @@
 // V4-04 acceptance 1, the browser part: the report's screenshots of the built site at 390 (the first screen) and 1440
 // (the whole page) through the critic's inspector, and the HTTP responses of a scenario's steps — every context the
 // scenario check opens records its documents and API answers (a failed one with its body), attributed to the scenario.
+import { existsSync } from "node:fs";
 import { createServer, type Server } from "node:http";
+import { chromium } from "@playwright/test";
 import { createPageComposer } from "@wizard/agents/builder";
 import { PATTERNS } from "@wizard/ui-kit/v3/patterns";
 import { afterAll, describe, expect, test } from "vitest";
@@ -10,6 +12,15 @@ import { chromiumProvider } from "../src/agents/goal-browser.js";
 import { httpRecorder } from "../src/builds-v3/report/http.js";
 import { siteShots } from "../src/builds-v3/report/shots.js";
 import type { BuildStore } from "../src/runs/types.js";
+
+// The build job has no browser; ci.yml runs this file in the e2e job after installing Chromium.
+const hasChromium = (() => {
+  try {
+    return existsSync(chromium.executablePath());
+  } catch {
+    return false;
+  }
+})();
 
 const browser = chromiumProvider({ slots: 1 });
 let server: Server | null = null;
@@ -35,7 +46,7 @@ async function clinicStore(): Promise<BuildStore> {
   } as unknown as BuildStore;
 }
 
-describe("V4-04: screenshots and HTTP responses of the report", () => {
+describe.skipIf(!hasChromium)("V4-04: screenshots and HTTP responses of the report", () => {
   test("the home page at 390 and 1440 (JPEG)", async () => {
     const r = await siteShots(await clinicStore(), browser);
     expect(r.error).toBeUndefined();
