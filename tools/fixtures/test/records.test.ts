@@ -138,6 +138,33 @@ describe("records (V4-03)", () => {
     expect(misses).toHaveLength(1);
   });
 
+  test("parallel calls of one type reaching the router in another order get the answers of their own requests", async () => {
+    const p = project();
+    const book = new RecordBook(join(p.root, "e2e.jsonl"));
+    const direction = (systemId: string, name: string, runId: string): RouteInput => ({
+      ...call(systemId),
+      messages: [
+        { role: "system", content: "Ты — арт-директор." },
+        { role: "user", content: `Направление «${name}», прогон ${runId}, 2026-10-13T21:00:00.000Z` },
+      ],
+    });
+    const rec = recordingRouter(
+      fakeInner((i) => out("submit", { a: String(i.messages[1]?.content).split("»")[0] ?? "" })),
+      { book, source: "e2e", versions: p.versions() },
+    );
+    for (const name of ["Спокойная", "Смелая", "Тёплая"])
+      await rec.route(direction("a", name, "11111111-1111-4111-8111-111111111111"));
+
+    const replay = replayRouter({ registry, books: [book], versions: p.versions() });
+    const args = async (name: string) =>
+      (
+        (await replay.route(direction("x", name, "22222222-2222-4222-8222-222222222222"))).result.toolCalls[0]
+          ?.args as { a: string }
+      ).a;
+    const got = await Promise.all(["Тёплая", "Спокойная", "Смелая"].map(args));
+    expect(got).toEqual(["Направление «Тёплая", "Направление «Спокойная", "Направление «Смелая"]);
+  });
+
   test("a refusal is recorded and replayed; a call past the recorded run fails as unavailable, not as a miss", async () => {
     const p = project();
     const book = new RecordBook(join(p.root, "e2e.jsonl"));

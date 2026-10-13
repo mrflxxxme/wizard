@@ -4,7 +4,7 @@
 // data-wz-src; the preview bridge finds the elements a pattern renders from a literal by its value. An instant edit
 // replaces one literal in its file — no model, the file stays valid TSX.
 import ts from "typescript";
-import { fileKey, PATTERNS_DIR } from "../wz-id.js";
+import { fileKey, kitElements, PATTERNS_DIR } from "../wz-id.js";
 
 export type LiteralKind = "text" | "image" | "alt";
 
@@ -21,6 +21,11 @@ export interface SourceLiteral {
   kind: LiteralKind;
   form: LiteralForm;
   value: string;
+  /**
+   * wzId of the innermost ui-kit or pattern element holding the literal (a prop or a child): the bridge tells apart
+   * literals of the same value by the data-wz-id of the element shown.
+   */
+  wz?: string;
 }
 
 export type SourceMap = Record<string, SourceLiteral>;
@@ -126,6 +131,15 @@ export function fileLiterals(file: string, source: string): SourceLiteral[] {
     ts.forEachChild(node, visit);
   };
   visit(sf);
+  const elements = kitElements(file, source);
+  for (const l of out) {
+    let best: (typeof elements)[number] | undefined;
+    for (const e of elements) {
+      if (e.start <= l.start && l.end <= e.end && (!best || e.end - e.start < best.end - best.start))
+        best = e;
+    }
+    if (best) l.wz = best.id;
+  }
   return out;
 }
 

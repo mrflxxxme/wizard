@@ -57,6 +57,7 @@ function draftPage(platformOrigin: string, title: string, rev: string): string {
       const r = e.target.getBoundingClientRect();
       const rect = { x: r.left, y: r.top, width: r.width, height: r.height };
       if (editing && e.target.id === "head") { e.preventDefault(); post("literal-selected", { refs: ["${HEAD}"], kind: "text", route: "/", rect }); }
+      if (editing && e.target.dataset.testid === "draft-rev") { e.preventDefault(); post("literal-selected", { refs: ["${HEAD}", "${PHOTO}"], kind: "text", ambiguous: true, route: "/", rect }); }
       if (selecting && e.target.closest("#block")) { e.preventDefault(); post("element-selected", { componentName: "Hero", wzId: "0a1b2c3d:1", file: "ui/pages/Home.tsx", line: 12, route: "/", rect }); }
     }, true);
   })();`;
@@ -190,6 +191,15 @@ describe.skipIf(!hasChromium)("edits in three layers on the canvas (chromium)", 
         .poll(() => frame.getByTestId("draft-head").textContent(), { timeout: 10_000 })
         .toBe("Улыбка — стоматология у дома");
       expect(await frame.getByTestId("draft-rev").textContent()).toBe("ревизия 6");
+
+      // A text repeated on the site whose source is not found unambiguously: said in words, no identical fields.
+      await page.getByTestId("edit-text-pick").click();
+      await page.getByTestId("canvas-panel-edit").waitFor({ state: "hidden" });
+      await frame.getByTestId("draft-rev").click();
+      await expect
+        .poll(() => page.getByTestId("edit-error").textContent())
+        .toContain("Не могу однозначно найти этот текст");
+      expect(await page.getByTestId("edit-text-field").count()).toBe(0);
 
       // 2. «Стиль»: a slider changes the site at once (the --ds-* preview), «Сохранить стиль» sends only that control.
       await page.getByTestId("edit-tab-style").click();
