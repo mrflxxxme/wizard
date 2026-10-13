@@ -7,7 +7,14 @@
 // a regression is rolled back edit by edit. The loop stops on «pass», when the score stops growing (a batch that made
 // it worse is rolled back), on the budget (≤ 40 ₽ and ctx.budgetRub, checked by the upper bound before each call),
 // on time or when nothing applies. The result is a layer of files for the harness; the critic never blocks a build.
-import { type CallType, createRegistry, type OrgPolicy, type Registry, type RouteContext } from "@wizard/llm";
+import {
+  type CallType,
+  createRegistry,
+  modelFamilyOf,
+  type OrgPolicy,
+  type Registry,
+  type RouteContext,
+} from "@wizard/llm";
 import type { DesignSystemV3 } from "@wizard/ui-kit/v3/design";
 import { hash32, PATTERNS, type PatternMeta } from "@wizard/ui-kit/v3/patterns";
 import type { RunStepFn } from "../../../core/events.js";
@@ -47,9 +54,9 @@ import {
 } from "./rubric.js";
 import type { CriticInspection, CriticInspector, CriticShot, CriticShotRequest } from "./types.js";
 
-/** Caps of the critic (V3-13 acceptance: ≤ 3 cycles, ≤ 40 ₽). */
+/** Caps of the critic (V3-13: ≤ 40 ₽; V4-09: ≤ 2 model cycles). */
 export const CRITIC_LIMITS = {
-  maxCycles: 3,
+  maxCycles: 2,
   budgetRub: 40,
   /** Wall clock of the stage, ms. */
   timeMs: 6 * 60_000,
@@ -84,6 +91,8 @@ export interface CriticOptions {
   orgPolicy?: OrgPolicy | null;
   routeCtx?: RouteContext;
   runStep?: RunStepFn;
+  /** Model families the critic must not be of (besides the page authors of the site model). */
+  avoidFamilies?: readonly string[];
 }
 
 /** One model cycle: the verdict on the state it saw and what its edits did. */
@@ -214,6 +223,8 @@ export function describeEdit(op: EditOp): string {
       return `${op.token} = ${op.value}`;
     case "drop_section":
       return `${op.route}: убрать ${op.section}`;
+    case "rewrite_code":
+      return `${op.route}#${op.section}: новый код`;
   }
 }
 
@@ -270,7 +281,7 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
   const seed = `${ctx.design.seed}:${ctx.systemId}`;
 
   const layerOf = (st: CriticState) =>
-    siteFiles(st.site, facts.copy.site, st.design, ctx.files, signatures, library);
+    siteFiles(st.site, facts.copy.site, st.design, ctx.files, st.code ?? signatures, library);
   const filesOf = (st: CriticState) => merged(ctx.files, layerOf(st));
   const timeLeft = () => now() - t0 < timeMs;
   const canInspect = () => report.inspections < maxInspections && timeLeft();
@@ -291,7 +302,7 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
   };
   const lintCount = (st: CriticState, route: string) => {
     const page = st.site.pages.find((p) => p.route === route);
-    return page ? lintErrors(lintSitePage(st.site, page, facts, library, signatures)).length : 0;
+    return page ? lintErrors(lintSitePage(st.site, page, facts, library, st.code ?? signatures)).length : 0;
   };
   /** Problems of the routes just inspected replace theirs; the rest stay. */
   const withRoutes = (
@@ -303,7 +314,7 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
     new Set(ps.filter((p) => p.code === "RENDER").map(problemKey));
 
   // 0. The site as the scenarios left it: the checks of every page and the screenshots of the first cycle.
-  let state: CriticState = { site: site0, design: ctx.design };
+  let state: CriticState = { site: site0, design: ctx.design, code: signatures };
   const plan = () => shotPlan(state.site);
   const first = await inspect(state, routes, plan());
   if (!first.ok)
@@ -467,11 +478,18 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
   const spent = () => round2((spentMilli / 1000) * rpc);
   const left = () => cap - spent();
   const lastCall: { model?: string; tier?: string } = {};
+  // V4-09: never of the authors' families — the page models of the site (SitePage.author) and the caller's.
+  const avoid = [
+    ...new Set([
+      ...(o.avoidFamilies ?? []),
+      ...site0.pages.flatMap((p) => (p.author ? [modelFamilyOf(registry, p.author)] : [])),
+    ]),
+  ];
   const route: RouteFn = async (input) => {
     const ub = upperBoundCredits(input.callType as CallType, input.messages, input.tools ?? [], registry);
     const need = round2(ub * rpc);
     if (need > left()) throw new CriticBudgetStop(need);
-    const out = await ctx.route(input);
+    const out = await ctx.route(avoid.length ? { ...input, avoidFamilies: avoid } : input);
     spentMilli += out.creditsMilli;
     lastCall.model = out.model;
     lastCall.tier = out.tier;
@@ -519,6 +537,7 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
       found: problems,
       history,
       stubPhotos,
+      ...(state.code ? { code: state.code } : {}),
     });
     const need = round2(
       upperBoundCredits(CRITIC_CALL_TYPE, messages, [critiqueTool.definition], registry) * rpc,

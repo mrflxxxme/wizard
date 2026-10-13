@@ -1,5 +1,6 @@
-// Edits of the visual critic (V3-13): a closed set of operations on the composer's site model (ui/site.json, V3-12)
-// and the client's design system (C2) that code applies safely — never free code. Each operation checks what it may
+// Edits of the visual critic (V3-13, V4-09): operations on the composer's site model (ui/site.json, V3-12) and the
+// client's design system (C2) that code applies safely; V4-09 adds rewrite_code — new TSX of a section the page model
+// wrote as code (the pattern rules first; the page linter, G0 and the browser checks of the hook decide). Each operation checks what it may
 // touch: a variant of the same section type and module binding whose slot schema accepts the content and keeps the
 // photos; a new section order with the first screen first; a text inside the slot schema that passes the copy rules
 // (no new numbers — D49); a token step within the archetype and designLint; dropping a section nothing depends on.
@@ -12,7 +13,7 @@ import {
   RADIUS_SETS,
   SECTION_SPACE,
 } from "@wizard/ui-kit/v3/design";
-import type { PatternMeta } from "@wizard/ui-kit/v3/patterns";
+import { lintPattern, type PatternMeta } from "@wizard/ui-kit/v3/patterns";
 import { z } from "zod";
 import { actionLink, slotShape } from "../compose/content.js";
 import { copyIssues } from "../compose/lint.js";
@@ -44,13 +45,22 @@ export const editOpSchema = z.discriminatedUnion("op", [
     value: z.string().trim().min(1).max(20),
   }),
   z.object({ op: z.literal("drop_section"), route, section }),
+  // V4-09: new code of a section written as code (type «код» in the outline): the whole TSX and optionally its props.
+  z.object({
+    op: z.literal("rewrite_code"),
+    route,
+    section,
+    source: z.string().min(200).max(14000),
+    props: z.record(z.string(), z.unknown()).optional(),
+  }),
 ]);
 export type EditOp = z.output<typeof editOpSchema>;
 
-/** What the critic edits: the site model and the design system. */
+/** What the critic edits: the site model, the design system and the sources of the code sections (file → TSX). */
 export interface CriticState {
   site: SiteModel;
   design: DesignSystemV3;
+  code?: ReadonlyMap<string, string>;
 }
 
 export interface EditEnv {
@@ -396,5 +406,46 @@ export function applyEdit(st: CriticState, op: EditOp, env: EditEnv): EditResult
       return token(st, op);
     case "drop_section":
       return drop(st, op, env);
+    case "rewrite_code":
+      return rewriteCode(st, op, env);
   }
+}
+
+/** Pattern rules that refuse code outright (the rest are the page linter's and the browser's to judge). */
+const CODE_ERRORS = new Set([
+  "import",
+  "dynamic-code",
+  "default-export",
+  "arbitrary-color",
+  "arbitrary-font",
+  "palette",
+  "raw-color",
+  "inline-style",
+  "fabricated",
+  "forbidden-source",
+]);
+
+function rewriteCode(st: CriticState, op: Extract<EditOp, { op: "rewrite_code" }>, env: EditEnv): EditResult {
+  const page = findPage(st.site, op.route);
+  const s = page?.sections.find((x) => x.id === op.section);
+  if (!page || !s) return fail(`нет секции ${op.route}#${op.section}`);
+  if (s.type !== "signature" || !s.file) return fail("кодом правятся только секции, написанные кодом");
+  const bad = lintPattern(op.source, `${s.id}.tsx`).filter((i) => CODE_ERRORS.has(i.code));
+  if (bad.length) return fail(`код нарушает правила темы: ${bad[0]?.message_ru ?? bad[0]?.code}`);
+  if (op.props) {
+    for (const [, text] of Object.entries(op.props))
+      if (typeof text === "string" && copyIssues(text, env.numbers).some((c) => c.severity === "error"))
+        return fail("текст в props нарушает правила текста");
+  }
+  const section: SiteSection = op.props ? { ...s, props: op.props } : s;
+  const next: SitePage = { ...page, sections: page.sections.map((x) => (x.id === s.id ? section : x)) };
+  const code = new Map(st.code ?? []);
+  code.set(s.file, op.source);
+  return {
+    ok: true,
+    state: { ...st, site: withPage(st.site, next), code },
+    summary_ru: `${op.route}#${op.section}: код секции переписан`,
+    touched: "page",
+    route: op.route,
+  };
 }

@@ -532,8 +532,10 @@ describe("V3-13 critic", () => {
       { ...ctx, route: low.route },
       { inspect: fakeInspector([]), verify: null, registry },
     );
-    expect(r.cycles.map((c) => c.score)).toEqual([19, 19, 50]);
-    expect(low.calls).toHaveLength(3);
+    // V4-09: two cycles at most — the unchanged low score still asks for the second one.
+    expect(r.cycles.map((c) => c.score)).toEqual([19, 19]);
+    expect(r.stop).toBe("no_gain");
+    expect(low.calls).toHaveLength(2);
     const high = fixtureRoute(
       critiqueLines(prompt, [critique(2, [F.swap]), critique(2, [P1reorder]), critique(3, [])]),
     );
@@ -545,7 +547,7 @@ describe("V3-13 critic", () => {
     expect(h.stop).toBe("no_gain");
   });
 
-  test("at most 3 cycles, each paid by its own call", async () => {
+  test("at most 2 cycles (V4-09), each paid by its own call", async () => {
     const fx = fixtureRoute(
       critiqueLines(prompt, [
         critique(1, [F.swap]),
@@ -559,15 +561,15 @@ describe("V3-13 critic", () => {
       { inspect: fakeInspector([]), verify: null, registry },
     );
     expect(r.stop).toBe("cycles");
-    expect(fx.calls).toHaveLength(3);
-    expect(r.cycles.map((c) => c.applied.length)).toEqual([1, 1, 1]);
+    expect(fx.calls).toHaveLength(2);
+    expect(r.cycles.map((c) => c.applied.length)).toEqual([1, 1]);
     expect(r.spentRub).toBeLessThanOrEqual(40);
-    // A fourth cycle is not asked for even when the stage allows more.
+    // A third cycle is not asked for even when the stage allows more.
     const more = await runCritic(
       { ...ctx, route: fixtureRoute(critiqueLines(prompt, Array(5).fill(critique(1, [F.swap])))).route },
       { inspect: fakeInspector([]), verify: null, registry, maxCycles: 5 },
     );
-    expect(more.cycles.length).toBeLessThanOrEqual(3);
+    expect(more.cycles.length).toBeLessThanOrEqual(2);
   });
 
   test("budget: a call whose upper bound does not fit is not made; the checks still run", async () => {

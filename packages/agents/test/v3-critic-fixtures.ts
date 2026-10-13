@@ -112,7 +112,7 @@ export function fakeInspector(rules: InspectRule[], calls: CriticInspectInput[] 
 }
 
 /** The prompt of the first cycle on the clinic and its screenshots (their usage prices every recorded answer). */
-export function firstPrompt(ctx: V3BuildContext & { site: SiteModel }) {
+export function firstPrompt(ctx: V3BuildContext & { site: SiteModel }, code?: ReadonlyMap<string, string>) {
   const shots = fakeShots({ shots: shotPlan(ctx.site) });
   const messages = critiqueMessages({
     facts: siteFacts(ctx),
@@ -124,6 +124,7 @@ export function firstPrompt(ctx: V3BuildContext & { site: SiteModel }) {
     found: [],
     history: [],
     stubPhotos: true,
+    ...(code?.size ? { code } : {}),
   });
   return { messages, imageTokens: shots.reduce((s, x) => s + imageTokens(x.px.width, x.px.height), 0) };
 }

@@ -157,7 +157,11 @@ export async function pageCode(
       s.notes.push(
         `Страница ${s.page.route} «${s.page.title}» написана кодом под сценарий «${s.scenario.id}» и прошла проверки.`,
       );
-      const result = { page: applied.page, sources: applied.sources };
+      const model = author.model();
+      const result = {
+        page: model ? { ...applied.page, author: model } : applied.page,
+        sources: applied.sources,
+      };
       return s.firstScreen ? firstScreen(ctx, base, s, result, author.model()) : result;
     }
     messages = [
@@ -301,7 +305,10 @@ async function firstScreen(
       tool,
     });
     if (r.ok) {
-      const page = withHero(a.page, r.value);
+      const rivalModel = rival.model();
+      const page = rivalModel
+        ? { ...withHero(a.page, r.value), author: rivalModel }
+        : withHero(a.page, r.value);
       const sources = new Map([...a.sources, [heroFile, r.value.source]]);
       const sys = systemWith(ctx, s, page, new Map([...s.signatures, ...sources]));
       const check = await s.verify(sys.spec, sys.files, [heroFile, page.file]);

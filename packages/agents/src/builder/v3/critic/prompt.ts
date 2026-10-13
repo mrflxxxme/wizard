@@ -38,8 +38,9 @@ const SYSTEM = [
   "- reorder {route, order} — новый порядок всех секций страницы без header и footer, первый экран остаётся первым;",
   "- set_text {route, section, path, text} — новый текст поля из списка «тексты» секции; факты, числа, цены, сроки и имена — только те, что уже есть на странице (D49); без слов-пустышек, эмодзи и восклицательных знаков;",
   "- token {token, value} — density, radius, display_size (smaller | larger — заголовок первого экрана), muted_contrast (light | dark — второстепенный текст контрастнее); значения — из списка «Токены»;",
-  "- drop_section {route, section} — убрать секцию, которой нечего честно сказать (не первый экран, не форма и не данные).",
-  "Не больше 6 правок, важные — первыми. Секции с данными (каталог, запись, блог, форма) показаны без записей — их наполнение не оценивай.",
+  "- drop_section {route, section} — убрать секцию, которой нечего честно сказать (не первый экран, не форма и не данные);",
+  "- rewrite_code {route, section, source, props?} — новый код секции, написанной кодом (в списке «код»): весь TSX целиком, React + Tailwind только на классах темы (bg-background, text-foreground, bg-primary…, font-display/font-sans, text-hero/h1/h2/h3/lead/body/small), без #hex, rgb(), палитры Tailwind и style с цветом; один export default function; тексты из props; h1 — только в первом экране. Исправляй то, что видно на снимках: иерархию, ритм, композицию, читаемость.",
+  "Не больше 6 правок, важные — первыми; переписывать код — не больше двух секций за цикл. Секции с данными (каталог, запись, блог, форма) показаны без записей — их наполнение не оценивай.",
 ].join("\n");
 
 /** Keys whose strings are not copy (links, sources, bindings). */
@@ -79,13 +80,15 @@ const clip = (s: string, n: number) => {
 };
 
 /** The outline of a page: its sections, the variants each may take and its texts by path. */
-export function pageOutline(page: SitePage, library: readonly PatternMeta[]): string {
+export function pageOutline(
+  page: SitePage,
+  library: readonly PatternMeta[],
+  code?: ReadonlyMap<string, string>,
+): string {
   const lines = [`Страница ${page.route} «${page.title}»:`];
   for (const s of page.sections) {
     const meta = library.find((p) => p.id === s.pattern);
-    const parts = [
-      `- ${s.id} · ${s.type === "signature" ? `фирменная секция «${s.title ?? s.id}»` : s.pattern}`,
-    ];
+    const parts = [`- ${s.id} · ${s.type === "signature" ? `код «${s.title ?? s.id}»` : s.pattern}`];
     if (meta?.needs) parts.push(`данные: ${meta.needs}`);
     const texts =
       s.type === "header" || s.type === "footer" || s.type === "signature" ? [] : textPaths(s.props);
@@ -99,6 +102,12 @@ export function pageOutline(page: SitePage, library: readonly PatternMeta[]): st
     const vs = variantsFor(library, s);
     if (vs.length) parts.push(`варианты: ${vs.map((v) => v.id).join(", ")}`);
     lines.push(parts.join(" · "));
+    // V4-09: the code of a section written as code, so that rewrite_code starts from it.
+    const src = s.file ? code?.get(s.file) : undefined;
+    if (src) {
+      lines.push(`  props: ${clip(JSON.stringify(s.props), 400)}`);
+      lines.push(`  \`\`\`tsx\n${src.length > 2400 ? `${src.slice(0, 2400)}\n// …` : src}\n  \`\`\``);
+    }
   }
   return lines.join("\n");
 }
@@ -141,6 +150,8 @@ export interface CritiqueInput {
   found: readonly DeterministicProblem[];
   history: readonly CritiqueHistory[];
   stubPhotos?: boolean;
+  /** V4-09: sources of the code sections (file → TSX). */
+  code?: ReadonlyMap<string, string>;
 }
 
 /** Messages of a critic_visual call: the rubric and one user message with the images. */
@@ -155,7 +166,7 @@ export function critiqueMessages(o: CritiqueInput): LlmMessage[] {
     `Стиль: «${o.design.name}» (архетип ${o.design.archetype}), шрифты ${o.design.fonts.display.family} / ${o.design.fonts.text.family}.`,
     `Токены: ${tokenOptions(o.design)}.`,
     "",
-    ...pages.map((p) => pageOutline(p, o.library)),
+    ...pages.map((p) => pageOutline(p, o.library, o.code)),
     "",
     found.length
       ? `Уже найдено кодом (не повторяй):\n${found.map((f) => `- ${f.code} ${f.where}: ${clip(f.message_ru, 120)}`).join("\n")}`
