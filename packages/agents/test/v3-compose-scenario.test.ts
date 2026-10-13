@@ -164,6 +164,16 @@ describe("V4-06: the page as free code", () => {
     expect(user?.content).toContain(ctx.design.fonts.display.family);
   });
 
+  test("V4-21: the block «Что исправить» is in the prompt only when the scenario is composed again", async () => {
+    const { ctx, site, facts } = await prepared();
+    const o = { facts, site, page: site.pages[0] as SitePage, scenario: LEAD, design: ctx.design };
+    expect(pageCodeMessages(o)[1]?.content).not.toContain("## Что исправить");
+    const user = String(pageCodeMessages({ ...o, repair: ["видит цены «от»"] })[1]?.content ?? "");
+    expect(user).toContain("## Что исправить");
+    expect(user).toContain("- видит цены «от»");
+    expect(user.indexOf("## Что исправить")).toBeLessThan(user.indexOf("## Задача"));
+  });
+
   test("SDK gate: a removed component is refused and goes back to the model", async () => {
     const { ctx, site, facts } = await prepared();
     const home = site.pages[0] as SitePage;

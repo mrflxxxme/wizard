@@ -201,6 +201,7 @@ export async function composeScenario(
       registry,
       ...(opts.inspect ? { inspect: opts.inspect } : {}),
       firstScreen: opts.firstScreen !== false && page.route === "/",
+      ...(ctx.repair?.length ? { repair: ctx.repair } : {}),
     });
     if (done === "stop") break;
     if (!done) continue;
