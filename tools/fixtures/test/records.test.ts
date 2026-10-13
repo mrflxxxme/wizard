@@ -17,6 +17,7 @@ import {
   recordingRouter,
   redact,
   replayRouter,
+  toolsHash,
 } from "../../../packages/llm/src/index.ts";
 import { root } from "./helpers.ts";
 import { forceModel, renderProbe, runProbe, stageInputs } from "../probe/run.ts";
@@ -89,6 +90,15 @@ describe("records (V4-03)", () => {
       expect(text).not.toContain(leak);
     expect(text).toContain("user@example.com");
     expect(line?.request.tools[0]?.parameters).toEqual(TOOL.parameters);
+  });
+
+  test("the tool hash follows the shape of the schema, not the data of this run (enum candidates, texts)", () => {
+    const tool = (e: string[], extra = {}) => ({
+      name: "submit",
+      parameters: { type: "object", properties: { pick: { type: "string", enum: e, description: e.join() }, ...extra } },
+    });
+    expect(toolsHash([tool(["a", "b"])])).toBe(toolsHash([tool(["c"])]));
+    expect(toolsHash([tool(["a"])])).not.toBe(toolsHash([tool(["a"], { title: { type: "string" } })]));
   });
 
   test("redact keeps secret references, ordinary numbers and prices", () => {

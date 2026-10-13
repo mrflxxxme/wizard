@@ -69,11 +69,30 @@ function filesUnder(path: string): string[] {
     .flatMap((f) => filesUnder(join(path, f)));
 }
 
-/** Hash of the tools offered: names and JSON schemas, order-free. */
+// Data a stage puts into its schema per input (the candidates of an enum, texts) — not the shape of the tool.
+const DATA_KEYS = new Set(["enum", "const", "description", "default", "examples", "title"]);
+
+/** The shape of a JSON schema: its data keys dropped (an enum of this run's candidates is not a new tool). */
+export function schemaShape(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(schemaShape);
+  if (schema === null || typeof schema !== "object") return schema;
+  return Object.fromEntries(
+    Object.entries(schema)
+      .filter(([k]) => !DATA_KEYS.has(k))
+      .map(([k, v]) => [
+        k,
+        k === "properties"
+          ? Object.fromEntries(Object.entries(v as object).map(([p, x]) => [p, schemaShape(x)]))
+          : schemaShape(v),
+      ]),
+  );
+}
+
+/** Hash of the tools offered: names and the shapes of their JSON schemas, order-free. */
 export function toolsHash(tools: readonly Pick<LlmTool, "name" | "parameters">[] = []): string {
   return sha(
     tools
-      .map((t) => `${t.name}:${schemaHash(t.parameters)}`)
+      .map((t) => `${t.name}:${schemaHash(schemaShape(t.parameters))}`)
       .sort()
       .join(","),
   ).slice(0, 8);
@@ -229,8 +248,8 @@ export class RecordBook {
   }
 }
 
-/** Order of first appearance of each system: the scope of a call. */
-class Scopes {
+/** Order of first appearance of each system: the scope of a call. One per recorded or replayed run (process). */
+export class RecordScopes {
   private readonly ids = new Map<string, number>();
   private readonly counts = new Map<string, number>();
 
@@ -262,13 +281,15 @@ export interface RecordingOptions {
   label?: () => string | undefined;
   /** Every record written (the probe's report). */
   onRecord?: (line: RecordLine) => void;
+  /** Shared by the routers of one run (a platform makes a router per build): default — this router's own. */
+  scopes?: RecordScopes;
   now?: () => number;
 }
 
 /** A router that writes every successful call of `inner` (live) as a record. */
 export function recordingRouter(inner: Router, o: RecordingOptions): Router {
   const versions = o.versions ?? new PromptVersions();
-  const scopes = new Scopes();
+  const scopes = o.scopes ?? new RecordScopes();
   const now = o.now ?? Date.now;
   return {
     mode: inner.mode,
@@ -318,6 +339,10 @@ export interface ReplayOptions {
   versions?: PromptVersions;
   /** Called on each miss before the error is thrown (the stand logs it and fails the run). */
   onMiss?: (miss: RecordMiss) => void;
+  /** Called on each answered call (the stand counts what the run took from records). */
+  onHit?: (line: RecordLine) => void;
+  /** Shared by the routers of one run: default — this router's own. */
+  scopes?: RecordScopes;
 }
 
 export interface RecordMiss {
@@ -341,7 +366,7 @@ export interface ReplayRouter extends Router {
  */
 export function replayRouter(o: ReplayOptions): ReplayRouter {
   const versions = o.versions ?? new PromptVersions();
-  const scopes = new Scopes();
+  const scopes = o.scopes ?? new RecordScopes();
   const misses: RecordMiss[] = [];
   return {
     mode: "fixture",
@@ -370,6 +395,7 @@ export function replayRouter(o: ReplayOptions): ReplayRouter {
           hint: "Перезапишите записи: воркфлоу stage-probe (docs: tools/fixtures/records/README.md).",
         });
       }
+      o.onHit?.(line);
       const model = o.registry.models.find((m) => m.id === line.model);
       const credits = model ? line.costRub / o.registry.rubPerCredit : 0;
       return {
