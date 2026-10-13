@@ -66,6 +66,7 @@ export function transformBody(
   providerId: ProviderDef["id"] | "byok",
   body: Record<string, unknown>,
   reasoning: "low" | "high" = "high",
+  thinking?: "off",
 ): Record<string, unknown> {
   const out: Record<string, unknown> = { ...body };
   delete out.response_format;
@@ -90,10 +91,16 @@ export function transformBody(
     delete out.thinking;
     delete out.enable_thinking;
     delete out.chat_template_kwargs;
-    out.reasoning_effort = reasoning;
-    // Reasoning tokens count against max_tokens: without headroom a short answer budget is spent on thinking alone
-    // (finish=length, empty text — the 30-token probe on the pilot server).
-    if (typeof out.max_tokens === "number") out.max_tokens += ZAI_REASONING_HEADROOM;
+    if (thinking === "off") {
+      // A model with reasoning off (models.yaml#models[].thinking: glm-5v-turbo): no effort, no headroom.
+      delete out.reasoning_effort;
+      out.thinking = { type: "disabled" };
+    } else {
+      out.reasoning_effort = reasoning;
+      // Reasoning tokens count against max_tokens: without headroom a short answer budget is spent on thinking alone
+      // (finish=length, empty text — the 30-token probe on the pilot server).
+      if (typeof out.max_tokens === "number") out.max_tokens += ZAI_REASONING_HEADROOM;
+    }
   } else if (Array.isArray(out.tools) && out.tools.length > 0) {
     delete out.reasoning_effort;
     delete out.enable_thinking;
@@ -252,6 +259,7 @@ export async function liveCall(i: LiveCallInput): Promise<{ result: LlmResult; u
     signal: i.signal,
     ...(i.fetch ? { fetch: i.fetch } : {}),
     ...(i.reasoning ? { reasoning: i.reasoning } : {}),
+    ...(i.model.thinking === "off" ? { thinking: "off" as const } : {}),
   });
 }
 
@@ -271,6 +279,8 @@ export interface ChatCallInput {
   signal: AbortSignal;
   fetch?: typeof globalThis.fetch;
   reasoning?: "low" | "high";
+  /** The model's reasoning is turned off (ModelDef.thinking). */
+  thinking?: "off";
 }
 
 /**
@@ -286,7 +296,7 @@ export async function chatCall(i: ChatCallInput): Promise<{ result: LlmResult; u
     fetch: i.fetch ?? defaultFetch(),
     includeUsage: true,
     supportsStructuredOutputs: false,
-    transformRequestBody: (body) => transformBody(i.bodyProfile, body, i.reasoning ?? "high"),
+    transformRequestBody: (body) => transformBody(i.bodyProfile, body, i.reasoning ?? "high", i.thinking),
   });
   const tools: ToolSet | undefined = i.tools?.length
     ? Object.fromEntries(

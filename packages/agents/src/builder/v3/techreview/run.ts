@@ -8,6 +8,7 @@
 import { createRegistry, LlmError } from "@wizard/llm";
 import { DEFAULT_REGISTRY } from "../../../planner/catalog.js";
 import type { V3BuildContext } from "../contract.js";
+import { ruRemarks } from "../critic/owner.js";
 import type { V3HookResult, V3StageHook } from "../harness/types.js";
 import { milliRub, V3BudgetError } from "../harness/wallet.js";
 import { referenceSpec } from "./chains.js";
@@ -178,11 +179,15 @@ export async function runTechreview(
   const ran = checks.filter((c) => c.status !== "skip").length;
   const warnings = checks.filter((c) => c.status === "warn").length;
   const applied = fixes.filter((f) => f.applied).length;
+  // V4-09: the owner reads plain words (no check counts, models or reasons — those are in `note` for the staff).
+  const found = open.length + applied;
   const notes = [
-    `Техревью: проверил сборку и типы, миграции, права и персональные данные, интеграции, связи модулей, скорость и доступность — ${ran} проверок${warnings ? `, замечаний без блокировки: ${warnings}` : ""}.`,
+    `Проверил код системы: сборку, права доступа, персональные данные, интеграции, скорость и доступность${warnings ? `; некритичных замечаний: ${warnings}` : ""}.`,
     reviewer.status === "done"
-      ? `Ревьюер на модели другого семейства нашёл ${open.length + applied} замечаний${applied ? `, исправлено ${applied}` : ""}.`
-      : `Ревьюер не ответил (${reviewer.reason}) — систему проверила детерминированная часть.`,
+      ? found
+        ? `Проверка кода второй моделью: ${found} ${ruRemarks(found)}${applied ? `, исправлено ${applied}` : ""}.`
+        : "Проверка кода второй моделью: замечаний нет."
+      : "Вторая проверка кода сейчас недоступна — систему проверили автоматические проверки.",
   ];
   const note = [
     `проверок ${ran}, предупреждений ${warnings}, блокеров ${blockers.length}`,

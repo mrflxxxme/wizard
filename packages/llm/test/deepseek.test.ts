@@ -21,6 +21,7 @@ import {
   type RouterOptions,
   transformBody,
 } from "../src/index.js";
+import { ZAI_REASONING_HEADROOM } from "../src/providers.js";
 import { type Captured, okToolCall, type Responder, type Stub, startStub } from "./stub-server.js";
 
 const DS_MODELS = ["deepseek-v4.1-flash", "deepseek-v4-pro-0813"];
@@ -470,5 +471,19 @@ describe("fixture mode stays offline", () => {
       ctx,
     });
     expect(out.model).toBe("glm-5.3");
+  });
+});
+
+describe("transformBody(zai): a model with reasoning off (glm-5v-turbo)", () => {
+  test("thinking disabled, no effort, no headroom; others keep effort and headroom", () => {
+    const off = transformBody("zai", { max_tokens: 4000, reasoning_effort: "high" }, "low", "off");
+    expect(off.thinking).toEqual({ type: "disabled" });
+    expect(off.reasoning_effort).toBeUndefined();
+    expect(off.max_tokens).toBe(4000);
+    const on = transformBody("zai", { max_tokens: 4000 }, "low");
+    expect(on.reasoning_effort).toBe("low");
+    expect(on.thinking).toBeUndefined();
+    expect(on.max_tokens).toBe(4000 + ZAI_REASONING_HEADROOM);
+    expect(getModel(createRegistry({}, {}), "glm-5v-turbo").thinking).toBe("off");
   });
 });

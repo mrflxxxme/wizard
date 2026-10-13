@@ -7,6 +7,7 @@
 // a regression is rolled back edit by edit. The loop stops on «pass», when the score stops growing (a batch that made
 // it worse is rolled back), on the budget (≤ 40 ₽ and ctx.budgetRub, checked by the upper bound before each call),
 // on time or when nothing applies. The result is a layer of files for the harness; the critic never blocks a build.
+import { type KnownContacts, knownContacts, type StubFinding, stubFindings } from "@wizard/gates";
 import {
   type CallType,
   createRegistry,
@@ -40,6 +41,7 @@ import {
   signatureFallback,
   variantsFor,
 } from "./ops.js";
+import { ownerCriticNotes, ownerEdit, ruPlaces } from "./owner.js";
 import { CRITIC_CALL_TYPE, type CritiqueHistory, critiqueMessages, critiqueTool } from "./prompt.js";
 import {
   CHECK_RUBRIC,
@@ -147,7 +149,12 @@ export interface CriticReport {
   inspections: number;
   /** Changed files (path → source; null — delete). */
   files: Map<string, string | null>;
+  /** What the owner reads (V4-09: plain words, no routes or keys; ownerCriticNotes). */
   notes: string[];
+  /** The accepted model edits as the owner reads them («заголовок первого экрана главной»). */
+  owner: string[];
+  /** The technical lines for the staff (routes, anchors, scores) — the report V4-04, not the owner. */
+  details: string[];
   /** The design system after token edits (absent — the critic kept ctx.design); the harness applies it (V3-14 seam). */
   design?: DesignSystemV3;
 }
@@ -227,6 +234,21 @@ export function describePatch(p: CodePatch): string {
   return `${p.file}: правка кода «${what}»`;
 }
 
+/** V4-18: a stub of `file` the edit adds (S01–S04 of @wizard/gates, its file only), in words; null — none. */
+export function newStub(
+  files: ReadonlyMap<string, string>,
+  file: string,
+  after: string,
+  contacts: KnownContacts,
+): string | null {
+  const key = (f: StubFinding) => `${f.code}|${f.section ?? ""}|${f.literal ?? ""}`;
+  const of = (fs: ReadonlyMap<string, string>) =>
+    stubFindings({ files: fs, known: contacts }).filter((f) => f.file === file);
+  const was = new Set(of(files).map(key));
+  const added = of(new Map([...files, [file, after]])).find((f) => !was.has(key(f)));
+  return added ? `${added.code} ${added.message_ru}${added.literal ? ` («${added.literal}»)` : ""}` : null;
+}
+
 /** Families of the head models of the page writer's route (the default author of the pages). */
 export function defaultAuthorFamilies(reg: Registry): string[] {
   const chain = reg.routes.page_compose.chain;
@@ -272,12 +294,7 @@ export function describeEdit(op: EditOp): string {
   }
 }
 
-const RU_PROBLEMS = (n: number) =>
-  n % 10 === 1 && n % 100 !== 11
-    ? "место"
-    : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14)
-      ? "места"
-      : "мест";
+const RU_PROBLEMS = ruPlaces;
 
 /** Runs the critic on a build context (the hook wraps it; tests read the report). */
 export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<CriticReport> {
@@ -306,6 +323,8 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
     inspections: 0,
     files: new Map(),
     notes: [],
+    owner: [],
+    details: [],
   };
   const skip = (reason: string): CriticReport => ({ ...report, status: "skipped", reason, notes: [reason] });
 
@@ -315,6 +334,14 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
   if (routes.length === 0) return skip("Публичных страниц без входа нет — смотреть критику нечего.");
   const facts: SiteFacts = siteFacts(ctx);
   const env: EditEnv = { library, numbers: facts.numbers };
+  // V4-18: the contacts the owner gave; a phone or an e-mail beyond them on the site is S04.
+  const c = ctx.spec.compliance ?? {};
+  const contacts = knownContacts([
+    JSON.stringify(ctx.brief),
+    ctx.request ?? "",
+    c.operatorContact ?? "",
+    c.operatorAddress ?? "",
+  ]);
   const signatures = new Map<string, string>();
   for (const p of site0.pages)
     for (const s of p.sections) {
@@ -343,6 +370,7 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
       viewports: CRITIC_VIEWPORTS,
       shots,
       fonts,
+      contacts,
       ...(ctx.signal ? { signal: ctx.signal } : {}),
     });
     stubPhotos ||= r.stubPhotos === true;
@@ -378,6 +406,9 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
     const after = before.slice(0, at) + p.replace + before.slice(at + p.find.length);
     const issues = pointEditIssues(p.file, before, after);
     if (issues.length) return { ok: false, reason_ru: issues[0]?.message ?? "правка не прошла проверку" };
+    // V4-18: an edit that adds a stub (a dead link, a placeholder, a strange contact) is refused before the browser.
+    const stub = newStub(filesOf(st), p.file, after, contacts);
+    if (stub) return { ok: false, reason_ru: `правка добавляет заглушку: ${stub}` };
     const pages = st.site.pages.filter((pg) => pg.file === p.file).map((pg) => pg.route);
     return {
       ok: true,
@@ -744,6 +775,7 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
         shotsOf = state;
       }
       cycle.applied = accepted.map((x) => x.summary);
+      report.owner.push(...accepted.map((x) => ownerEdit(state.site, x.change)));
     } else {
       let s2 = state;
       for (const x of accepted) {
@@ -755,6 +787,7 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
           state = s2;
           problems = t2.problems;
           cycle.applied.push(x.summary);
+          report.owner.push(ownerEdit(state.site, x.change));
         } else {
           cycle.rejected.push({ edit: describeChange(x.change), reason_ru: `откат: ${t2.reason}` });
           report.rolledBack.push(`${x.summary} (${t2.reason})`);
@@ -777,12 +810,18 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
     state.site === site0 && state.design === ctx.design && !state.code?.length
       ? new Map()
       : changed(layerOf(state), ctx.files);
-  report.notes = criticNotes(report);
+  report.details = criticNotes(report);
+  report.notes = ownerCriticNotes({
+    edits: report.owner,
+    fixes: report.fixes,
+    left: problemDigest(report.left),
+    site: state.site,
+  });
   if (state.design !== ctx.design) report.design = state.design;
   return report;
 }
 
-/** Short Russian notes for the client: what was looked at, what changed, what is left. */
+/** The technical lines for the staff report: what was looked at, what changed (routes, anchors), what is left. */
 function criticNotes(r: CriticReport): string[] {
   const out: string[] = [];
   const scores = r.cycles.map((c) => c.score);
@@ -823,15 +862,16 @@ export function createCriticHook(o: CriticOptions): V3StageHook {
       },
       // Model calls went through ctx.route: the harness wallet has them.
       spentRub: 0,
-      note: [
-        `циклов ${r.cycles.length}`,
-        ...(scores.length ? [`оценка ${scores.join("→")}`] : []),
-        `проверки ${r.before.penalty}→${r.after.penalty}`,
-        `правок ${r.fixes.length + r.cycles.reduce((s, c) => s + c.applied.length, 0)}`,
-        ...(r.rolledBack.length ? [`откатов ${r.rolledBack.length}`] : []),
-        `${r.spentRub} ₽`,
-        `стоп ${r.stop}`,
-      ].join(", "),
+      note:
+        [
+          `циклов ${r.cycles.length}`,
+          ...(scores.length ? [`оценка ${scores.join("→")}`] : []),
+          `проверки ${r.before.penalty}→${r.after.penalty}`,
+          `правок ${r.fixes.length + r.cycles.reduce((s, c) => s + c.applied.length, 0)}`,
+          ...(r.rolledBack.length ? [`откатов ${r.rolledBack.length}`] : []),
+          `${r.spentRub} ₽`,
+          `стоп ${r.stop}`,
+        ].join(", ") + (r.details.length ? ` | ${r.details.join(" ")}` : ""),
     };
   };
 }

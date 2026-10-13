@@ -53,6 +53,8 @@ export interface ModelDef {
   image?: ImageTokenRule;
   /** The only temperature the provider accepts for this model (kimi-k3: 1); the route's temperature is replaced by it. */
   temperature?: number;
+  /** "off" — every request turns the model's reasoning off (glm-5v-turbo: thinking {type: disabled}, no headroom). */
+  thinking?: "off";
 }
 
 export interface RouteDef {
@@ -253,15 +255,24 @@ export const MODELS: ModelDef[] = [
     px: 28,
     max: 16384,
   }),
-  m("glm-4.6v", "zai", "glm-4.6v", "T1", "external", 128000, 34.77, 5.79, 104.31, true, true, {
-    px: 28,
-    max: 16384,
-  }),
+  // Reasoning off too (stream Г probe 13.10.2026: scores 53/55/55, 20 s median, ≈ 0.2 ₽ a call, no 400).
+  {
+    ...m("glm-4.6v", "zai", "glm-4.6v", "T1", "external", 128000, 34.77, 5.79, 104.31, true, true, {
+      px: 28,
+      max: 16384,
+    }),
+    thinking: "off",
+  },
   // V4-05 (D79 (5)): Z.ai vision — the visual critic and judge (probe 13.10.2026: glm-5v is unknown, glm-5v-turbo sees).
-  m("glm-5v-turbo", "zai", "glm-5v-turbo", "T1", "external", 203000, 139.08, 27.82, 463.6, true, true, {
-    px: 28,
-    max: 16384,
-  }),
+  // Reasoning off (stream Г probe 13.10.2026): 16–18 s instead of 56 s a critique, spread of the score 0–4 instead of
+  // 8–16, ≈ 0.4 ₽ a call, the same findings.
+  {
+    ...m("glm-5v-turbo", "zai", "glm-5v-turbo", "T1", "external", 203000, 139.08, 27.82, 463.6, true, true, {
+      px: 28,
+      max: 16384,
+    }),
+    thinking: "off",
+  },
   // Kimi K3 accepts only temperature 1 and sees images (probe 13.10.2026).
   m(
     "kimi-k3",
