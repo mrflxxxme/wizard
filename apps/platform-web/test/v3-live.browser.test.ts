@@ -273,8 +273,16 @@ describe.skipIf(!hasChromium)("the live v3 build on the canvas in chromium", () 
         const build = scriptedBuild(fake);
         build.start();
 
-        // 1. The build at work: the canvas shows the live panel and the growing system.
+        // 1. The build at work: the growing system on the whole window, the bar on top; the chat row and the panel
+        // of the build under their icons (V4-11).
         const page = await open(fake, ctx);
+        await page.getByTestId("canvas-eta").waitFor({ timeout: 15_000 });
+        expect(await page.getByTestId("canvas-sheet").count()).toBe(0);
+        await page.getByTestId("canvas-island-chat").click();
+        // The chat row takes the same numbers from the snapshot.
+        expect(await page.getByTestId("canvas-build-spend").textContent()).toBe("потрачено 42 ₽ из 500 ₽");
+        expect(await page.getByTestId("canvas-build-step").textContent()).toBe("Довожу сценарии по одному");
+        await page.getByTestId("canvas-island-build").click();
         const live = page.getByTestId("canvas-v3-live");
         await live.waitFor({ timeout: 15_000 });
         expect(await live.getAttribute("data-phase")).toBe("running");
@@ -304,14 +312,12 @@ describe.skipIf(!hasChromium)("the live v3 build on the canvas in chromium", () 
         expect(await page.getByTestId("canvas-v3-live-spend-line").textContent()).toBe(
           "Потрачено 42 ₽ из 500 ₽",
         );
-        // The chat row takes the same numbers from the snapshot.
-        expect(await page.getByTestId("canvas-build-spend").textContent()).toBe("потрачено 42 ₽ из 500 ₽");
-        expect(await page.getByTestId("canvas-build-step").textContent()).toBe("Довожу сценарии по одному");
-        // The growing system: the revision the first scenario landed in.
-        const frame = page.frameLocator('[data-testid="canvas-v3-live-frame"]');
+        // The growing system: the revision the first scenario landed in, at the full width of the window.
+        const frame = page.frameLocator('[data-testid="canvas-frame-site"]');
         await expect
           .poll(() => frame.locator("h1").textContent(), { timeout: 10_000 })
           .toBe("Стоматология · ревизия 3");
+        expect((await page.getByTestId("canvas-frame-site").boundingBox())?.width).toBe(vp.width);
         // Calm under reduced motion: the running mark does not pulse.
         expect(
           await page
@@ -346,6 +352,7 @@ describe.skipIf(!hasChromium)("the live v3 build on the canvas in chromium", () 
 
         // 3. Back in a new context: the progress as the server has it now.
         const back = await open(fake, ctx);
+        await back.getByTestId("canvas-island-build").click({ timeout: 15_000 });
         await back.getByTestId("canvas-v3-live").waitFor({ timeout: 15_000 });
         const rows2 = back.getByTestId("canvas-v3-live-scenario");
         await expect
@@ -368,7 +375,7 @@ describe.skipIf(!hasChromium)("the live v3 build on the canvas in chromium", () 
           "Потрачено 96 ₽ из 500 ₽",
         );
         await expect
-          .poll(() => back.frameLocator('[data-testid="canvas-v3-live-frame"]').locator("h1").textContent())
+          .poll(() => back.frameLocator('[data-testid="canvas-frame-site"]').locator("h1").textContent())
           .toBe("Стоматология · ревизия 4");
         expect(await back.getByTestId("canvas-v3-live-leave").textContent()).toContain(
           "Можно закрыть страницу",
@@ -402,22 +409,23 @@ describe.skipIf(!hasChromium)("the live v3 build on the canvas in chromium", () 
         expect(await back.getByTestId("canvas-v3-live").getAttribute("data-phase")).toBe("done");
         expect(await back.getByTestId("canvas-v3-live-title").textContent()).toBe("Система собрана");
         await expect.poll(() => back.getByTestId("canvas-live").textContent()).toContain("Система собрана");
-        await back.getByTestId("canvas-v3-live-ready").waitFor();
         await expect
-          .poll(() => back.frameLocator('[data-testid="canvas-v3-live-frame"]').locator("h1").textContent())
+          .poll(() => back.frameLocator('[data-testid="canvas-frame-site"]').locator("h1").textContent())
           .toBe("Стоматология · ревизия 5");
         expect(await noHorizontalScroll(back)).toBe(true);
         await back.screenshot({ path: join(ARTIFACTS, `v3-live-${tag}-4-ready.png`) });
         await back.getByTestId("canvas-v3-live-toast-close").click();
         expect(await toast.count()).toBe(0);
+        // «Система готова» in the chat; «Посмотреть систему» gives the whole window back to it.
+        await back.getByTestId("canvas-island-chat").click();
+        await back.getByTestId("canvas-v3-live-ready").waitFor();
         await back.getByTestId("canvas-v3-live-look").click();
-        await expect
-          .poll(() => back.evaluate(() => document.activeElement?.id))
-          .toBe("canvas-v3-live-preview");
+        expect(await back.getByTestId("canvas-sheet").count()).toBe(0);
         await back.context().close();
 
         // 5. The system opened after the build: the build is replayed from the server.
         const later = await open(fake, ctx);
+        await later.getByTestId("canvas-island-build").click({ timeout: 15_000 });
         await later.getByTestId("canvas-v3-live").waitFor({ timeout: 15_000 });
         expect(await later.getByTestId("canvas-v3-live").getAttribute("data-phase")).toBe("done");
         expect(
@@ -425,6 +433,7 @@ describe.skipIf(!hasChromium)("the live v3 build on the canvas in chromium", () 
             .getByTestId("canvas-v3-live-scenario")
             .evaluateAll((xs) => xs.map((x) => x.getAttribute("data-status"))),
         ).toEqual(["passed", "passed", "failed", "stopped"]);
+        await later.getByTestId("canvas-island-chat").click();
         expect(await later.getByTestId("canvas-v3-live-ready").count()).toBe(1);
         await later.context().close();
       }, 120_000);

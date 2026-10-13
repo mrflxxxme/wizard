@@ -125,12 +125,16 @@ describe.skipIf(!hasChromium)("the publication of a v3 system on the canvas in c
         await serveBuilt(page, fake);
         await page.goto(`${h.origin}/s/${fake.systemId}`);
 
-        // The card of a built system: the operator's data asked in the chat, «Опубликовать» off, the settings near.
-        const card = page.getByTestId("canvas-v3-publish");
-        await card.waitFor({ timeout: 15_000 });
+        // V4-11: the built system on the whole window; «Ещё» has the settings, «Публикация» the card: the operator's
+        // data asked first, «Опубликовать» off.
+        await page.getByTestId("canvas-island-publish").waitFor({ timeout: 15_000 });
+        await page.getByTestId("canvas-island-more").click();
         expect(await page.getByTestId("canvas-settings").getAttribute("href")).toBe(
           `/s/${fake.systemId}/settings`,
         );
+        await page.getByTestId("canvas-island-publish").click();
+        const card = page.getByTestId("canvas-v3-publish");
+        await card.waitFor({ timeout: 15_000 });
         const submit = page.getByTestId("canvas-v3-publish-submit");
         expect(await submit.isDisabled()).toBe(true);
         await page.getByTestId("canvas-v3-operator").waitFor();

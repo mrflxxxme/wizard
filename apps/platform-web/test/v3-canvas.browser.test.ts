@@ -112,10 +112,9 @@ describe.skipIf(!hasChromium)(
           expect(await page.getByTestId("p-brief-summary-version").textContent()).toBe(
             `версия ${fake.latest()?.version}`,
           );
-          await page.getByTestId("p-sheet-grab").click();
+          // V4-11: the history is in the chat panel itself.
           const said = await page.getByTestId("canvas-message").allTextContents();
           expect(said).toEqual(expect.arrayContaining(["Решите за меня"]));
-          await page.keyboard.press("Escape");
           expect(await noHorizontalScroll(page)).toBe(true);
           await page.screenshot({ path: join(ARTIFACTS, `v3-canvas-${tag}-3-brief.png`) });
           await page.context().close();
