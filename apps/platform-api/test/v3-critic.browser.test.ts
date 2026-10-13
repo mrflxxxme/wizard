@@ -231,7 +231,10 @@ describe.skipIf(!hasChromium)("V3-13 critic in Chromium", () => {
     expect(r.before.penalty).toBeGreaterThan(0);
     expect(r.after.penalty).toBe(0);
     expect(r.stop).toBe("pass");
-    expect(r.cycles.map((c) => `${c.n}:${c.tier}:${c.model}`)).toEqual(["1:T0:kimi-k2.6", "2:T0:kimi-k2.6"]);
+    expect(r.cycles.map((c) => `${c.n}:${c.tier}:${c.model}`)).toEqual([
+      "1:T1:glm-5v-turbo",
+      "2:T1:glm-5v-turbo",
+    ]);
     expect(r.cycles[0]?.applied).toEqual(["/: порядок секций hero → form → services"]);
     expect(r.rolledBack).toEqual([]);
     expect(r.spentRub).toBeLessThanOrEqual(40);

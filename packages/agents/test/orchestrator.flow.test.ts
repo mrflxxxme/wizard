@@ -54,7 +54,7 @@ async function toCard(route: OrchestratorDeps["route"]) {
 }
 
 describe("S1_dlp / pii_notice", () => {
-  test("brief with a phone: exactly one notice kind=notice payload.type=pii; interview goes to T0", async () => {
+  test("brief with a phone: exactly one notice kind=notice payload.type=pii; interview stays a build stage (D79 (3))", async () => {
     const { router, sink } = forumRouter();
     const { orch, emitted } = make((i) => router.route(i));
     const brief = `${forumBrief()} Вопросы по форуму — по телефону +7 912 345-67-89.`;
@@ -70,8 +70,8 @@ describe("S1_dlp / pii_notice", () => {
       payload: { kind: "notice", messageId: notices[0]?.id },
     });
     expect(sink.records.filter((r) => r.callType === "interview").map((r) => r.routeReason)).toEqual([
-      "pii_detected_interview",
-      "pii_detected_interview",
+      "default_T1",
+      "default_T1",
     ]);
     // custom answer with PII: the notice is not repeated
     const r2 = await orch.answer(r1.session, { questionId: "q1", text: "Пишите на org@example.ru" });

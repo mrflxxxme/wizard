@@ -262,9 +262,9 @@ describe("draft on recorded answers of the model (three ТЗ samples)", () => {
       const r = await extractBriefDraft({ text, route, ctx: { orgId: "org" } });
       expect(r).toMatchObject({ method: "model", chunks: 1, answered: 1, pii: { found: 0 } });
       expect(r.brief).toEqual(draftToBrief(s.answer));
-      // brief_extract is T0 only (data-boundary.yaml#call_types.brief_extract): the text never left the RF.
-      expect(outs.map((o) => o.tier)).toEqual(["T0"]);
-      expect(outs[0]?.model).toBe("gigachat-3.5");
+      // V4-05 (D79 (3)): brief_extract is a build stage — GLM-5.3 abroad, the text as is.
+      expect(outs.map((o) => [o.tier, o.scrubbed])).toEqual([["T1", false]]);
+      expect(outs[0]?.model).toBe("glm-5.3");
       const gaps = briefGaps(r.brief);
       expect(gaps.missing).toEqual(s.missing);
       expect(gaps.blocking).toEqual(s.blocking);

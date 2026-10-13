@@ -2357,8 +2357,8 @@ tasks:
     owner: agents
     parallel_group: v4-a
     estimate_days: 1.5
-    status: todo
-    claimed_by: null
+    status: done
+    claimed_by: session_01G2aRP3L1VgXctxShsFmu58
     description: >
       Маршрут из плана §3. Провайдеры Moonshot (Kimi K3), Xiaomi (MiMo V2.6 Pro и Flash), DeepSeek напрямую; визуальная модель GLM в
       Z.ai. Этапы сборки идут без scrub; сигнальный фильтр — паспорт, СНИЛС, номер карты; картинки больше не принуждаются к T0.

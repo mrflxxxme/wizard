@@ -38,10 +38,12 @@ export const V3_BUILD_LIMITS: Readonly<V3Limits> = {
 
 /** Paid stages: the art director (one call), the critic (≤ 3 cycles), the techreview (≤ 2 rounds). */
 export const DEFAULT_V3_BUDGETS: Readonly<V3Budgets> = {
-  design: 10,
-  critic: 40,
+  // V4-05: the upper bound of a call takes the dearest model of its chain — Kimi K3 (1 739 ₽ per 1M output) heads the
+  // art director and the page code now; the build target stays ≤ 300 ₽ (D79).
+  design: 20,
+  critic: 60,
   techreview: 60,
-  scenarioMin: 25,
+  scenarioMin: 40,
 };
 
 const rubText = (x: number) => `${Math.round(x).toLocaleString("ru-RU")} ₽`;

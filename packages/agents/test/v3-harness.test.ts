@@ -403,14 +403,14 @@ describe("harness v3: browser check, stop rules, «Запросы на разв�
     const { out, rec } = await build(sys, {
       lines: { completionTokens: 12_000 },
       composer: { calls: 2 },
-      params: { limits: { capRub: 60 } },
+      params: { limits: { capRub: 150 } },
     });
     const r = ok(out);
     expect(r.stop.reason).toBe("budget");
     expect(r.stop.message_ru).toMatch(
-      /следующий шаг вышел бы за потолок сборки 60 ₽ \(потрачено \d+ ₽ из 60 ₽\)/,
+      /следующий шаг вышел бы за потолок сборки 150 ₽ \(потрачено \d+ ₽ из 150 ₽\)/,
     );
-    expect(rub(rec.creditsMilli)).toBeLessThanOrEqual(60);
+    expect(rub(rec.creditsMilli)).toBeLessThanOrEqual(150);
     const passed = r.scenarios.filter((s) => s.status === "passed").length;
     expect(passed).toBeGreaterThan(0);
     expect(passed).toBeLessThan(6);
@@ -569,7 +569,7 @@ describe("harness v3: non-blocking questions, the brief re-read, hooks", () => {
     const sys = newSys();
     const { out } = await build(sys, { hooks: { critic } });
     const r = ok(out);
-    expect(seen).toEqual([{ stage: "critic", budgetRub: 40 }]);
+    expect(seen).toEqual([{ stage: "critic", budgetRub: 60 }]);
     expect(sys.files["ui/pages/Home.tsx"]).toContain("Правка критика");
     expect(r.summary_ru).toContain("Критик поправил первый экран.");
     expect(r.stages.critic?.status).toBe("done");

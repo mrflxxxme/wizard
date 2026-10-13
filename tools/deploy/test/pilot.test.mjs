@@ -2780,8 +2780,8 @@ describe("pilot: V3-18 — checkpoint 1 of v3 and the probe of the v3 routes", (
     const md = readdirSync(dir).find((f) => /^v3-probe-\d{4}-\d{2}-\d{2}-\d{8}-[0-9a-f]{6}\.md$/.test(f));
     const text = readFileSync(join(dir, md), "utf8");
     expect(text).toContain("**Итог: ответили 8 из 8; расход");
-    expect(text).toContain("| interview_v3 | glm-5.3 (T1) | ✅ ответила | glm-5.3 | T1 | default_T1 | да |");
-    expect(text).toContain("| critic_visual | kimi-k2.6 (T0) | ✅ ответила | kimi-k2.6 | T0 |");
+    expect(text).toContain("| interview_v3 | glm-5.3 (T1) | ✅ ответила | glm-5.3 | T1 | default_T1 | нет |");
+    expect(text).toContain("| critic_visual | glm-5v-turbo (T1) | ✅ ответила | glm-5v-turbo | T1 |");
     expect(text).toContain("Расход по журналу вызовов моделей: 0.3412 ₽.");
     const entry = JSON.parse(readFileSync(join(dir, "spend-entry.json"), "utf8"));
     expect(entry).toMatchObject({

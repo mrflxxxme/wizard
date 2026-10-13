@@ -84,7 +84,7 @@ describe("v3 probe: heads, prices, the expected ₽", () => {
     expect(expectedCallRub("research")).toBeLessThan(0.05);
     const all = expectedProbeRub();
     expect(all).toBeGreaterThan(1);
-    expect(all).toBeLessThan(PROBE_MAX_CAP_RUB / 5);
+    expect(all).toBeLessThan(PROBE_MAX_CAP_RUB / 4);
     expect(expectedProbeRub({ research: false })).toBeLessThan(all);
   });
 });
@@ -107,7 +107,7 @@ describe("v3 probe: the pod script and its output", () => {
     expect(() => probeSpendSql({ orgId: "1; drop" })).toThrow(/id организации/);
   });
 
-  test("probeMain with the real router of @wizard/llm: every head answers, T1 calls are scrubbed, the image goes to T0", async () => {
+  test("probeMain with the real router of @wizard/llm: every head answers, build stages go abroad as is (D79 (3))", async () => {
     const lines: string[] = [];
     const { calls, total } = await probeMain(
       { orgId: ORG, capRub: 30, callTypes: PROBE_CALL_TYPES, png: undefined, fake: true },
@@ -122,9 +122,10 @@ describe("v3 probe: the pod script and its output", () => {
     );
     expect(calls.map((c: { status: string }) => c.status)).toEqual(PROBE_CALL_TYPES.map(() => "ok"));
     const by = Object.fromEntries(calls.map((c: { callType: string }) => [c.callType, c]));
-    expect(by.interview_v3).toMatchObject({ model: "glm-5.3", tier: "T1", scrubbed: true });
-    expect(by.brief_extract).toMatchObject({ model: "gigachat-3.5", tier: "T0" });
-    expect(by.techreview).toMatchObject({ model: "gpt-oss-120b", tier: "T0" });
+    expect(by.interview_v3).toMatchObject({ model: "glm-5.3", tier: "T1", scrubbed: false });
+    expect(by.brief_extract).toMatchObject({ model: "glm-5.3", tier: "T1" });
+    expect(by.critic_visual).toMatchObject({ model: "glm-5v-turbo", tier: "T1" });
+    expect(by.techreview).toMatchObject({ model: "mimo-v2.6-pro", tier: "T1" });
     expect(total).toMatchObject({ capRub: 30, stopped: null, fake: true });
     const parsed = parseProbeOutput(lines.join("\n"));
     expect(parsed.calls).toHaveLength(PROBE_CALL_TYPES.length);

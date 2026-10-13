@@ -177,8 +177,8 @@ describe("B2-37 design direction on the ten mvp briefs", () => {
       expect(r.fallback, sc.brief).toBe(false);
       expect(r.plan).toEqual(mergeDesign(stagePlan(sc), sc.design, reg));
       expect(r.rub).toBeLessThanOrEqual(DEFAULT_V2_BUDGETS.design);
-      // The call goes through the route of build_design with the PII scrub (AGENTS.md: everything to T1 is scrubbed).
-      expect(r.scrubbed).toEqual([true]);
+      // V4-05 (D79 (3)): build_design is a build stage — no scrub.
+      expect(r.scrubbed).toEqual([false]);
       const ru = await recordedStage(sc, true);
       expect(ru.rub).toBeLessThanOrEqual(DEFAULT_V2_BUDGETS.design);
       costs.push(r.rub, ru.rub);
