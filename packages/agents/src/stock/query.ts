@@ -310,6 +310,10 @@ export interface StockQuery {
   /** English search text. */
   text: string;
   orientation: PhotoOrientation;
+  /** Page of the answer (default 1; V4-10 library filling). */
+  page?: number;
+  /** Language of `text` (default en; V4-10 backfill of a niche by its Russian name). */
+  lang?: "en" | "ru";
 }
 
 /** The query of a section's photos: niche terms by section, style modifiers («people» styles are not forced). */

@@ -182,7 +182,8 @@ export function createStockClient(o: StockClientOptions): StockClient {
     async search(provider, q, perPage, signal) {
       const key = o.keys[provider];
       if (!key) throw new StockError("NO_KEY", provider);
-      const ck = `${provider}|${q.text}|${q.orientation}|${perPage}`;
+      const page = Math.max(1, Math.min(50, Math.floor(q.page ?? 1)));
+      const ck = `${provider}|${q.text}|${q.orientation}|${perPage}|${page}|${q.lang ?? "en"}`;
       const cached = cache.get(ck, now());
       if (cached) return cached;
       let hits: StockHit[];
@@ -191,6 +192,8 @@ export function createStockClient(o: StockClientOptions): StockClient {
         url.searchParams.set("query", q.text);
         url.searchParams.set("orientation", q.orientation);
         url.searchParams.set("per_page", String(Math.min(80, Math.max(1, perPage))));
+        if (page > 1) url.searchParams.set("page", String(page));
+        if (q.lang === "ru") url.searchParams.set("locale", "ru-RU");
         const res = await request(provider, url.toString(), { headers: { Authorization: key } }, signal);
         const body = pexelsAnswer.safeParse(await res.json().catch(() => null));
         if (!body.success) throw new StockError("BAD_RESPONSE", provider);
@@ -219,8 +222,9 @@ export function createStockClient(o: StockClientOptions): StockClient {
         url.searchParams.set("image_type", "photo");
         url.searchParams.set("orientation", PIXABAY_ORIENTATION[q.orientation]);
         url.searchParams.set("safesearch", "true");
-        url.searchParams.set("lang", "en");
+        url.searchParams.set("lang", q.lang ?? "en");
         url.searchParams.set("per_page", String(Math.min(200, Math.max(3, perPage))));
+        if (page > 1) url.searchParams.set("page", String(page));
         const res = await request(provider, url.toString(), {}, signal);
         const body = pixabayAnswer.safeParse(await res.json().catch(() => null));
         if (!body.success) throw new StockError("BAD_RESPONSE", provider);

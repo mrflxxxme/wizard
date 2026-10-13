@@ -38,3 +38,5 @@ export const V3_OUTBOX = new URL("../../../.data/e2e-v3/outbox/", import.meta.ur
 export const V3_DB_FILE = new URL("../../../.data/e2e-v3/db-url", import.meta.url).pathname;
 
 export const V3_LLM_LOG = new URL("../../../.data/e2e-v3/llm-requests.jsonl", import.meta.url).pathname;
+/** V4-03: what each model call of the v3 stand took — a record, a miss (the spec fails on it) or a new recording. */
+export const V3_RECORDS_LOG = new URL("../../../.data/e2e-v3/records-used.jsonl", import.meta.url).pathname;
