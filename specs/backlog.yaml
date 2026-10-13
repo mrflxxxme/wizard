@@ -2444,7 +2444,7 @@ tasks:
     owner: platform
     parallel_group: v4-a
     estimate_days: 1.5
-    status: in_progress
+    status: done
     claimed_by: session_01HWKT1m6cHQBBtUV7d9pQhf
     owns: ["packages/build/src/stock/**", "tools/stock/** (новый)", ".github/workflows/stock-library.yml (новый)"]
     acceptance:

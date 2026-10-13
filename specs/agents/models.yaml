@@ -151,6 +151,7 @@ call_types:            # полный список; route() с иным callType
   - repo_review        # ревьюер изменения агента в репозитории клиента: модель другого семейства, чем агент
   # v4 (V4-05, план v4 §3)
   - page_edit          # массовые правки кода страниц («Укажи и измени», правки чатом)
+  - photo_pick         # V4-10: визуальная модель выбирает фото сайта из 20 кандидатов библиотеки по смыслу и палитре
 
 client_code:           # V3-32, D77 (4): «код клиента — только в модели с инференсом в РФ»
   call_types: [repo_code, repo_review]
@@ -217,6 +218,8 @@ routes:                # chain.T1 пробуется только если tier=
   repo_review:         { role: reviewer,     default_tier: T0, chain: { T0: [gpt-oss-120b, gigachat-3.5, deepseek-v4-pro, kimi-k2.6] },              temperature: 0.1, max_tokens: 8000,  timeout_ms: 300000, note: "ревьюер изменения агента: только T0, семейство MUST отличаться от модели агента (avoidFamilies)" }
   # V4-05 (план v4 §3): массовые правки — DeepSeek V4.1 Flash, запасная MiMo V2.6 Flash; пока у обоих нулевой баланс — glm-5.3-flash и glm-5.3
   page_edit:           { role: editor,       default_tier: T1, chain: { T1: [deepseek-v4.1-flash, mimo-v2.6-flash, glm-5.3-flash, glm-5.3], T0: [deepseek-v4-pro, kimi-k2.6, glm-5.1] }, temperature: 0.2, max_tokens: 16000, timeout_ms: 300000 }
+  # V4-10 (D79 (6)): выбор фото сайта визуальной моделью — только vision; стоковые фото без ПДн уходят за рубеж
+  photo_pick:          { role: critic,       default_tier: T1, chain: { T1: [glm-5v-turbo, kimi-k3, glm-4.6v], T0: [qwen3.6-35b, kimi-k2.6] },       temperature: 0.2, max_tokens: 1500,  timeout_ms: 120000, note: "V4-10: 3–5 из 20 кандидатов по смыслу и палитре направления; kimi-k3 — temperature 1 модели" }
 
 fallback_rules:
   - "MUST: при открытом circuit breaker, исчерпанных ретраях или 5xx/timeout модель берётся следующей в цепочке своего tier; затем T1 → T0 (reason=fallback_*)"

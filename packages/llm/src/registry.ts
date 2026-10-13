@@ -431,6 +431,15 @@ export const ROUTES: Record<CallType, RouteDef> = {
     4000,
     240000,
   ),
+  // V4-10: vision only; stock photos (no personal data) go abroad; kimi-k3 takes temperature 1 (models[].temperature).
+  photo_pick: r(
+    "critic",
+    "T1",
+    { T1: ["glm-5v-turbo", "kimi-k3", "glm-4.6v"], T0: ["qwen3.6-35b", "kimi-k2.6"] },
+    0.2,
+    1500,
+    120000,
+  ),
   techreview: r(
     "reviewer",
     "T1",
