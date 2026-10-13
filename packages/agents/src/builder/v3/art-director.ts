@@ -36,6 +36,13 @@ import type { RunStepFn } from "../../core/events.js";
 import { type CallStats, callTool, type RouteFn } from "../../core/loop.js";
 import { defineTool, type ToolIssue } from "../../core/tool.js";
 import { VOICE_LABELS } from "../v2/direction.js";
+import {
+  type DirectionFacts,
+  type DirectionTexts,
+  factsText,
+  inventedFacts,
+  TEXT_LIMITS,
+} from "./directions/texts.js";
 
 /** callType of the stage (builder-v3.md §3 C7; route — specs/agents/models.yaml#routes.art_direction). */
 export const ART_DIRECTION_CALL_TYPE = "art_direction" as const;
@@ -255,15 +262,58 @@ const SAMPLING = [
   `Отвечай только вызовом ${ART_DIRECTION_TOOL}. Если инструмент вернул ошибки — исправь именно их и вызови снова со всеми направлениями.`,
 ];
 
-/** The prompt: taste rules, verbalized sampling, the catalogs (fonts, archetypes, enums) and the business. */
-export function designDirectionsMessages(input: ArtDirectorInput): LlmMessage[] {
+/** Catalogs of the prompt: fonts, base archetypes, voices and the enum values (one-direction calls skip the fonts). */
+function catalogBlocks(o: { fonts?: boolean; enums?: boolean } = {}): string[] {
   const fonts = proposalFonts();
   const faceLine = (f: string) => {
     const e = fontEntry(f);
     return `${f} (${e?.category === "serif" ? "антиква" : "гротеск"})`;
   };
+  return [
+    ...(o.fonts === false
+      ? []
+      : [
+          "## Шрифты заголовков (fonts.display)",
+          fonts.display.map(faceLine).join(", "),
+          "## Шрифты текста (fonts.text)",
+          fonts.text.map(faceLine).join(", "),
+        ]),
+    "## Базовые архетипы (base)",
+    ARCHETYPE_IDS.map((id) => {
+      const a = archetypeById(id);
+      return `- ${id} — «${a?.name ?? id}»: ${a?.why ?? ""}`;
+    }).join("\n"),
+    "## Тон текстов (voice)",
+    DESIGN_VOICES.map((v) => `- ${v} — ${VOICE_LABELS[v]}`).join("\n"),
+    ...(o.enums === false
+      ? []
+      : [
+          `## Значения полей\ntype.scale: ${PROPOSAL_SCALES.join(", ")}; radius: ${PROPOSAL_RADII.join(", ")}; density: ${PROPOSAL_DENSITIES.join(", ")}; layout: ${PROPOSAL_LAYOUTS.join(", ")}; motion: ${PROPOSAL_MOTIONS.join(", ")}; imagery.treatment: ${PROPOSAL_TREATMENTS.join(", ")}.`,
+        ]),
+  ];
+}
+
+/** The business of the prompt: niche, goals, audience, brand colour, voice, references and the niche's recent sites. */
+function businessBlocks(input: ArtDirectorInput): string[] {
   const brand = normalizeBrand(input.brandColor);
   const goals = input.goals.map((g) => (typeof g === "string" ? g : g.text));
+  return [
+    `## Бизнес\nНиша: ${input.niche}\nЦели: ${goals.join("; ") || "не указаны"}${input.audience ? `\nАудитория: ${input.audience}` : ""}`,
+    brand
+      ? `## Фирменный цвет\n${brand} — цвет клиента: он остаётся акцентом (accent) или вторым акцентом (accent2) в каждом направлении, без изменений.`
+      : "## Фирменный цвет\nНет: палитру предлагаешь ты.",
+    input.voice ? `## Тон из брифа\n${input.voice} — ${VOICE_LABELS[input.voice]}` : "",
+    input.references?.length
+      ? `## Референсы владельца (принципы, не копировать)\n${input.references.map((r) => `- ${r}`).join("\n")}`
+      : "",
+    input.recent?.length
+      ? `## Недавние сайты этой ниши\nУже были архетипы: ${input.recent.join(", ")}. Не повторяй их в типичном направлении.`
+      : "",
+  ].filter(Boolean);
+}
+
+/** The prompt: taste rules, verbalized sampling, the catalogs (fonts, archetypes, enums) and the business. */
+export function designDirectionsMessages(input: ArtDirectorInput): LlmMessage[] {
   return [
     {
       role: "system",
@@ -273,38 +323,15 @@ export function designDirectionsMessages(input: ArtDirectorInput): LlmMessage[] 
         TASTE.map((r) => `- ${r}`).join("\n"),
         "## Как предлагать",
         SAMPLING.map((r) => `- ${r}`).join("\n"),
-        "## Шрифты заголовков (fonts.display)",
-        fonts.display.map(faceLine).join(", "),
-        "## Шрифты текста (fonts.text)",
-        fonts.text.map(faceLine).join(", "),
-        "## Базовые архетипы (base)",
-        ARCHETYPE_IDS.map((id) => {
-          const a = archetypeById(id);
-          return `- ${id} — «${a?.name ?? id}»: ${a?.why ?? ""}`;
-        }).join("\n"),
-        "## Тон текстов (voice)",
-        DESIGN_VOICES.map((v) => `- ${v} — ${VOICE_LABELS[v]}`).join("\n"),
-        `## Значения полей\ntype.scale: ${PROPOSAL_SCALES.join(", ")}; radius: ${PROPOSAL_RADII.join(", ")}; density: ${PROPOSAL_DENSITIES.join(", ")}; layout: ${PROPOSAL_LAYOUTS.join(", ")}; motion: ${PROPOSAL_MOTIONS.join(", ")}; imagery.treatment: ${PROPOSAL_TREATMENTS.join(", ")}.`,
+        ...catalogBlocks(),
       ].join("\n\n"),
     },
     {
       role: "user",
       content: [
-        `## Бизнес\nНиша: ${input.niche}\nЦели: ${goals.join("; ") || "не указаны"}${input.audience ? `\nАудитория: ${input.audience}` : ""}`,
-        brand
-          ? `## Фирменный цвет\n${brand} — цвет клиента: он остаётся акцентом (accent) или вторым акцентом (accent2) в каждом направлении, без изменений.`
-          : "## Фирменный цвет\nНет: палитру предлагаешь ты.",
-        input.voice ? `## Тон из брифа\n${input.voice} — ${VOICE_LABELS[input.voice]}` : "",
-        input.references?.length
-          ? `## Референсы владельца (принципы, не копировать)\n${input.references.map((r) => `- ${r}`).join("\n")}`
-          : "",
-        input.recent?.length
-          ? `## Недавние сайты этой ниши\nУже были архетипы: ${input.recent.join(", ")}. Не повторяй их в типичном направлении.`
-          : "",
+        ...businessBlocks(input),
         `## Задача\nПредложи ${ART_DIRECTION_K} направлений и вызови ${ART_DIRECTION_TOOL}.`,
-      ]
-        .filter(Boolean)
-        .join("\n\n"),
+      ].join("\n\n"),
     },
   ];
 }
@@ -490,4 +517,318 @@ export async function runArtDirector(o: {
     avoided,
     stats: r.stats,
   };
+}
+
+// ——— V4-17: the directions in parallel ———
+// Kimi K3 answers a call in 60–90 s: one call for five whole directions and another for their texts leave the owner
+// waiting minutes. Instead a short call names the ideas (verbalized sampling stays: probabilities, rare ones among
+// them, different bases), then one call per idea designs its system and writes its first screen at the same time —
+// each direction is shown as soon as its own call ends. Code checks each answer as before.
+
+export const DIRECTION_IDEAS_TOOL = "submit_direction_ideas";
+export const DESIGN_DIRECTION_TOOL = "submit_design_direction";
+
+/** An idea of a direction: its name, why, base archetype, voice and how typical it is for the niche. */
+export interface DirectionIdea {
+  name: string;
+  why: string;
+  probability: number;
+  base: ArchetypeId;
+  voice: DesignVoice;
+}
+
+const ideaSchema = () =>
+  z.strictObject({
+    name: text(2, 40),
+    why: text(10, 240),
+    probability: z.number().min(0).max(1),
+    base: z.enum(ARCHETYPE_IDS),
+    voice: z.enum(DESIGN_VOICES),
+  });
+
+/** submit_direction_ideas input: 3–6 ideas with their probabilities. */
+export function directionIdeasSchema() {
+  return z.strictObject({ ideas: z.array(ideaSchema()).min(ART_DIRECTIONS).max(6) });
+}
+export type DirectionIdeasAnswer = z.output<ReturnType<typeof directionIdeasSchema>>;
+
+function wordsIssues(d: { name: string; why: string }, path: string): ToolIssue[] {
+  const issues: ToolIssue[] = [];
+  for (const field of ["name", "why"] as const)
+    if (COLOUR_OR_CSS.test(d[field]))
+      issues.push({
+        path: `${path}.${field}`,
+        code: "NO_COLOURS",
+        message: "В названии и объяснении — слова, без цветовых кодов и CSS.",
+      });
+  if (!/[а-яё]/i.test(d.name))
+    issues.push({ path: `${path}.name`, code: "RUSSIAN_NAME", message: "Название — по-русски, 1–4 слова." });
+  return issues;
+}
+
+/** Checks of the ideas: words without colours, at least three on different bases. */
+export function directionIdeasIssues(v: DirectionIdeasAnswer): ToolIssue[] {
+  const issues: ToolIssue[] = [];
+  const bases = new Set<string>();
+  v.ideas.forEach((d, i) => {
+    const own = wordsIssues(d, `ideas.${i}`);
+    if (own.length) issues.push(...own);
+    else bases.add(d.base);
+  });
+  if (bases.size >= ART_DIRECTIONS) return [];
+  issues.push({
+    path: "ideas",
+    code: "TOO_FEW_DISTINCT",
+    message: `Нужно хотя бы ${ART_DIRECTIONS} годные идеи на разных базовых архетипах (base); сейчас ${bases.size}.`,
+  });
+  return issues;
+}
+
+/** Three ideas of an answer on different bases: the most typical one, then the rarest (the owner's surprise). */
+export function pickIdeas(v: DirectionIdeasAnswer): DirectionIdea[] {
+  const valid = v.ideas.filter((d) => wordsIssues(d, "").length === 0);
+  const byProb = [...valid].sort((a, b) => b.probability - a.probability);
+  const out: DirectionIdea[] = [];
+  const take = (d: DirectionIdea | undefined) => {
+    if (d && out.length < ART_DIRECTIONS && !out.some((x) => x.base === d.base)) out.push(d);
+  };
+  take(byProb[0]);
+  for (const d of [...byProb].reverse()) take(d);
+  return out;
+}
+
+const IDEAS = [
+  `Предложи ${ART_DIRECTION_K} идей оформления, заметно разных по характеру. Только идею: название, почему подходит, базовый архетип и тон — палитру и шрифты подберут следующим шагом.`,
+  "У каждой укажи probability — насколько такая идея типична для этой ниши (0…1, в сумме около 1).",
+  "Минимум две идеи — нетипичные (probability меньше 0,15), но уместные бизнесу.",
+  "base — ближайший архетип из списка; у идей — разные base.",
+  "name — по-русски для владельца (1–4 слова), без «современный», «стильный», «уникальный»; why — 1–2 предложения, почему это подходит бизнесу.",
+  `Отвечай только вызовом ${DIRECTION_IDEAS_TOOL}, коротко.`,
+];
+
+/** The short prompt of the ideas: taste, sampling, bases and voices (no font lists), the business. */
+export function directionIdeasMessages(input: ArtDirectorInput): LlmMessage[] {
+  return [
+    {
+      role: "system",
+      content: [
+        ROLE,
+        "## Вкус",
+        TASTE.map((r) => `- ${r}`).join("\n"),
+        "## Как предлагать",
+        IDEAS.map((r) => `- ${r}`).join("\n"),
+        ...catalogBlocks({ fonts: false, enums: false }),
+      ].join("\n\n"),
+    },
+    {
+      role: "user",
+      content: [
+        ...businessBlocks(input),
+        `## Задача\nПредложи ${ART_DIRECTION_K} идей и вызови ${DIRECTION_IDEAS_TOOL}.`,
+      ].join("\n\n"),
+    },
+  ];
+}
+
+const line = (min: number, max: number) =>
+  z
+    .string()
+    .trim()
+    .min(min)
+    .max(max)
+    .regex(/^[^\n]*$/);
+
+/** submit_design_direction input: one direction's system (as in submit_design_directions) and its first screen. */
+export function designDirectionSchema() {
+  return designProposalSchema().extend({
+    texts: z.strictObject({
+      title: line(8, TEXT_LIMITS.title),
+      lead: line(20, TEXT_LIMITS.lead),
+      action: line(2, TEXT_LIMITS.action),
+    }),
+  });
+}
+export type DesignDirectionOneAnswer = z.output<ReturnType<typeof designDirectionSchema>>;
+
+/** Checks of one direction: its base kept, proposalIssues, words without colours, texts only from the brief's facts. */
+export function designDirectionIssues(
+  v: DesignDirectionOneAnswer,
+  idea: DirectionIdea,
+  input: ArtDirectorInput,
+  facts: DirectionFacts,
+): ToolIssue[] {
+  const brandColor = normalizeBrand(input.brandColor);
+  const { texts, ...d } = v;
+  const issues: ToolIssue[] = proposalIssues(toProposal(d), {
+    seed: input.seed,
+    niche: input.niche,
+    ...(brandColor ? { brandColor } : {}),
+  }).map((x) => ({ path: x.path, code: x.code, message: x.message }));
+  issues.push(...wordsIssues(d, ""));
+  if (d.base !== idea.base)
+    issues.push({ path: "base", code: "BASE_FIXED", message: `base этого направления — ${idea.base}.` });
+  const source = factsText(facts);
+  for (const field of ["title", "lead", "action"] as const)
+    issues.push(...inventedFacts(texts[field], source, `texts.${field}`));
+  if (texts.action.split(/\s+/).length > 4)
+    issues.push({ path: "texts.action", code: "ACTION_LONG", message: "Кнопка — 1–3 слова." });
+  return issues;
+}
+
+const ONE = [
+  "Ниже — идея одного направления. Разверни её в дизайн-систему (палитра, шрифты, шкала, сетка, ритм, движение, фото) и напиши первый экран сайта этим тоном.",
+  "name, why, base и voice — как в идее (можно уточнить слова name и why, base не менять); probability — как в идее.",
+  "Направление должно заметно отличаться от остальных идей (они перечислены): другой шрифт, другой цвет, другой ритм.",
+  "texts.title — до 90 знаков: что получает клиент, словами бизнеса. texts.lead — 1–2 предложения, 20–220 знаков. texts.action — 1–3 слова, действие по главной цели.",
+  "В текстах только факты из брифа: без цифр, цен, сроков, адресов, наград, отзывов, гарантий и слов «лучший», «№ 1», «уникальный». Обращение на «вы», без восклицательных знаков.",
+  "fonts.why — обязательно, если берёшь Cormorant Garamond, Lora, IBM Plex Sans или Unbounded: почему именно он.",
+  `Отвечай только вызовом ${DESIGN_DIRECTION_TOOL}. Если инструмент вернул ошибки — исправь именно их и вызови снова.`,
+];
+
+/** The prompt of one direction: taste, the full catalogs, the business and its facts, the idea and the others. */
+export function designDirectionMessages(
+  input: ArtDirectorInput,
+  idea: DirectionIdea,
+  others: readonly DirectionIdea[],
+  facts: DirectionFacts,
+): LlmMessage[] {
+  const facts_ = [
+    `Название: ${facts.name || "не указано"}`,
+    facts.scenarios.length
+      ? `Что делают посетители:\n${facts.scenarios.map((x) => `- ${x}`).join("\n")}`
+      : "",
+    facts.outOfScope.length ? `Не входит (не обещать): ${facts.outOfScope.join("; ")}` : "",
+  ].filter(Boolean);
+  return [
+    {
+      role: "system",
+      content: [
+        ROLE,
+        "## Вкус",
+        TASTE.map((r) => `- ${r}`).join("\n"),
+        "## Как развернуть идею",
+        ONE.map((r) => `- ${r}`).join("\n"),
+        ...catalogBlocks(),
+      ].join("\n\n"),
+    },
+    {
+      role: "user",
+      content: [
+        ...businessBlocks(input),
+        `## Факты для текстов\n${facts_.join("\n")}`,
+        `## Идея\n«${idea.name}» — ${idea.why}\nbase: ${idea.base}; voice: ${idea.voice} — ${VOICE_LABELS[idea.voice]}; probability: ${idea.probability}`,
+        others.length
+          ? `## Другие направления (не повторяй)\n${others.map((o) => `- «${o.name}», base ${o.base}`).join("\n")}`
+          : "",
+        `## Задача\nРазверни идею и вызови ${DESIGN_DIRECTION_TOOL}.`,
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
+    },
+  ];
+}
+
+interface CallOpts {
+  route: RouteFn;
+  runStep?: RunStepFn;
+  signal?: AbortSignal;
+  orgPolicy?: OrgPolicy | null;
+  ctx?: RouteContext;
+  maxRepairs?: number;
+}
+
+/** The ideas call: three ideas on different bases, or null (a note says why) — the caller falls back to code. */
+export async function proposeDirectionIdeas(
+  o: CallOpts & { input: ArtDirectorInput },
+): Promise<{ ideas: DirectionIdea[] | null; stats: CallStats | null; note?: string }> {
+  let last: DirectionIdeasAnswer | null = null;
+  const tool = defineTool({
+    name: DIRECTION_IDEAS_TOOL,
+    description:
+      "Ideas of the design directions of the client's site: name, why, base archetype, voice, probability.",
+    input: directionIdeasSchema(),
+    check: (v) => {
+      last = v;
+      return directionIdeasIssues(v);
+    },
+  });
+  try {
+    const r = await callTool({
+      route: o.route,
+      callType: ART_DIRECTION_CALL_TYPE,
+      orgPolicy: o.orgPolicy ?? null,
+      ctx: o.ctx ?? { orgId: "host" },
+      ...(o.runStep ? { runStep: o.runStep } : {}),
+      ...(o.signal ? { signal: o.signal } : {}),
+      stepName: "direction_ideas",
+      messages: directionIdeasMessages(o.input),
+      tool,
+      ...(o.maxRepairs !== undefined ? { maxRepairs: o.maxRepairs } : {}),
+    });
+    const answer = r.ok ? r.value : last;
+    const ideas = answer ? pickIdeas(answer) : [];
+    if (ideas.length < ART_DIRECTIONS)
+      return { ideas: null, stats: r.stats, note: "идеи модели не прошли проверку" };
+    return { ideas, stats: r.stats };
+  } catch (e) {
+    if (o.signal?.aborted) throw e;
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ideas: null, stats: null, note: `ошибка модели: ${msg}` };
+  }
+}
+
+/** One direction designed by the model with its first-screen texts (null — no valid answer; a note says why). */
+export async function designOneDirection(
+  o: CallOpts & {
+    input: ArtDirectorInput;
+    idea: DirectionIdea;
+    others: readonly DirectionIdea[];
+    facts: DirectionFacts;
+  },
+): Promise<{
+  direction: ModelDirection | null;
+  texts: DirectionTexts | null;
+  stats: CallStats | null;
+  note?: string;
+}> {
+  const tool = defineTool({
+    name: DESIGN_DIRECTION_TOOL,
+    description: "One design direction of the client's site and its first-screen texts.",
+    input: designDirectionSchema(),
+    check: (v) => designDirectionIssues(v, o.idea, o.input, o.facts),
+  });
+  try {
+    const r = await callTool({
+      route: o.route,
+      callType: ART_DIRECTION_CALL_TYPE,
+      orgPolicy: o.orgPolicy ?? null,
+      ctx: o.ctx ?? { orgId: "host" },
+      ...(o.runStep ? { runStep: o.runStep } : {}),
+      ...(o.signal ? { signal: o.signal } : {}),
+      stepName: "design_direction",
+      messages: designDirectionMessages(o.input, o.idea, o.others, o.facts),
+      tool,
+      ...(o.maxRepairs !== undefined ? { maxRepairs: o.maxRepairs } : {}),
+    });
+    if (!r.ok)
+      return { direction: null, texts: null, stats: r.stats, note: "ответ модели не прошёл проверку" };
+    const { texts, ...d } = r.value;
+    const brandColor = normalizeBrand(o.input.brandColor);
+    const opts = { seed: o.input.seed, niche: o.input.niche, ...(brandColor ? { brandColor } : {}) };
+    const proposal = toProposal(d);
+    return {
+      direction: {
+        proposal,
+        design: designFromProposal(proposal, { ...opts, voice: d.voice }),
+        voice: d.voice,
+        probability: d.probability,
+      },
+      texts: { title: texts.title, lead: texts.lead, action: texts.action },
+      stats: r.stats,
+    };
+  } catch (e) {
+    if (o.signal?.aborted) throw e;
+    const msg = e instanceof Error ? e.message : String(e);
+    return { direction: null, texts: null, stats: null, note: `ошибка модели: ${msg}` };
+  }
 }

@@ -27,8 +27,11 @@ import { defineTool } from "../../../core/tool.js";
 import {
   ART_DIRECTION_CALL_TYPE,
   artDirectionCandidates,
+  type DirectionIdea,
+  designOneDirection,
   type ModelDirection,
   proposeDesignDirections,
+  proposeDirectionIdeas,
   storedProposal,
 } from "../art-director.js";
 import { referenceHints, WORDS_HEAD, wordsLine } from "./references.js";
@@ -51,7 +54,14 @@ import {
   tuneDesign,
   tuningWords,
 } from "./tuning.js";
-import { DESIGN_CALL_DEADLINE_MS, DIRECTIONS_CALL_DEADLINE_MS, deadlineSignal, RubWallet } from "./wallet.js";
+import {
+  DESIGN_CALL_DEADLINE_MS,
+  DIRECTION_CALL_DEADLINE_MS,
+  DIRECTIONS_CALL_DEADLINE_MS,
+  deadlineSignal,
+  IDEAS_CALL_DEADLINE_MS,
+  RubWallet,
+} from "./wallet.js";
 
 export const PROPOSAL_KIND = "wizard.design-directions" as const;
 const BRIEF_REFERENCES = BRIEF_LIMITS.references;
@@ -120,6 +130,17 @@ export interface DirectionsModel {
   deadlineMs?: number;
   /** Deadline of the design call, ms (default DESIGN_CALL_DEADLINE_MS). */
   designDeadlineMs?: number;
+}
+
+/** What a direction's preview needs of the proposal before the proposal is complete (V4-17). */
+export type DirectionsBase = Pick<DirectionsProposal, "seed" | "niche" | "name" | "nav" | "brandColor">;
+
+export interface ProposeOptions {
+  /**
+   * V4-17: the directions in parallel — a short ideas call, then one call per direction (its system and its texts at
+   * once); each direction is handed here as soon as it is ready, in the order they become ready.
+   */
+  onDirection?: (d: StoredDirection, base: DirectionsBase) => void;
 }
 
 /** First screens that need facts the brief does not carry (an offer with a price, an event date) are not offered. */
@@ -276,12 +297,14 @@ function archetypesFor(input: DirectionsInput, hints: ReturnType<typeof referenc
 export async function proposeDirections(
   input: DirectionsInput,
   model: DirectionsModel = {},
+  opts: ProposeOptions = {},
 ): Promise<DirectionsProposal> {
   const seed = String(input.seed);
   const references = [...(input.references ?? input.brief.design.references)];
   const hints = referenceHints(references);
   const wallet = model.wallet ?? new RubWallet();
   const notes: string[] = [];
+  if (opts.onDirection) return proposeInParallel(input, model, opts.onDirection, wallet, notes);
   const designed = await designDirections(input, references, hints.brandColor, model, wallet, notes);
   const archetypes = designed ? designed.map((d) => d.proposal.base) : archetypesFor(input, hints);
   // The model read the references itself: its systems are not tuned again by their hints.
@@ -323,6 +346,150 @@ export async function proposeDirections(
     costRub: wallet.spentRub,
     calls: wallet.calls,
     fallback: texts.source === "brief",
+    notes,
+  };
+}
+
+/** Model calls of the parallel path: the ideas call and one per direction. */
+const PARALLEL_CALLS = 4;
+
+/**
+ * V4-17: ideas (one short call; without a model or valid ideas — the archetypes of code), then the three directions
+ * in parallel, each handed to `onDirection` as soon as it is ready. A direction whose call fails, is late or does not
+ * pass keeps its idea with the archetype's system and the brief's texts — the others are not held back.
+ */
+async function proposeInParallel(
+  input: DirectionsInput,
+  model: DirectionsModel,
+  onDirection: NonNullable<ProposeOptions["onDirection"]>,
+  wallet: RubWallet,
+  notes: string[],
+): Promise<DirectionsProposal> {
+  const seed = String(input.seed);
+  const references = [...(input.references ?? input.brief.design.references)];
+  const hints = referenceHints(references);
+  const facts = briefFacts(input.brief, input.name, input.niche);
+  const base: DirectionsBase = {
+    seed,
+    niche: input.niche,
+    name: facts.name,
+    nav: previewNav(input.niche, facts.goals),
+    ...(hints.brandColor ? { brandColor: hints.brandColor } : {}),
+  };
+  const art = {
+    niche: input.niche,
+    goals: input.brief.goals.map((g) => g.text),
+    ...(input.brief.audience ? { audience: input.brief.audience } : {}),
+    seed: input.seed,
+    recent: input.recent ?? [],
+    references,
+    ...(hints.brandColor ? { brandColor: hints.brandColor } : {}),
+  };
+  const canCall = !!model.route && wallet.attempts() >= PARALLEL_CALLS;
+  if (model.route && !canCall) notes.push("бюджет шага исчерпан: направления по архетипам");
+  if (!model.route) notes.push("модель не подключена: направления по архетипам, тексты из брифа");
+  const call = {
+    ...(model.route ? { route: wallet.route(model.route) } : {}),
+    ...(model.orgPolicy !== undefined ? { orgPolicy: model.orgPolicy } : {}),
+    ...(model.ctx ? { ctx: model.ctx } : {}),
+    ...(model.runStep ? { runStep: model.runStep } : {}),
+  };
+  let ideas: DirectionIdea[] | null = null;
+  if (canCall && call.route) {
+    model.signal?.throwIfAborted();
+    try {
+      const r = await proposeDirectionIdeas({
+        ...call,
+        route: call.route,
+        input: art,
+        signal: deadlineSignal(model.signal, model.deadlineMs ?? IDEAS_CALL_DEADLINE_MS),
+        maxRepairs: 0,
+      });
+      ideas = r.ideas;
+      if (!ideas) notes.push(`${r.note ?? "идеи не прошли проверку"}: идеи по архетипам`);
+    } catch (e) {
+      if (model.signal?.aborted) throw e;
+      notes.push("модель не успела предложить идеи: идеи по архетипам");
+    }
+  }
+  const codeIdeas = !ideas;
+  const chosen: DirectionIdea[] =
+    ideas ??
+    archetypesFor(input, hints).map((id) => {
+      const a = archetypeById(id);
+      return {
+        name: a?.name ?? id,
+        why: a?.why ?? "",
+        probability: 1 / 3,
+        base: id,
+        voice: (a?.voices[0] ?? "calm") as DesignVoice,
+      };
+    });
+  // Code ideas are tuned by the references' hints (as before); the model read the references itself.
+  const tuning = codeIdeas ? normalizeTuning(hints.tuning) : {};
+  const archetypes = chosen.map((d) => d.base);
+  const patterns = patternsFor(
+    archetypes,
+    seed,
+    archetypes.map(() => tuning),
+  );
+  // One repair per direction only when the wallet holds it for all three.
+  const repairs = wallet.attempts() >= PARALLEL_CALLS - 1 + 3 * 2 ? 1 : 0;
+  let fromModel = 0;
+  const directions = await Promise.all(
+    chosen.map(async (idea, i): Promise<StoredDirection> => {
+      let system: DesignProposal | undefined;
+      let voice = idea.voice;
+      let texts: DirectionTexts | null = null;
+      if (canCall && call.route) {
+        try {
+          const r = await designOneDirection({
+            ...call,
+            route: call.route,
+            input: art,
+            idea,
+            others: chosen.filter((x) => x !== idea),
+            facts,
+            signal: deadlineSignal(model.signal, model.designDeadlineMs ?? DIRECTION_CALL_DEADLINE_MS),
+            maxRepairs: repairs,
+          });
+          if (r.direction) {
+            system = r.direction.proposal;
+            voice = r.direction.voice;
+            texts = r.texts;
+            fromModel++;
+          } else notes.push(`направление ${i + 1}: ${r.note ?? "ответ не прошёл проверку"} — по архетипу`);
+        } catch (e) {
+          if (model.signal?.aborted) throw e;
+          notes.push(`направление ${i + 1}: модель не успела — по архетипу`);
+        }
+      }
+      const stored: StoredDirection = {
+        n: (i + 1) as 1 | 2 | 3,
+        archetype: idea.base,
+        name: system?.name ?? idea.name,
+        why: system?.why ?? idea.why,
+        voice,
+        tuning,
+        texts: texts ?? fallbackTexts(facts, i),
+        textsSource: texts ? "model" : "brief",
+        header: (patterns[i] as { header: string }).header,
+        hero: (patterns[i] as { hero: string }).hero,
+        ...(system ? { system } : {}),
+      };
+      onDirection(stored, base);
+      return stored;
+    }),
+  );
+  return {
+    kind: PROPOSAL_KIND,
+    version: 1,
+    ...base,
+    references,
+    directions,
+    costRub: wallet.spentRub,
+    calls: wallet.calls,
+    fallback: fromModel === 0,
     notes,
   };
 }
