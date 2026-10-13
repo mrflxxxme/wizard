@@ -29,8 +29,16 @@ import {
 } from "@wizard/agents/builder";
 import type { AppSpec } from "@wizard/appspec";
 import { buildSystem } from "@wizard/build";
-import { generateSeed, type SeedHint } from "@wizard/gates";
+import {
+  generateSeed,
+  type SeedHint,
+  STUB_CHECKS_SCRIPT,
+  type StubPageOptions,
+  type StubPageResult,
+  siteModel,
+} from "@wizard/gates";
 import { buildRoleSpec, type FileStorage, libraryPhotoFile, type RoleSpec } from "@wizard/runtime";
+import { PATTERNS } from "@wizard/ui-kit/v3/patterns";
 import type { GoalBrowserProvider } from "../agents/goal-browser.js";
 
 /** Origin the pages open at: *.localhost is a secure context (crypto.randomUUID of the SDK), no request leaves. */
@@ -496,6 +504,10 @@ export function criticInspector(o: CriticInspectorOptions): CriticInspector {
     if (!lease) return { ok: false, error: "браузер для проверки недоступен", problems: [], shots: [] };
     const problems: DeterministicProblem[] = [];
     const shots: CriticShot[] = [];
+    // V4-18: the routes of the site for the dead-link check; without the owner's contacts S04 is not judged.
+    const site = siteModel(input.files);
+    const siteRoutes = site?.pages.map((p) => p.route) ?? [...input.routes];
+    const dataSections = dataSectionsOf(input.files);
     try {
       for (const vp of input.viewports) {
         const wanted = vp.scheme === "light" ? input.shots.filter((s) => s.width === vp.width) : [];
@@ -511,6 +523,7 @@ export function criticInspector(o: CriticInspectorOptions): CriticInspector {
         try {
           await context.addInitScript(CRITIC_INIT_SCRIPT);
           await context.addInitScript(CRITIC_CHECKS_SCRIPT);
+          await context.addInitScript(STUB_CHECKS_SCRIPT);
           await context.route("**/*", handler(built.client, spec, data, o, hold, stats));
           const blank = wanted.length ? await context.newPage() : null;
           for (const route of input.routes) {
@@ -542,6 +555,19 @@ export function criticInspector(o: CriticInspectorOptions): CriticInspector {
               for (const e of errors.slice(0, 2)) at(null, "RENDER", `ошибка на странице: ${e}`);
               for (const p of r.problems)
                 at(p.section, p.code, vp.scheme === "dark" ? `${p.text} (${RU_SCHEME.dark})` : p.text);
+              // V4-18: stubs as the visitor sees them (one sign of a section counts once over the viewports).
+              const stubOpts: StubPageOptions = {
+                route,
+                routes: siteRoutes,
+                contacts: input.contacts ?? { phones: [], emails: [] },
+                dataSections,
+              };
+              const stubs = (await page.evaluate(
+                (x) => (window as unknown as { __wzStubs: { run(o: unknown): unknown } }).__wzStubs.run(x),
+                stubOpts,
+              )) as StubPageResult;
+              for (const p of stubs.problems)
+                if (p.code !== "S04" || input.contacts) at(p.section, p.code, `${p.text}: «${p.literal}»`);
               for (const s of wanted.filter((x) => x.route === route))
                 shots.push(await shoot(page, blank as Page, s, r, vp.height, inflight));
             } catch (e) {
@@ -575,6 +601,27 @@ export function criticInspector(o: CriticInspectorOptions): CriticInspector {
     // Stand-ins in the shots (no photo source, or a photo it does not have): the model judges the place, not the plot.
     return { ok: true, problems, shots, stubPhotos: !o.photo || stats.stubs > 0, ms };
   };
+}
+
+/** Section ids bound to the owner's data (catalog, blog, cart patterns): empty while there is none (V4-18 S03). */
+function dataSectionsOf(files: ReadonlyMap<string, string>): string[] {
+  try {
+    const doc = JSON.parse(files.get("ui/site.json") ?? "{}") as {
+      pages?: { sections?: { id?: string; pattern?: string }[] }[];
+    };
+    const bound = new Set(
+      PATTERNS.filter((m) => m.needs && m.needs !== "lead" && m.needs !== "booking").map((m) => m.id),
+    );
+    return [
+      ...new Set(
+        (doc.pages ?? []).flatMap((p) =>
+          (p.sections ?? []).flatMap((s) => (s.id && s.pattern && bound.has(s.pattern) ? [s.id] : [])),
+        ),
+      ),
+    ];
+  } catch {
+    return [];
+  }
 }
 
 /** One screenshot of an open page: the first screen or the whole page, with the sections it shows. */

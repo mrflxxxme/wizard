@@ -10,6 +10,8 @@ import { liveClock, scenarioCount, type V3Live, type V3LiveClock, v3Live } from 
 import { askNotify, firstNotice, type NotifyState, notifyState, showNotice } from "./notify.js";
 import { liveRu as T } from "./ru.js";
 
+/** How long the ready toast stays, ms. */
+export const TOAST_MS = 8000;
 /** A finish this recent (server time) is news: the toast and the browser notice; an older one is just replayed. */
 const FRESH_MS = 3 * 60_000;
 /** Status changes this recent are announced (a replay of the run on return is not read out). */
@@ -399,6 +401,13 @@ export function useV3Live(o: UseV3LiveOptions): V3LiveView {
     setToast({ title, text });
     showNotice(title, text, `wz-v3-ready-${live.runId}`);
   }, [live, announce, o.name]);
+
+  // The toast says its news and goes: it never stays over the site or the panels the owner opens next.
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), TOAST_MS);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   const askNotifyNow = useCallback(() => {
     void askNotify().then(setNotify);

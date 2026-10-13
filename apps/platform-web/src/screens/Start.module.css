@@ -89,6 +89,11 @@
   field-sizing: content;
 }
 
+/* The composer glows on focus (::after): the field's own focus ring of base.css would draw a square inside it. */
+.input:focus-visible {
+  outline: none;
+}
+
 .input::placeholder {
   color: var(--p-ink-2);
 }
