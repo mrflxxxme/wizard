@@ -125,7 +125,7 @@ describe("v3 probe: the pod script and its output", () => {
     expect(by.interview_v3).toMatchObject({ model: "glm-5.3", tier: "T1", scrubbed: false });
     expect(by.brief_extract).toMatchObject({ model: "glm-5.3", tier: "T1" });
     expect(by.critic_visual).toMatchObject({ model: "glm-5v-turbo", tier: "T1" });
-    expect(by.techreview).toMatchObject({ model: "mimo-v2.6-pro", tier: "T1" });
+    expect(by.techreview).toMatchObject({ model: "deepseek-v4-pro-0813", tier: "T1" });
     expect(total).toMatchObject({ capRub: 30, stopped: null, fake: true });
     const parsed = parseProbeOutput(lines.join("\n"));
     expect(parsed.calls).toHaveLength(PROBE_CALL_TYPES.length);

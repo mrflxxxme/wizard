@@ -72,7 +72,8 @@ describe("plan v4 §3: every role on its model with a reserve", () => {
     ["page_compose", "kimi-k3", "glm-5.3"],
     ["page_edit", "deepseek-v4.1-flash", "mimo-v2.6-flash"],
     ["critic_visual", "glm-5v-turbo", "kimi-k2.6"],
-    ["techreview", "mimo-v2.6-pro", "gpt-oss-120b"],
+    // DeepSeek first since MiMo timed out on the techreview (stage probe 13.10.2026); MiMo is its reserve.
+    ["techreview", "deepseek-v4-pro-0813", "mimo-v2.6-pro"],
   ];
   const chain = (ct: CallType) => [...(ROUTES[ct].chain.T1 ?? []), ...(ROUTES[ct].chain.T0 ?? [])];
 
@@ -250,7 +251,7 @@ describe("empty balances (DeepSeek, MiMo 13.10.2026) are skipped until topped up
     expect(stub.requests.map((r) => r.provider)).toEqual(["cloudru"]);
     expect(
       sink.records.filter((r) => r.errorCode === "PROVIDER_BALANCE_EXHAUSTED").map((r) => r.provider),
-    ).toEqual(["deepseek", "xiaomi", "xiaomi"]);
+    ).toEqual(["deepseek", "xiaomi", "deepseek", "xiaomi"]);
   });
 });
 
