@@ -228,6 +228,20 @@ describe("stage probe (V4-03)", () => {
     }
   }, 60_000);
 
+  test("a re-recorded input replaces its older answers (another model or tier stays out of the book)", async () => {
+    const dir = tmp();
+    const book = new RecordBook(join(dir, "art_direction.jsonl"));
+    const stage = stageInputs("art_direction")[0]?.[0] as string;
+    for (const model of ["kimi-k2.6", "glm-5.3"]) {
+      const inner = fakeInner(() => out("submit", { a: "ok" }, model));
+      await runProbe({ stage: "art_direction", inputs: [stage], router: () => inner, book, log: () => {} });
+    }
+    // A test router keeps the book as is; the live probe (no router) drops the input's lines first.
+    expect(new Set(book.all().map((l) => l.model))).toEqual(new Set(["kimi-k2.6", "glm-5.3"]));
+    book.retain((l) => l.label !== stage);
+    expect(book.all()).toEqual([]);
+  });
+
   test("raw: a saved route input is sent as is, the answer becomes a probe record; the cap stops the probe", async () => {
     const dir = tmp();
     mkdirSync(join(dir), { recursive: true });

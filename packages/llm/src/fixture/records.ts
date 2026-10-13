@@ -242,6 +242,16 @@ export class RecordBook {
     writeFileSync(this.path, this.lines.map((l) => `${stableStringify(l)}\n`).join(""));
   }
 
+  /** Keeps only the records `keep` accepts (a probe re-recording one input drops that input's older answers). */
+  retain(keep: (line: RecordLine) => boolean): void {
+    const before = this.all();
+    const after = before.filter(keep);
+    if (after.length === before.length) return;
+    this.lines = after;
+    mkdirSync(dirname(this.path), { recursive: true });
+    writeFileSync(this.path, after.map((l) => `${stableStringify(l)}\n`).join(""));
+  }
+
   /** Drops every record (a new recording of the whole run). */
   clear(): void {
     this.lines = [];

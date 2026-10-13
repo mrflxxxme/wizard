@@ -181,6 +181,12 @@ export async function runProbe(o: ProbeOptions): Promise<ProbeReport> {
       calls = [];
       failed = [];
       attempts = [];
+      // A new recording of this input replaces its older answers (another model, an older prompt): the book keeps one
+      // run per input.
+      if (!o.router) {
+        const own = model ? `${name}@${model}` : name;
+        book.retain((l) => l.label !== own);
+      }
       const ctx = { orgId: "probe", systemId: `probe-${o.stage}-${name}` };
       let run: { fallback: boolean; summary: string } = { fallback: true, summary: "" };
       let error: string | null = null;
