@@ -2643,7 +2643,7 @@ tasks:
     owns: ["apps/platform-api/src/pilot/invites.ts", "apps/platform-api/src/auth/** (регистрация)", "apps/platform-web/src/screens/landing/** (новый)", "их тесты"]
     description: >
       Ядро, прежние ворота (D80 (7)), PR с меткой founder-review. WIZARD_REGISTRATION=open: новая почта входит без приглашения.
-      Антиабуз-лимиты по плану §4 (числа предложены, утвердить владельцу). Минимальный лендинг на borntobuild.ru: обещание
+      Антиабуз-лимиты по плану §4 (числа утверждены владельцем 14.10.2026, пересмотр через 2 недели после открытия). Минимальный лендинг на borntobuild.ru: обещание
       positioning.promise_draft, четыре класса систем, цены D31, «Написать команде»; тексты по humanizer (D28). Полный лендинг,
       нагрузка и мониторинг остаются в M4-01.
     acceptance:
