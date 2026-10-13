@@ -4135,6 +4135,233 @@ tasks:
     claimed_by: null
     acceptance: ["Все P0/P1-замечания партнёров из docs/beta/feedback.md закрыты или перенесены с записью в CHANGELOG (L4-30)"]
 
+  # ---------------- V4: бета v4 (D79, docs/plans/2026-10-11-v4.md) — быстрая полоса: без PR захвата, статус меняется в PR задачи ----------------
+  - id: V4-01
+    title: "Сайт в схеме выбранного направления: без переключения на тёмную палитру по теме ОС посетителя"
+    milestone: V4
+    deps: []
+    specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4"]
+    owner: agents
+    parallel_group: v4-0
+    estimate_days: 0.25
+    status: todo
+    claimed_by: null
+    owns: ["packages/agents/src/builder/v3/compose/codegen.ts", "packages/ui-kit/src/v3/design/css.ts", "их тесты"]
+    acceptance:
+      - "Публичный сайт светлого направления остаётся светлым при prefers-color-scheme: dark (браузерный тест); тёмное направление — тёмным при светлой теме ОС"
+
+  - id: V4-02
+    title: "Быстрая полоса: CI на PR ≤ 10 мин, полный набор после мержа, автовыкат зелёного main на prod, архив сделанных задач"
+    milestone: V4
+    deps: []
+    specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4", AGENTS.md]
+    owner: platform
+    parallel_group: v4-0
+    estimate_days: 1
+    status: todo
+    claimed_by: null
+    owns: [".github/workflows/**", "tools/deploy/**", "tools/specs/**", "specs/backlog.yaml (перенос done в архив)", "specs/backlog-archive.yaml (новый)"]
+    acceptance:
+      - "PR-проверка: lint, typecheck и тесты только изменённых пакетов с их зависимыми, проигрывание записей моделей; медиана ≤ 10 мин по 5 последним PR"
+      - "Браузерные, e2e и сценарии целей — на main после мержа; красный main создаёт задачу с логом"
+      - "Зелёный main сам выкатывается на prod; откат на предыдущий SHA одной командой; сборка, начатая до выката, доезжает на своей версии"
+      - "Задачи в status: done переезжают в specs/backlog-archive.yaml; validate.mjs читает оба файла (deps на архив валидны)"
+
+  - id: V4-03
+    title: "Записи настоящих ответов моделей: record на всех живых вызовах, проигрывание в CI, громкий провал без записи"
+    milestone: V4
+    deps: []
+    specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4", specs/agents/models.yaml]
+    owner: qa
+    parallel_group: v4-a
+    estimate_days: 1
+    status: todo
+    claimed_by: null
+    owns: ["packages/llm/src/fixture/**", "tools/fixtures/**", "packages/e2e/stand/**"]
+    acceptance:
+      - "Каждый живой вызов (сборка основателя, проба этапа) пишется с ключом «версия промпта + модель + схема инструментов»; секреты и сильные идентификаторы вычищены"
+      - "В CI вызов без записи падает с понятной ошибкой «нет записи для <callType>@<версия>», а не уходит в запасной путь"
+      - "Сценарные ответы e2e v3 (v3-models.ts) заменены записями настоящих ответов; e2e проходит арт-директора, страницы и критика на записях"
+      - "Команда пробы этапа: живой прогон одного callType на 2–3 сохранённых входах, ответы сохраняются как записи"
+
+  - id: V4-04
+    title: "Отчёт сборки как приёмка: снимки, гейты, критик, сценарии, HTTP-ответы, ₽ и минуты; провал — задача агента"
+    milestone: V4
+    deps: [V4-03]
+    specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4"]
+    owner: platform
+    parallel_group: v4-b
+    estimate_days: 1
+    status: todo
+    claimed_by: null
+    owns: ["apps/platform-api/src/builds-v3/report/** (новый)", "apps/worker/src/report/** (новый)"]
+    acceptance:
+      - "Любая сборка сохраняет отчёт: снимки 390/1440, итог гейтов и сценариев, оценку критика, HTTP-ответы шагов сценариев, ₽ и минуты по этапам"
+      - "Провал сборки основателя создаёт задачу в репозитории платформы со ссылкой на отчёт и записями вызовов (тест на заглушке GitHub)"
+
+  - id: V4-05
+    title: "Маршрут моделей v4 и граница ПДн: роли, новые провайдеры, 2 кандидата и судья, сборка без маскирования, runtime в РФ"
+    milestone: V4
+    deps: []
+    specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4", specs/agents/models.yaml]
+    owner: agents
+    parallel_group: v4-a
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    description: >
+      Маршрут из плана §3. Провайдеры Moonshot (Kimi K3), Xiaomi (MiMo V2.6 Pro и Flash), DeepSeek напрямую; визуальная модель GLM в
+      Z.ai. Этапы сборки идут без scrub; сигнальный фильтр — паспорт, СНИЛС, номер карты; картинки больше не принуждаются к T0.
+      runtime_ai_*, support, import_mapping — только РФ, как было. Ollama Cloud — провайдер только для режима замеров основателя.
+    owns: ["packages/llm/**", "packages/pii/**", "specs/agents/models.yaml"]
+    acceptance:
+      - "Каждая роль плана §3 маршрутизируется на свою модель с запасной; судья и критик никогда не из семейства автора кода (тест)"
+      - "Этапы сборки не проходят scrub; паспорт, СНИЛС или номер карты во входе этапа блокируют вызов за рубеж (тест); runtime-вызовы никогда не уходят за рубеж (тест)"
+      - "Каждая новая модель прошла пробу на русском на 2–3 входах своего этапа (записи по V4-03)"
+
+  - id: V4-06
+    title: "Свободный код публичных страниц: TSX на токенах, обязательные компоненты SDK, паттерны как примеры"
+    milestone: V4
+    deps: [V4-05]
+    specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4", specs/agents/builder-v3.md]
+    owner: agents
+    parallel_group: v4-b
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    description: >
+      Модель пишет все публичные страницы свободным TSX (React 19, Tailwind на токенах, Motion). Форма заявки, запись, корзина и вход —
+      компоненты SDK, которые страница обязана импортировать (их логика и привязки к данным не меняются моделью). 150 паттернов ui-kit —
+      примеры в промпте. Первый экран — два кандидата разных семейств, судья выбирает по снимкам. Выбор паттерна из enum и
+      MAX_SIGNATURES уходят; каркас без модели остаётся только запасным путём при сбое.
+    owns: ["packages/agents/src/builder/v3/compose/**", "packages/agents/src/builder/v3/prompts/**", "packages/ui-kit/src/v3/patterns/lint.ts"]
+    acceptance:
+      - "Страницы собираются и проходят типы, линтер токенов (никаких сырых цветов и шрифтов), доступность и сценарии брифа в браузере"
+      - "Удаление обязательного компонента SDK со страницы — провал гейта (тест)"
+      - "На 3 эталонных брифах класса «сайт + запись» первые экраны структурно различаются (гейт шаблонности в отчёте) и заявка доходит владельцу"
+
+  - id: V4-07
+    title: "Арт-директор на модели: дизайн-система и три разнесённых направления, код проверяет, а не выбирает"
+    milestone: V4
+    deps: [V4-05]
+    specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4", specs/agents/builder-v3.md]
+    owner: agents
+    parallel_group: v4-b
+    estimate_days: 1
+    status: todo
+    claimed_by: null
+    owns: ["packages/agents/src/builder/v3/art-director.ts", "packages/agents/src/directions/**", "packages/ui-kit/src/v3/design/**"]
+    acceptance:
+      - "Модель предлагает палитру, шрифтовую пару из каталога OFL, сетку, ритм и движение; код проверяет контраст WCAG AA, лицензии и токены и возвращает на исправление"
+      - "Три направления разнесены (verbalized sampling); на 3 эталонных брифах попарное сходство первых экранов ниже порога гейта шаблонности"
+
+  - id: V4-08
+    title: "«Сначала показать»: три первых экрана за 90 с, 3–5 блокирующих вопросов параллельно, выбор = «Собрать»"
+    milestone: V4
+    deps: [V4-07, V4-11]
+    specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4"]
+    owner: frontend
+    parallel_group: v4-c
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    owns: ["apps/platform-web/src/screens/v3/**", "packages/agents/src/interview/**", "apps/platform-api/src/builds-v3/directions/**"]
+    acceptance:
+      - "После первого сообщения три первых экрана на весь холст за ≤ 90 с (медиана по 3 эталонным брифам), листаются, выбор одной кнопкой"
+      - "Пока экраны готовятся, задаётся не больше 5 блокирующих вопросов; остальные приходят во время сборки карточками с ответом по умолчанию"
+      - "Живой каркас в выбранном стиле — ≤ 3 мин после выбора; бриф остаётся в свёрнутой панели"
+
+  - id: V4-09
+    title: "Критик v4: снимки 390/1440, правки кода страницы, другое семейство, решают детерминированные проверки"
+    milestone: V4
+    deps: [V4-05, V4-06]
+    specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4", specs/agents/builder-v3.md]
+    owner: agents
+    parallel_group: v4-b
+    estimate_days: 1
+    status: todo
+    claimed_by: null
+    owns: ["packages/agents/src/builder/v3/critic/**"]
+    acceptance:
+      - "Критик видит настоящие снимки, правит код страниц (не только закрытый список операций), не больше 2 циклов; правка, ломающая гейт или сценарий, откатывается"
+      - "Оценка одного и того же сайта в трёх повторах расходится не больше чем на 10 пунктов (проба на записях)"
+
+  - id: V4-10
+    title: "Библиотека фото в РФ: 20–30 тыс. стоков, поиск по смыслу, выбор визуальной моделью, цветокоррекция под направление"
+    milestone: V4
+    deps: []
+    specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4", "specs/product.yaml#decisions.D61_stock_photos"]
+    owner: platform
+    parallel_group: v4-a
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    owns: ["packages/build/src/stock/**", "tools/stock/** (новый)", ".github/workflows/stock-library.yml (новый)"]
+    acceptance:
+      - "CI наполняет хранилище в РФ фото Pexels и Pixabay по нишам с атрибуцией; эмбеддинги (SigLIP, Apache-2.0) считаются при наполнении"
+      - "Поиск по русскому запросу из брифа возвращает 20 кандидатов; визуальная модель выбирает 3–5 по смыслу и палитре; повторов на сайте нет"
+      - "Все фото сайта приводятся к направлению (тон, контраст, дуотон или зерно); новая ниша без фото ставит асинхронную докачку"
+
+  - id: V4-11
+    title: "Холст v4: система на весь экран 1 в 1, островок значков, панели поверх, удаление старых поколений интерфейса"
+    milestone: V4
+    deps: []
+    specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4"]
+    owner: frontend
+    parallel_group: v4-a
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    owns: ["apps/platform-web/src/screens/canvas/**", "apps/platform-web/src/screens/workspace/**", "apps/platform-web/src/screens/v3/build/**", "apps/platform-web/src/preview/**"]
+    acceptance:
+      - "Черновая система на всё окно в реальной ширине; формы, запись и оплата работают как в отдельной вкладке (браузерный тест на 1440 и 390)"
+      - "Островок: чат, ход сборки (кольцо прогресса), бриф, устройство, правка, публикация; панели выезжают поверх и не меняют ширину сайта; Esc закрывает"
+      - "Превью обновляется пачками без полуготовых состояний; «Открыть в новой вкладке» работает (не переиспользует одноразовый токен)"
+      - "Доска v2 и старое рабочее пространство удалены из Canvas.tsx; v2-системы открываются в том же холсте"
+
+  - id: V4-12
+    title: "Правки в три слоя: мгновенные без модели, «Укажи и измени» ≤ 60 с, чат (заменяет M3-01)"
+    milestone: V4
+    deps: [V4-06, V4-11]
+    specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4"]
+    owner: frontend
+    parallel_group: v4-c
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    owns: ["apps/platform-web/src/screens/edit/** (новый)", "packages/build/src/source-map/** (новый)", "packages/agents/src/builder/v3/edit/** (новый)"]
+    acceptance:
+      - "Сборка размечает тексты и изображения ссылками на исходник; правка текста или замена фото применяется ≤ 3 с без вызова модели"
+      - "Ползунки токенов (скругление, плотность, контраст, шрифтовая пара) меняют сайт мгновенно и сохраняются в дизайн-систему"
+      - "Клик по элементу → правка словами меняет только файл этого компонента и применяется ≤ 60 с"
+
+  - id: V4-13
+    title: "Ключи Moonshot, Xiaomi MiMo, DeepSeek и проверка визуальной модели GLM; формулировка согласия на передачу брифа у юриста"
+    milestone: V4
+    deps: []
+    specs: [docs/reviews/grill-9.md, "specs/product.yaml#decisions.D79_v4"]
+    owner: founder
+    parallel_group: v4-a
+    estimate_days: 0.5
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Ключи в GitHub Secrets и настройках выката; агент подтверждает пробой каждого провайдера"
+      - "Юрист дал формулировку согласия владельца в оферте до первых пользователей"
+
+  - id: V4-14
+    title: "Сборки основателя и «да» — переход беты v4 в альфу"
+    milestone: V4
+    deps: [V4-01, V4-04, V4-06, V4-07, V4-08, V4-09, V4-10, V4-11, V4-12]
+    specs: [docs/plans/2026-10-11-v4.md, docs/reviews/grill-9.md]
+    owner: founder
+    parallel_group: v4-d
+    estimate_days: 1
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Основатель собрал свои системы и дал «да»; отчёты сборок в docs/progress/v4-*"
+
   # ---------------- M4: запуск ----------------
   - id: M4-01
     title: "Лендинг под финальным именем, самостоятельная регистрация, нагрузочный тест 200 одновременных прогонов"
