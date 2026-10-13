@@ -167,4 +167,48 @@ describe("V4-06 speed: the page by sections", () => {
     );
     expect(sectionIssues(SIGNATURE_OK.source, { id: "x", hero: true }).map((i) => i.code)).toContain("NO_H1");
   });
+
+  test("m.* without LazyMotion gets the wrapper and the import; a half fence is dropped", () => {
+    const src = [
+      'import { m, useReducedMotion } from "motion/react";',
+      "",
+      "export default function Hero({ title }: { title: string }) {",
+      "  const reduce = useReducedMotion();",
+      "  return (",
+      '    <section className="bg-background px-gutter py-section text-foreground">',
+      '      <m.h1 initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} className="font-display text-hero">',
+      "        {title}",
+      "      </m.h1>",
+      "    </section>",
+      "  );",
+      "}",
+      "",
+    ].join("\n");
+    const fixed = autofixSection(`tsx\n${src}`);
+    expect(fixed.startsWith("tsx")).toBe(false);
+    expect(fixed).toContain("<LazyMotion features={domAnimation}>");
+    expect(fixed).toMatch(/import \{[^}]*LazyMotion[^}]*\} from "motion\/react"/);
+    expect(sectionIssues(fixed, { id: "hero", hero: true }).map((i) => i.code)).not.toContain("MOTION_LAZY");
+  });
+
+  test("a kept component's binding comes from the page, whatever the plan wrote", async () => {
+    const ctx = await prepared();
+    const plan: PagePlan = {
+      ...PLAN,
+      sections: PLAN.sections.map((x) =>
+        x.kind === "keep" && x.id === "form"
+          ? { ...x, props: { title: "Запишитесь", fields: ["phone"] } }
+          : x,
+      ),
+    };
+    const m = model({ hero: [HERO_CODE.source], "first-visit": [SIGNATURE_OK.source] });
+    const route: typeof m.route = async (input) =>
+      input.tools?.[0]?.name === PAGE_PLAN_TOOL ? out(PAGE_PLAN_TOOL, plan, 1) : m.route(input);
+    const r = await composer().scenario({ ...ctx, route }, LEAD);
+    const home = (readSite(apply(ctx.files, r)) as SiteModel).pages[0];
+    const form = home?.sections.find((x) => x.id === "form");
+    const before = (readSite(ctx.files) as SiteModel).pages[0]?.sections.find((x) => x.id === "form");
+    expect(form?.props.fields).toEqual(before?.props.fields);
+    expect(form?.props.title).toBe("Запишитесь");
+  });
 });

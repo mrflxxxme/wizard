@@ -33,7 +33,7 @@ export function pagePlanSchema(kept: readonly string[]) {
     id: z.string().regex(idRe, "id: латиница, цифры, дефис"),
     title: z.string().min(3).max(80),
     /** What the section shows and how it is laid out (one or two sentences): the brief of its own call. */
-    idea: z.string().min(10).max(400),
+    idea: z.string().max(400).optional(),
     props: z.record(z.string(), z.unknown()),
   });
   const keep = z.strictObject({
@@ -76,7 +76,11 @@ const MOTION_FROM = /from\s+["'](?:framer-motion|motion)["']/g;
  * nothing applies.
  */
 export function autofixSection(source: string): string {
-  let s = source.replace(/^\s*```(?:tsx|jsx|ts)?\s*\n/, "").replace(/\n```\s*$/, "\n");
+  let s = source
+    .replace(/^\s*```(?:tsx|jsx|ts|typescript)?\s*\n/, "")
+    .replace(/\n```\s*$/, "\n")
+    // A fence cut in half leaves its language as the first line («tsx» — G0: Cannot find name 'tsx').
+    .replace(/^\s*(?:tsx|jsx)\s*\n/, "");
   s = s.replace(MOTION_FROM, 'from "motion/react"');
   s = s.replace(/<([a-zA-Z][\w.]*)([^>]*?)\sclass=/g, "<$1$2 className=");
   if (!/export\s+default\s+function/.test(s)) {
@@ -84,7 +88,48 @@ export function autofixSection(source: string): string {
     if (named) s = s.replace(`export function ${named[1]}`, `export default function ${named[1]}`);
   }
   if (/\bLazyMotion\b/.test(s)) s = s.replace(/<(\/?)motion\./g, "<$1m.");
+  else if (/<m\./.test(s)) s = withLazyMotion(s);
   return s;
+}
+
+/**
+ * m.* without <LazyMotion> (the linter's MOTION_LAZY, the most frequent refusal of the probe): the JSX the default
+ * export returns gets the wrapper and the import. The source is left as it was when the return cannot be found.
+ */
+function withLazyMotion(source: string): string {
+  const start = source.search(/export\s+default\s+function/);
+  const ret = start < 0 ? -1 : source.indexOf("return (", start);
+  if (ret < 0) return source;
+  let depth = 0;
+  let end = -1;
+  for (let i = ret + "return ".length; i < source.length; i++) {
+    const ch = source[i];
+    if (ch === "(") depth++;
+    else if (ch === ")") {
+      depth--;
+      if (depth === 0) {
+        end = i;
+        break;
+      }
+    }
+  }
+  if (end < 0) return source;
+  const open = ret + "return (".length;
+  const body = source.slice(open, end);
+  let out = `${source.slice(0, open)}\n<LazyMotion features={domAnimation}>${body}</LazyMotion>\n${source.slice(end)}`;
+  const imp = /import\s*\{([^}]*)\}\s*from\s*["']motion\/react["'];?/.exec(out);
+  if (imp) {
+    const names = new Set(
+      (imp[1] as string)
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean),
+    );
+    names.add("LazyMotion");
+    names.add("domAnimation");
+    out = out.replace(imp[0], `import { ${[...names].join(", ")} } from "motion/react";`);
+  } else out = `import { domAnimation, LazyMotion } from "motion/react";\n${out}`;
+  return out;
 }
 
 /** Pattern rules of one section's source (errors only), each with its line, as tool issues. */
@@ -194,7 +239,10 @@ export function sectionMessages(o: {
   const example =
     codeExamples(o.library, o.archetype, 2)[hero ? 0 : 1] ?? codeExamples(o.library, o.archetype, 1)[0];
   const outline = o.plan.sections
-    .map((s) => `- ${s.id}${s.kind === "code" ? ` — ${s.title}: ${s.idea}` : " — компонент SDK"}`)
+    .map(
+      (s) =>
+        `- ${s.id}${s.kind === "code" ? ` — ${s.title}${s.idea ? `: ${s.idea}` : ""}` : " — компонент SDK"}`,
+    )
     .join("\n");
   return [
     {
@@ -220,7 +268,7 @@ export function sectionMessages(o: {
       content: [
         `## Дизайн-система\n${designBlock(o.design)}`,
         `## Страница ${o.page.route} «${o.page.title}» — план\n${outline}`,
-        `## Твоя секция: ${o.item.id} — ${o.item.title}\n${o.item.idea}`,
+        `## Твоя секция: ${o.item.id} — ${o.item.title}${o.item.idea ? `\n${o.item.idea}` : ""}`,
         `## props секции (придут в компонент ровно такими)\n${JSON.stringify(o.item.props, null, 1)}`,
         `## Задача\nНапиши секцию и вызови ${SECTION_CODE_TOOL}.`,
       ].join("\n\n"),

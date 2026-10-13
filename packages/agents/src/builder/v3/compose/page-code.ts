@@ -134,8 +134,10 @@ export function applyPageCode(
     }
     const was = byId.get(s.id) as SiteSection;
     if (!s.props) return was;
+    // The binding of a kept component comes from the page as it was, never from the model (a key it added included).
     const fixed = Object.fromEntries(Object.entries(was.props).filter(([k]) => BINDING.has(k)));
-    const merged = { ...was.props, ...s.props, ...fixed };
+    const texts = Object.fromEntries(Object.entries(s.props).filter(([k]) => !BINDING.has(k)));
+    const merged = { ...was.props, ...texts, ...fixed };
     const parsed = library.find((p) => p.id === was.pattern)?.slots.safeParse(merged);
     return { ...was, props: (parsed?.success ? parsed.data : was.props) as Record<string, unknown> };
   });
