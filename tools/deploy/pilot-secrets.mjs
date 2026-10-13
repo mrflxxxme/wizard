@@ -204,6 +204,14 @@ export const PLATFORM_PASSTHROUGH = [
   "YANDEX_API_KEY",
   "YANDEX_FOLDER_ID",
   "YANDEX_BASE_URL",
+  // V4-05 (D79 (5)): Kimi (Moonshot), DeepSeek and Xiaomi MiMo for the build stages; MIMO_API_KEY is fed from the
+  // working secret MIMO_SECOND_API_KEY by the workflow (V4-13 probe).
+  "KIMI_API_KEY",
+  "MOONSHOT_BASE_URL",
+  "DEEPSEEK_API_KEY",
+  "DEEPSEEK_BASE_URL",
+  "MIMO_API_KEY",
+  "MIMO_BASE_URL",
   "WIZARD_BUILD_DEFAULT_TIER",
   // D75: platform model spend per Moscow day (default 700 ₽); raised only by the founder.
   "WIZARD_LLM_DAILY_CAP_RUB",
@@ -229,6 +237,9 @@ export const PLATFORM_PASSTHROUGH = [
   "WIZARD_PLATFORM_YOOKASSA_SHOP_ID",
   "WIZARD_PLATFORM_YOOKASSA_SECRET_KEY",
   "WIZARD_RECEIPT_VAT_CODE",
+  // V4-04: the worker files a failed founder build as an issue (token with Issues: write on this repository).
+  "WIZARD_GITHUB_ISSUES_TOKEN",
+  "WIZARD_GITHUB_ISSUES_REPO",
 ];
 
 /**
