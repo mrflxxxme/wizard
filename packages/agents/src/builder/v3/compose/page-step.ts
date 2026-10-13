@@ -56,6 +56,8 @@ export interface PageStepInput {
   inspect?: CriticInspector;
   /** Two candidates of the first screen and the judge (the home page). */
   firstScreen: boolean;
+  /** V4-21: what the browser check found not shown — the page is written again to show it (V3BuildContext.repair). */
+  repair?: readonly string[];
 }
 
 export interface PageStepResult {
@@ -128,6 +130,7 @@ export async function pageCode(
     design: ctx.design,
     library: s.library,
     signatures: s.signatures,
+    ...(s.repair?.length ? { repair: s.repair } : {}),
   });
   const author = tracking(base.route);
   let messages = req.messages;

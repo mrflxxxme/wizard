@@ -319,6 +319,8 @@ export function pageCodeMessages(o: {
   library?: readonly PatternMeta[];
   /** Sources of the page's code sections now (an earlier scenario): the model may rewrite or keep their idea. */
   current?: ReadonlyMap<string, string>;
+  /** V4-21: what the browser check found not shown on the page — the block «Что исправить» (only when repairing). */
+  repair?: readonly string[];
 }): LlmMessage[] {
   const library = o.library ?? PATTERNS;
   const examples = codeExamples(library, o.site.archetype);
@@ -361,8 +363,13 @@ export function pageCodeMessages(o: {
           ? `## Обязательные компоненты SDK (kind keep)\n${kept.join("\n")}`
           : "## Обязательные компоненты SDK\nНа этой странице их нет.",
         ...own.map(([f, src]) => `## Код секции сейчас (${f})\n\`\`\`tsx\n${src.slice(0, 4000)}\`\`\``),
+        o.repair?.length
+          ? `## Что исправить\nПроверка в браузере: на сайте не показано обещанное сценарием.\n${o.repair.map((r) => `- ${r}`).join("\n")}\nИсправь это по фактам; чего нет в фактах, не выдумывай.`
+          : "",
         `## Задача\nНапиши страницу под сценарий и вызови ${PAGE_CODE_TOOL}.`,
-      ].join("\n\n"),
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
     },
   ];
 }
@@ -376,6 +383,7 @@ export function pageCodeRequest(o: {
   design: DesignSystemV3;
   library?: readonly PatternMeta[];
   signatures?: ReadonlyMap<string, string>;
+  repair?: readonly string[];
 }) {
   const library = o.library ?? PATTERNS;
   const signatures = o.signatures ?? new Map<string, string>();
