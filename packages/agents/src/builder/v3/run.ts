@@ -26,15 +26,17 @@ import { scrub } from "@wizard/pii";
 import {
   archetype as archetypeById,
   type DesignSystemV3,
+  designFromProposal,
   designSystemV3,
   isArchetypeId,
 } from "@wizard/ui-kit/v3/design";
 import { stripScrubTokens } from "../../interview-v3/scrub-tokens.js";
 import { DEFAULT_REGISTRY } from "../../planner/catalog.js";
+import { modelPhotoPicker } from "../../stock/pick.js";
 import { erroredBlockers, failedBlockers } from "../v2/blockers.js";
 import { runPhotosStage } from "../v2/photos.js";
 import { withOwnerFields } from "../v2/run.js";
-import { runArtDirector } from "./art-director.js";
+import { runArtDirector, storedProposal } from "./art-director.js";
 import { readSite, withSitePages } from "./compose/index.js";
 import type { V3BuildContext, V3ComposeResult } from "./contract.js";
 import { type BackendBuilt, compileBackend, DESIGN_CSS_FILE, designCss } from "./harness/backend.js";
@@ -144,6 +146,29 @@ const TEMPLATE_STILL_RU =
   "После смены стиля сайт всё ещё похож на недавние сайты в этой нише — его можно сделать своеобразнее правками.";
 const TEMPLATE_LATE_RU =
   "Готовый сайт похож на недавние сайты в этой нише — после сценариев стиль уже не меняю, его можно сделать своеобразнее правками.";
+
+/** Library ids the pick changes, slot by slot: old id → new id (the same photo in a slot — no entry). */
+export function photoSwap(before: readonly PlanPhoto[], after: readonly PlanPhoto[]): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const a of after) {
+    const b = before.find((x) => x.slot === a.slot);
+    if (b && b.file !== a.file) out.set(b.file, a.file);
+  }
+  return out;
+}
+
+/** `src` with every library id of `swap` replaced (two passes: a pick that swaps two photos stays a swap). */
+export function swapIds(src: string, swap: ReadonlyMap<string, string>): string {
+  let out = src;
+  const marks = [...swap.keys()].map((_, i) => `\u0000wz-photo-${i}\u0000`);
+  [...swap.keys()].forEach((from, i) => {
+    out = out.split(from).join(marks[i] as string);
+  });
+  [...swap.values()].forEach((to, i) => {
+    out = out.split(marks[i] as string).join(to);
+  });
+  return out;
+}
 
 /** The plan with the stock photos of its places (V3-18); unchanged without photos. */
 const withStockPhotos = (plan: SystemPlan, photos: readonly PlanPhoto[]): SystemPlan =>
@@ -419,22 +444,31 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
    * reused while the niche and the places are the same. No host, no stock, an error — no photos (the skeleton keeps
    * its text first screens), and the next build tries again.
    */
-  const stockPhotos = async (): Promise<PlanPhoto[]> => {
+  const photosFingerprint = () => {
     const plan = bp.plan;
-    const fingerprint = sha256({
+    return sha256({
       niche: plan.niche,
       style: plan.design.photoStyle ?? "",
       slots: photoSlots(plan, MAX_PLAN_PHOTOS).map((s) => [s.slot, s.type, s.orientation]),
     });
+  };
+  /** true — the photos of the checkpoint are the vision model's pick (V4-10): nothing is picked again. */
+  let photosPicked = false;
+  const stockPhotos = async (): Promise<PlanPhoto[]> => {
+    const plan = bp.plan;
+    const fingerprint = photosFingerprint();
     const cp = saved.get("photos");
-    if (cp?.fingerprint === fingerprint && Array.isArray(cp.data.photos))
+    if (cp?.fingerprint === fingerprint && Array.isArray(cp.data.photos)) {
+      photosPicked = cp.data.picked === true;
       return cp.data.photos as PlanPhoto[];
+    }
     if (!host.photos) return [];
     const started = now();
     try {
+      // The skeleton takes the photos at once (the library by similarity, or the stock); the vision pick comes later.
       const r = await runPhotosStage({
         plan,
-        host: host.photos,
+        host: { ...host.photos, picker: undefined },
         now,
         ...(p.photosTimeMs !== undefined ? { budgetMs: p.photosTimeMs } : {}),
         ...(host.signal ? { signal: host.signal } : {}),
@@ -453,6 +487,69 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
     } catch {
       return [];
     }
+  };
+
+  /**
+   * V4-10: the vision pick of the site's photos (photo_pick) runs next to the skeleton and the pages, never on their
+   * path: started once the backend has its photos, applied (without waiting) before the hooks and before the final
+   * gates — the slots get the model's photos, the backend (credits) is compiled again and the pages' library ids are
+   * replaced in their files. Not settled by the final gates — the photos by similarity stay.
+   */
+  let photoPick: Promise<{ photos: PlanPhoto[]; milli: number } | null> | null = null;
+  const startPhotoPick = () => {
+    const ph = host.photos;
+    if (photoPick || photosPicked || !ph?.semantic || photos.length === 0) return;
+    const wallet = new V3Wallet("backend", budgets.photos, poolLeft("must", "backend"), rpc);
+    const plan = bp.plan;
+    photoPick = runPhotosStage({
+      plan,
+      host: {
+        ...ph,
+        picker:
+          ph.picker ??
+          modelPhotoPicker({
+            route: wallet.route(host, llm),
+            ...(host.signal ? { signal: host.signal } : {}),
+          }),
+      },
+      now,
+      ...(host.signal ? { signal: host.signal } : {}),
+    })
+      .then((r) => (r.modelPicked ? { photos: r.plan.design.photos ?? [], milli: wallet.spentMilli } : null))
+      .catch(() => null);
+  };
+  const SETTLING = Symbol("settling");
+  const applyPhotoPick = async (at: "hooks" | "gates") => {
+    if (!photoPick) return;
+    const pending = photoPick;
+    const settled = async () => {
+      const r = await Promise.race([
+        pending,
+        new Promise<typeof SETTLING>((res) => setTimeout(() => res(SETTLING), 0)),
+      ]);
+      return r === SETTLING ? "pending" : r;
+    };
+    const r = host.once ? await host.once(`v3_photos_pick:${at}`, settled) : await settled();
+    if (r === "pending") return;
+    photoPick = null;
+    if (!r) return;
+    runMilli += r.milli;
+    const swap = photoSwap(photos, r.photos);
+    // Only the slots the pages already show change: the credits list exactly the photos on the site.
+    const next = photos.map((b) => (swap.has(b.file) ? (r.photos.find((a) => a.slot === b.slot) ?? b) : b));
+    photosPicked = true;
+    await save({
+      key: "photos",
+      fingerprint: photosFingerprint(),
+      data: { photos: next, picked: true, note: "фото выбрала модель" },
+      costMilli: r.milli,
+      durationMs: 0,
+    });
+    if (swap.size === 0) return;
+    photos = next;
+    for (const layer of [skeleton, ...scenarioLayers.values(), ...hookLayers.values()])
+      for (const [path, src] of layer) if (src !== null) layer.set(path, swapIds(src, swap));
+    await buildBackend();
   };
 
   /** Compiles the backend of the current plan (free); a rejected extension goes to «Запросы на развитие». */
@@ -603,6 +700,12 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
       fingerprint: designFp,
       budgetRub: budgets.design,
       run: async (w) => {
+        // V4-07: the direction the owner chose was designed by the art director's model — its system as is.
+        const own = storedProposal(brief.design.system, { seed, niche });
+        if (own) {
+          const ds = designFromProposal(own, { seed, niche });
+          return { data: { niche, archetype: own.base, source: "brief", styleName: own.name, design: ds } };
+        }
         const chosen = brief.design.archetype;
         if (isArchetypeId(chosen)) {
           const ds = designSystemV3({ archetype: chosen, seed, niche });
@@ -666,6 +769,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
         // The stock answers differently on a replay (new copies, a timeout under load): durable, so a restarted
         // worker takes the same skeleton path.
         photos = host.once ? await host.once("v3_photos", stockPhotos) : await stockPhotos();
+        startPhotoPick();
         await buildBackend();
         return {
           data: {
@@ -1031,6 +1135,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
     // 6–8. Critic (V3-13), template gate (V3-14), techreview (V3-15): host hooks, skipped while absent. The late
     // template gate checks the finished site (the hook stores its final fingerprint) and only notes a hit: the style
     // is changed right after the skeleton, where the pages are recomposed for free; here it would undo the critic.
+    await applyPhotoPick("hooks");
     for (const st of V3_HOOK_STAGES) {
       await sync();
       const hook = hooks[st];
@@ -1105,6 +1210,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
     }
 
     // 9. Gates G0 → G1 (goal scenarios of the done brief scenarios, in a browser when the host has one) → G2.
+    await applyPhotoPick("gates");
     await sync();
     revision = await commit("Система собрана по брифу");
     const done = [...states.values()].filter((s) => s.status === "passed");

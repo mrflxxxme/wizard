@@ -5,7 +5,10 @@
 #   model    — the text tower files (pinned revision and checksums) into the bucket; once per model change;
 #   fill     — catalog niches in priority order, to NICHE_TARGET photos each (a run stops at its time budget, the next
 #              one goes on where it stopped; a full library makes a run a no-op);
-#   backfill — niches the builds asked for (a build with too few photos on its topic queues its niche).
+#   backfill — niches the builds asked for (a build with too few photos on its topic queues its niche);
+#   status   — the library by niche (counts) into the job summary;
+#   probe    — the live probe of photo_pick (plan v4 §5.2): the vision models of the route pick photos on 3 niches,
+#              a few rubles; no storage, only the model keys.
 # Schedule: backfill every two hours, fill every six hours (both no-ops when there is nothing to do), prod only.
 # Secrets reach only the step that uses them, masked first; output is counts only. A failure is a warning: the
 # platform keeps working with the photos it has.
@@ -15,9 +18,9 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "model — загрузить модель SigLIP в хранилище; fill — наполнить библиотеку по каталогу ниш; backfill — докачать ниши, запрошенные сборками"
+        description: "model — загрузить модель SigLIP в хранилище; fill — наполнить библиотеку по каталогу ниш; backfill — докачать ниши, запрошенные сборками; probe — живая проба выбора фото моделью (photo_pick); status — сколько фото по нишам"
         type: choice
-        options: [fill, backfill, model]
+        options: [fill, backfill, model, probe, status]
         default: fill
       env:
         description: "Окружение (бакет files)"
@@ -48,7 +51,33 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  probe:
+    if: inputs.action == 'probe'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      # No secrets in the environment of dependency installation.
+      - run: pnpm install --frozen-lockfile
+      - name: Live probe of photo_pick
+        env:
+          WIZARD_STAGE_PROBE: "1"
+          WIZARD_LLM_MODE: live
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+        run: |
+          for v in "$ZAI_API_KEY" "$KIMI_API_KEY"; do if [ -n "$v" ]; then echo "::add-mask::$v"; fi; done
+          npx vitest run packages/agents/test/stock-pick.live.test.ts --reporter=verbose
+
   library:
+    if: inputs.action != 'probe'
     runs-on: ubuntu-24.04
     environment: ${{ inputs.env || 'prod' }}
     timeout-minutes: 350

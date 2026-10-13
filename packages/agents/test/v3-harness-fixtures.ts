@@ -8,12 +8,12 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BriefScenario, SystemBriefInput } from "@wizard/appspec";
-import type { FixtureLine, LlmMessage } from "@wizard/llm";
+import { createRegistry, decideTier, type FixtureLine, type LlmMessage } from "@wizard/llm";
 import { z } from "zod";
 import {
-  artDirectionCandidates,
-  artDirectionMessages,
-  artDirectionSchema,
+  ART_DIRECTION_TOOL,
+  designDirectionsMessages,
+  designDirectionsTool,
   type PageComposer,
   readSite,
   SITE_PATH,
@@ -24,6 +24,9 @@ import {
 } from "../src/builder/index.js";
 import { defineTool } from "../src/core/tool.js";
 import { fixtureLine, serializeLines } from "./build-v2-fixtures.js";
+import { fiveDirections } from "./v4-art-fixtures.js";
+
+const OPEN_POLICY = { ruOnly: false, t1Restricted: false };
 
 type ScenarioInput = Omit<BriefScenario, "then" | "priority"> & { priority?: BriefScenario["priority"] };
 
@@ -308,23 +311,15 @@ export function v3Lines(o: {
       seed: o.seed,
       recent: [],
     };
-    const { candidates } = artDirectionCandidates(input);
-    const ids = candidates.map((c) => c.archetype);
-    const tool = defineTool({
-      name: "submit_art_direction",
-      description: "art",
-      input: artDirectionSchema(ids),
-    });
+    // V4-07: the model designs five directions; keys over the scrubbed messages (font names read as names there).
+    const messages = decideTier(
+      { callType: "art_direction", messages: designDirectionsMessages(input), orgPolicy: OPEN_POLICY },
+      createRegistry({ buildDefaultTier: "T1" }),
+    ).scrubbedMessages;
     lines.push(
-      fixtureLine("art_direction", artDirectionMessages(input, candidates), [tool.definition], {
-        name: "submit_art_direction",
-        args: {
-          archetype: ids[1] ?? ids[0],
-          voice: "warm",
-          accentUse: "signal",
-          styleName: "Спокойная клиника",
-          why: "Спокойный тон и ясная структура помогают записаться с телефона без лишних шагов.",
-        },
+      fixtureLine("art_direction", messages, [designDirectionsTool(input).definition], {
+        name: ART_DIRECTION_TOOL,
+        args: fiveDirections(),
       }),
     );
   }

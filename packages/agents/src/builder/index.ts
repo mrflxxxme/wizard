@@ -185,20 +185,34 @@ export {
   type V2Stage,
 } from "./v2/types.js";
 export { StageBudgetError, StageWallet } from "./v2/wallet.js";
-/** V3-07 art director: three candidate directions by code; the model picks one via submit_art_direction, or fallback. */
+/**
+ * V4-07 art director: the model proposes ART_DIRECTION_K design directions (verbalized sampling), code checks them
+ * (proposalIssues) and keeps the three most different; without a model — three archetype candidates of code.
+ */
 export {
   ACCENT_USES,
   ART_DIRECTION_CALL_TYPE,
+  ART_DIRECTION_K,
+  ART_DIRECTION_TOOL,
+  ART_DIRECTIONS,
   type ArtDirection,
-  type ArtDirectionAnswer,
   type ArtDirectionCandidate,
   type ArtDirectionChoice,
   type ArtDirectorInput,
+  acceptedDirections,
   artDirectionCandidates,
-  artDirectionIssues,
-  artDirectionMessages,
-  artDirectionSchema,
+  type DesignDirectionAnswer,
+  type DesignDirectionsAnswer,
+  designDirectionsIssues,
+  designDirectionsMessages,
+  designDirectionsSchema,
+  designDirectionsTool,
+  designProposalSchema,
+  type ModelDirection,
+  proposeDesignDirections,
   runArtDirector,
+  storedProposal,
+  toProposal,
 } from "./v3/art-director.js";
 /**
  * V3-12 page composer (builder-v3.md C6): createPageComposer() → PageComposer {skeleton — the public site from library
@@ -243,6 +257,17 @@ export type {
 export * from "./v3/critic/index.js";
 /** V3-09 «Три направления»: three first screens with the client's texts, refinement by words, references → principles. */
 export * from "./v3/directions/index.js";
+/** V4-15 «Укажи и измени» for v3: the file of the clicked element rewritten by one model call, checked. */
+export {
+  POINT_EDIT_CALL_TYPE,
+  POINT_EDIT_MAX_FILE,
+  type PointEditInput,
+  type PointEditResult,
+  type PointEditTarget,
+  pointEditIssues,
+  pointEditMessages,
+  pointEditV3,
+} from "./v3/edit/point.js";
 /**
  * V3-11 build harness (builder-v3.md C6): runBuildV3(host, params) — brief → design → backend → skeleton (preview) →
  * scenarios one by one with a browser check → critic/template_gate/techreview hooks → gates; checkpoints, wallet, clock.

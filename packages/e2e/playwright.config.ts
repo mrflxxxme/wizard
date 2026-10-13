@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { defineConfig, devices } from "@playwright/test";
+import { defineConfig, devices, type PlaywrightTestConfig } from "@playwright/test";
 import { M1, M2, PILOT, V3 } from "./stand/ports.js";
 
 // Local containers ship chromium in /opt/pw-browsers (revision pinned by the exact @playwright/test version);
@@ -11,6 +11,11 @@ if (!process.env.PLAYWRIGHT_BROWSERS_PATH && existsSync("/opt/pw-browsers")) {
 
 const root = join(import.meta.dirname, "..", "..");
 const ci = !!process.env.CI;
+// WIZARD_E2E_STAND=v3 starts only that stand (the PR job runs `--project v3`); unset — every stand.
+const stand = process.env.WIZARD_E2E_STAND;
+type Server = Exclude<NonNullable<PlaywrightTestConfig["webServer"]>, unknown[]> & { stand: string };
+const only = (servers: Server[]) =>
+  servers.filter((s) => !stand || s.stand === stand).map(({ stand: _, ...s }) => s);
 
 export default defineConfig({
   testDir: "specs",
@@ -54,8 +59,9 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"], baseURL: `http://localhost:${V3.web}`, locale: "ru-RU" },
     },
   ],
-  webServer: [
+  webServer: only([
     {
+      stand: "chromium",
       command: `node ${JSON.stringify(join(root, "scripts", "dev.mjs"))}`,
       cwd: root,
       // Vite starts before platform-api listens: wait for the API through the platform-web proxy (both up);
@@ -78,6 +84,7 @@ export default defineConfig({
       },
     },
     {
+      stand: "m1",
       command: `pnpm exec tsx ${JSON.stringify(join(import.meta.dirname, "stand", "m1.ts"))}`,
       cwd: import.meta.dirname,
       // 401 without a session means platform-api answers through the Vite proxy (both up).
@@ -89,6 +96,7 @@ export default defineConfig({
       env: { WIZARD_LLM_MODE: "fixture", WIZARD_BUILD_PIPELINE: "legacy" },
     },
     {
+      stand: "m2",
       command: `pnpm exec tsx ${JSON.stringify(join(import.meta.dirname, "stand", "m2.ts"))}`,
       cwd: import.meta.dirname,
       url: `http://127.0.0.1:${M2.web}/api/v1/me`,
@@ -99,6 +107,7 @@ export default defineConfig({
       env: { WIZARD_LLM_MODE: "fixture", WIZARD_BUILD_PIPELINE: "legacy" },
     },
     {
+      stand: "pilot",
       command: `pnpm exec tsx ${JSON.stringify(join(import.meta.dirname, "stand", "pilot.ts"))}`,
       cwd: import.meta.dirname,
       url: `http://127.0.0.1:${PILOT.web}/api/v1/me`,
@@ -109,6 +118,7 @@ export default defineConfig({
       env: { WIZARD_LLM_MODE: "fixture", WIZARD_BUILD_PIPELINE: "legacy" },
     },
     {
+      stand: "v3",
       command: `pnpm exec tsx ${JSON.stringify(join(import.meta.dirname, "stand", "v3.ts"))}`,
       cwd: import.meta.dirname,
       url: `http://127.0.0.1:${V3.web}/api/v1/me`,
@@ -118,5 +128,5 @@ export default defineConfig({
       gracefulShutdown: { signal: "SIGINT", timeout: 15_000 },
       env: { WIZARD_LLM_MODE: "fixture", WIZARD_BUILD_PIPELINE: "v3", WIZARD_G1_BROWSER: "off" },
     },
-  ],
+  ]),
 });

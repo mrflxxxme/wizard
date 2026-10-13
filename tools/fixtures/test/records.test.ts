@@ -20,8 +20,9 @@ import {
   toolsHash,
 } from "../../../packages/llm/src/index.ts";
 import { root } from "./helpers.ts";
+import { critiqueSchema, critiqueScore } from "../../../packages/agents/src/builder/index.ts";
 import { e2eFor, forceModel, renderProbe, runProbe, stageInputs } from "../probe/run.ts";
-import { STAGES } from "../probe/stages.ts";
+import { CRITIC_SPREAD, OPEN, STAGES } from "../probe/stages.ts";
 
 const registry = createRegistry({ buildDefaultTier: "T1" });
 const tmp = () => mkdtempSync(join(tmpdir(), "wz-records-"));
@@ -203,7 +204,8 @@ describe("stage probe (V4-03)", () => {
 
   test("an unavailable model: every stage runs, takes its fallback and the probe fails loudly", async () => {
     const dir = tmp();
-    for (const stage of ["interview_v3", "brief_extract", "art_direction", "direction_texts", "page_compose", "techreview"]) {
+    const stages = ["interview_v3", "brief_extract", "art_direction", "direction_texts", "page_compose", "techreview", "point_edit"];
+    for (const stage of stages) {
       const book = new RecordBook(join(dir, `${stage}.jsonl`));
       const inner = fakeInner(() => new LlmError("LLM_UNAVAILABLE", "Модели сейчас недоступны. Попробуйте позже."));
       const r = await runProbe({
@@ -216,6 +218,8 @@ describe("stage probe (V4-03)", () => {
       // The stage reached its model with its own callType.
       expect(inner.calls.length, stage).toBeGreaterThan(0);
       expect(STAGES[stage]?.callTypes, stage).toContain(inner.calls[0]?.callType);
+      // As the platform's queue gives every call its org's policy: no stage call is held to T0 by a missing one.
+      for (const c of inner.calls) expect(c.orgPolicy, stage).toEqual(OPEN);
       expect(r.ok, stage).toBe(false);
       expect(r.results[0]?.ok).toBe(false);
       expect(r.results[0]?.calls).toEqual([]);
@@ -243,7 +247,7 @@ describe("stage probe (V4-03)", () => {
 
   // CI replays the probes' records: the stage uses the recorded answer, no fallback; an edited prompt needs a new probe
   // (the stage-probe workflow records it on the push of the edit).
-  test.each(["interview_v3", "brief_extract", "art_direction", "direction_texts", "page_compose"])(
+  test.each(["interview_v3", "brief_extract", "art_direction", "direction_texts", "page_compose", "point_edit"])(
     "the recorded probe of %s replays without a miss and without the fallback",
     async (stage) => {
       const book = RecordBook.named(`probe/${stage}`, root);
@@ -278,5 +282,32 @@ describe("stage probe (V4-03)", () => {
     const manifest = { critic_visual: ["packages/agents/src/builder/v3/critic/prompt.ts"], interview_v3: ["x.ts"] };
     expect(e2eFor(["packages/agents/src/builder/v3/critic/prompt.ts"], manifest)).toBe(true);
     expect(e2eFor(["x.ts", "README.md"], manifest)).toBe(false);
+  });
+
+  // V4-09: the critic's score on the same screenshots in three repeats differs by at most 10 points (the records of the
+  // live probe critic_visual; its stage needs Chromium, so the scores are read from the records).
+  test("the critic's score is stable: repeats on the same shots by one model within 20 points", () => {
+    const book = RecordBook.named("probe/critic_visual", root);
+    // The latest prompt's answers, per input and model (a fallback model is another critic).
+    const lines = book.all();
+    const latest = lines.at(-1)?.promptVersion;
+    const byInput = new Map<string, Map<string, number[]>>();
+    for (const l of lines) {
+      const call = l.response.toolCalls.find((c) => c.name === "submit_critique");
+      if (!call || !l.label || l.promptVersion !== latest) continue;
+      const parsed = critiqueSchema.safeParse(call.args);
+      if (!parsed.success) continue;
+      const models = byInput.get(l.label) ?? new Map<string, number[]>();
+      models.set(l.model, [...(models.get(l.model) ?? []), critiqueScore(parsed.data)]);
+      byInput.set(l.label, models);
+    }
+    expect(byInput.size, "нет записей пробы critic_visual: запустите stage-probe").toBeGreaterThan(0);
+    for (const [label, models] of byInput) {
+      const scores = [...models.values()].sort((x, y) => y.length - x.length)[0] as number[];
+      expect(scores.length, label).toBeGreaterThanOrEqual(2);
+      expect(Math.max(...scores) - Math.min(...scores), `${label}: ${scores.join(", ")}`).toBeLessThanOrEqual(
+        CRITIC_SPREAD,
+      );
+    }
   });
 });

@@ -1,6 +1,6 @@
 // The stop rule of the v3 interview (grill-8 № 8), by code and not by the model: the interview ends when no blocking
 // unclarity is left — the brief has goals, at least one must scenario, roles, and data when its modules keep records —
-// or at the cap of 15 questions, or when the owner presses «Дальше решай сам». The tree goes forward: a question may
+// or at the cap of BLOCKING_QUESTIONS_CAP questions (D79_v4 (7): 3–5 blocking questions while the first screens are drawn), or when the owner presses «Дальше решай сам». The tree goes forward: a question may
 // not skip a topic that still has a blocking gap.
 import type { SystemBrief } from "@wizard/appspec";
 import type { ModuleRegistry } from "@wizard/modules";
@@ -14,6 +14,12 @@ import {
   V3_TOPICS,
   type V3Topic,
 } from "./schemas.js";
+
+/**
+ * D79_v4 (7): at most this many questions before the build — the rest go to the build with the assumption meanwhile.
+ * The prompt still names its own MAX_V3_QUESTIONS until the next live probe of interview_v3 re-records it.
+ */
+export const BLOCKING_QUESTIONS_CAP = Math.min(5, MAX_V3_QUESTIONS);
 
 /** A blocking unclarity: the build cannot start without it. */
 export interface BlockingGap {
@@ -81,7 +87,7 @@ export function stopReason(o: {
   asked: number;
   modelFinished: boolean;
 }): "clear" | "cap" | null {
-  if (o.asked >= MAX_V3_QUESTIONS) return "cap";
+  if (o.asked >= BLOCKING_QUESTIONS_CAP) return "cap";
   if (o.gaps.length === 0 && o.modelFinished) return "clear";
   return null;
 }

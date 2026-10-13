@@ -23,7 +23,7 @@ import { clip } from "../planner/tolerant.js";
 import type { Research } from "../research/research.js";
 import { CAPABILITY_LABELS, capabilityCounts, normText } from "./capability.js";
 import { defaultPatch, fallbackQuestion } from "./fallback.js";
-import { type BlockingGap, blockingGaps, questionOrderIssues } from "./gaps.js";
+import { BLOCKING_QUESTIONS_CAP, type BlockingGap, blockingGaps, questionOrderIssues } from "./gaps.js";
 import { addAssumption, addQa, applyBriefPatch, refreshCapability } from "./merge.js";
 import { interviewV3Messages, type V3TurnInput } from "./prompt.js";
 import { interviewResearchTools } from "./research-tools.js";
@@ -34,7 +34,6 @@ import {
   type DeferredQuestion,
   INTERVIEW_V3_CALL_TYPE,
   type InterviewV3Session,
-  MAX_V3_QUESTIONS,
   V3_TOPIC_LABELS,
   V3_TURN_MAX_CALLS,
   type V3Question,
@@ -218,7 +217,7 @@ export function publicQuestion(q: V3Question): V3PublicQuestion {
     allowDelegate: q.allowDelegate,
     allowCustom: true,
     step: q.step,
-    max: MAX_V3_QUESTIONS,
+    max: BLOCKING_QUESTIONS_CAP,
   };
 }
 
@@ -373,7 +372,7 @@ export class InterviewV3 {
     addQa(s.brief, { q: q.text, a: label, recommended: rec.label, chosen });
     if (optionId) this.applyOptionPatch(s, q, optionId, "default");
     s.current = null;
-    if (s.asked >= MAX_V3_QUESTIONS) return this.step(s, out, ctx, { kind: "cap" });
+    if (s.asked >= BLOCKING_QUESTIONS_CAP) return this.step(s, out, ctx, { kind: "cap" });
     return this.step(s, out, ctx, { kind: "answer", question: q.text, answer: scrub(label).text, chosen });
   }
 
@@ -388,7 +387,10 @@ export class InterviewV3 {
     input: V3TurnInput,
   ): Promise<void> {
     let inp = input;
-    if ((inp.kind === "answer" || inp.kind === "wish" || inp.kind === "start") && s.asked >= MAX_V3_QUESTIONS)
+    if (
+      (inp.kind === "answer" || inp.kind === "wish" || inp.kind === "start") &&
+      s.asked >= BLOCKING_QUESTIONS_CAP
+    )
       inp = { kind: "cap" };
     const decide = inp.kind === "skip" || inp.kind === "cap";
     const source = inp.kind === "skip" ? "owner_skip" : "default";
@@ -439,7 +441,7 @@ export class InterviewV3 {
     for (let gap = next(); gap; gap = next()) {
       tried.add(gap.topic);
       const fq = fallbackQuestion(gap.topic, this.fallbackCtx(s));
-      if (fq && !s.fallbackTopics.includes(gap.topic) && s.asked < MAX_V3_QUESTIONS) {
+      if (fq && !s.fallbackTopics.includes(gap.topic) && s.asked < BLOCKING_QUESTIONS_CAP) {
         s.fallbackTopics.push(gap.topic);
         const { patches, ...rest } = fq;
         return this.ask(s, out, {
@@ -453,7 +455,7 @@ export class InterviewV3 {
       this.fillTopic(s, gap.topic, "default");
     }
     // Every gap is asked or filled by its default now (a default that cannot apply leaves it to the owner's panel).
-    return this.finish(s, out, ctx, s.asked >= MAX_V3_QUESTIONS ? "cap" : "clear");
+    return this.finish(s, out, ctx, s.asked >= BLOCKING_QUESTIONS_CAP ? "cap" : "clear");
   }
 
   private ask(s: InterviewV3Session, out: InterviewV3Output[], q: V3Question): void {

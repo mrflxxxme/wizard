@@ -5,7 +5,13 @@
 // scenarios, time (30 min), the cap (500 ₽) and the target (300 ₽) for «should», what is left in «Запросы на развитие»,
 // checkpoints after each stage and scenario (a repeated build resumes and does not pay again), non-blocking questions
 // answered in the brief and applied at the next step, the ready notice, hooks V3-13…15 skipped by default.
-import { type AppSpec, emptySpec, type SystemBriefInput, systemBriefSchema } from "@wizard/appspec";
+import {
+  type AppSpec,
+  emptySpec,
+  type PlanPhoto,
+  type SystemBriefInput,
+  systemBriefSchema,
+} from "@wizard/appspec";
 import type { GateReport, GoalScenarioInput } from "@wizard/gates";
 import { createRegistry, createRouter, LlmError, type RouteInput } from "@wizard/llm";
 import { type DesignSystemV3, designSystemV3 } from "@wizard/ui-kit/v3/design";
@@ -28,6 +34,7 @@ import {
   type V3ReadyNotice,
   type V3StageHook,
 } from "../src/builder/index.js";
+import { photoSwap, swapIds } from "../src/builder/v3/run.js";
 import type { DevelopmentRequestInput } from "../src/gaps.js";
 import {
   CLINIC_MUST,
@@ -341,7 +348,8 @@ describe("harness v3: features, skeleton preview, algorithms ahead of models", (
     expect(r.previewMs as number).toBeLessThanOrEqual(5 * MIN);
     expect(sys.checkpoints.get("design")?.data).toMatchObject({
       source: "model",
-      styleName: "Спокойная клиника",
+      // V4-07: the likeliest of the model's directions.
+      styleName: "Тёплая витрина",
     });
   });
 
@@ -662,6 +670,103 @@ describe("harness v3: stock photos of the site (V3-18)", () => {
     const s = stock();
     ok((await build(sys, { photos: s.host })).out);
     expect(skeletonPhotos(sys).length).toBeGreaterThan(0);
+  });
+});
+
+describe("harness v3: the vision pick of the photos next to the skeleton (V4-10)", () => {
+  const uuid = (n: number) => `00000000-0000-4000-8000-${n.toString(16).padStart(12, "0")}`;
+  /** A semantic library of 12 landscape photos; candidates in id order; a picker the test controls. */
+  const library = (picker: NonNullable<V3Host["photos"]>["picker"]) => {
+    const entries = Array.from({ length: 12 }, (_, i) => ({
+      provider: "pexels" as const,
+      id: String(200 + i),
+      file: uuid(200 + i),
+      author: `Автор ${i}`,
+      pageUrl: `https://www.pexels.com/photo/${200 + i}/`,
+      width: 1800,
+      height: 1200,
+      color: "#808080",
+      luma: 0.5,
+      query: "clinic",
+      niche: "medical",
+    }));
+    const host: NonNullable<V3Host["photos"]> = {
+      stock: { providers: [], search: async () => [], download: async () => new Uint8Array() },
+      store: async () => {
+        throw new Error("never");
+      },
+      semantic: {
+        search: async (_t, o) =>
+          entries
+            .filter((e) => !o.exclude?.has(`pexels:${e.id}`) && (!o.filter || o.filter(e)))
+            .slice(0, o.limit ?? 20)
+            .map((entry) => ({ entry, score: 0.2 })),
+        requestBackfill: async () => {},
+        thumbnail: async () => new Uint8Array([0x52, 0x49, 0x46, 0x46]),
+      },
+      ...(picker ? { picker } : {}),
+    };
+    return { host, entries };
+  };
+
+  test("the skeleton gets the photos by similarity at once; the model's pick replaces them before the gates", async () => {
+    const sys = newSys();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    // The model answers only after the skeleton was composed, and picks the last candidate for the first screen.
+    const { host: photos, entries } = library(async (input) => {
+      await gate;
+      return [{ slot: "top", index: input.candidates.length - 1 }];
+    });
+    const { host, clock } = memHost(sys, { photos });
+    const skeleton = host.composer.skeleton.bind(host.composer);
+    host.composer.skeleton = async (ctx) => {
+      const out = await skeleton(ctx);
+      release();
+      return out;
+    };
+    ok(await runBuildV3(host, { now: () => clock.t, appName: "Клиника" }));
+    const first = entries[0]?.file as string;
+    const cp = sys.checkpoints.get("photos")?.data as {
+      photos: { slot: string; file: string }[];
+      picked?: boolean;
+    };
+    expect(cp.picked).toBe(true);
+    const top = cp.photos.find((x) => x.slot === "top")?.file as string;
+    expect(top).not.toBe(first);
+    // The backend and every page file show the picked photo; the replaced one is nowhere.
+    expect(sys.files["ui/pages/SitePhotos.tsx"]).toContain(top);
+    for (const [path, src] of Object.entries(sys.files)) expect(src.includes(first), path).toBe(false);
+  });
+
+  test("a pick that does not come by the final gates changes nothing and does not hold the build", async () => {
+    const sys = newSys();
+    const { host: photos, entries } = library(() => new Promise(() => {}));
+    ok((await build(sys, { photos })).out);
+    const cp = sys.checkpoints.get("photos")?.data as {
+      photos: { slot: string; file: string }[];
+      picked?: boolean;
+    };
+    expect(cp.picked).toBeUndefined();
+    expect(sys.files["ui/pages/SitePhotos.tsx"]).toContain(entries[0]?.file as string);
+  });
+
+  test("photoSwap and swapIds: only changed slots, and a swap of two photos stays a swap", () => {
+    const [a, b, c] = [uuid(1), uuid(2), uuid(3)];
+    const ph = (slot: string, file: string) => ({ slot, file }) as PlanPhoto;
+    const swap = photoSwap(
+      [ph("top", a), ph("about", b), ph("gallery", c)],
+      [ph("top", b), ph("about", a), ph("gallery", c)],
+    );
+    expect([...swap]).toEqual([
+      [a, b],
+      [b, a],
+    ]);
+    expect(swapIds(`<img src="/_wizard/photos/${a}/960"/><img src="/_wizard/photos/${b}/960"/>`, swap)).toBe(
+      `<img src="/_wizard/photos/${b}/960"/><img src="/_wizard/photos/${a}/960"/>`,
+    );
   });
 });
 

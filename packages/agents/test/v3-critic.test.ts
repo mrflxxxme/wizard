@@ -282,8 +282,11 @@ describe("V3-13 critic", () => {
     expect(site?.pages[0]?.sections.find((s) => s.id === "services")?.pattern).not.toBe("services-editorial");
     expect(r.files.get("ui/design.css")).not.toContain(ctx.design.palette.light.muted);
     expect(r.files.get("ui/patterns/services-editorial.tsx")).toBeNull();
-    expect(r.notes[0]).toContain("Проверил сайт в браузере");
-    expect(r.notes[1]).toMatch(/^Поправил 2 места/);
+    expect(r.details[0]).toContain("Проверил сайт в браузере");
+    expect(r.details[1]).toMatch(/^Поправил 2 места/);
+    // V4-09: the owner reads plain words — no routes, anchors or check codes.
+    expect(r.notes[0]).toMatch(/^Посмотрел сайт глазами дизайнера и улучшил 2 места: /);
+    expect(r.notes.join(" ")).not.toMatch(/[#/]|\([A-Z]\d+\)|services-/);
   });
 
   test("a signature section the checks keep flagging gives its place to a pattern (no model); its file is deleted", async () => {
@@ -406,7 +409,7 @@ describe("V3-13 critic", () => {
       r.cycles.reduce((s, c) => s + c.costRub, 0),
       1,
     );
-    expect(r.notes[0]).toMatch(/2 круга, оценка 38 → 75 из 100/);
+    expect(r.details[0]).toMatch(/2 круга, оценка 38 → 75 из 100/);
   });
 
   // V3-40: the final measurement's critiques named catalog signs with no edit (v3-06: T04, L13, L15 on the hero, L06
@@ -511,7 +514,7 @@ describe("V3-13 critic", () => {
     expect(r.cycles[0]?.rejected[0]?.reason_ru).toContain("откат: сборка: G0-TS-01");
   });
 
-  test("the score falls after a batch: the batch is rolled back and the critic stops", async () => {
+  test("V4-09: the score falls after a batch — the critic stops, but the checks accepted the batch: it stays", async () => {
     const fx = fixtureRoute(critiqueLines(prompt, [critique(3, [F.swap]), critique(2, [F.reorder])]));
     const r = await runCritic(
       { ...ctx, route: fx.route },
@@ -519,8 +522,9 @@ describe("V3-13 critic", () => {
     );
     expect(r.stop).toBe("no_gain");
     expect(r.cycles.map((c) => c.score)).toEqual([69, 48]);
-    expect(r.rolledBack).toEqual(["/#services: вариант services-editorial → services-price-list"]);
-    expect(r.files.size).toBe(0);
+    // The model's opinion never rolls an edit back: the deterministic checks decide.
+    expect(r.rolledBack).toEqual([]);
+    expect(r.files.size).toBeGreaterThan(0);
   });
 
   test("the founder's floor: under 30 an unchanged score does not stop the loop; at 30 and above it does", async () => {
@@ -532,8 +536,9 @@ describe("V3-13 critic", () => {
       { ...ctx, route: low.route },
       { inspect: fakeInspector([]), verify: null, registry },
     );
-    expect(r.cycles.map((c) => c.score)).toEqual([19, 19, 50]);
-    expect(low.calls).toHaveLength(3);
+    // V4-09: at most 2 cycles — under the floor the second cycle still runs.
+    expect(r.cycles.map((c) => c.score)).toEqual([19, 19]);
+    expect(low.calls).toHaveLength(2);
     const high = fixtureRoute(
       critiqueLines(prompt, [critique(2, [F.swap]), critique(2, [P1reorder]), critique(3, [])]),
     );
@@ -545,7 +550,7 @@ describe("V3-13 critic", () => {
     expect(h.stop).toBe("no_gain");
   });
 
-  test("at most 3 cycles, each paid by its own call", async () => {
+  test("V4-09: at most 2 cycles, each paid by its own call", async () => {
     const fx = fixtureRoute(
       critiqueLines(prompt, [
         critique(1, [F.swap]),
@@ -559,15 +564,15 @@ describe("V3-13 critic", () => {
       { inspect: fakeInspector([]), verify: null, registry },
     );
     expect(r.stop).toBe("cycles");
-    expect(fx.calls).toHaveLength(3);
-    expect(r.cycles.map((c) => c.applied.length)).toEqual([1, 1, 1]);
+    expect(fx.calls).toHaveLength(2);
+    expect(r.cycles.map((c) => c.applied.length)).toEqual([1, 1]);
     expect(r.spentRub).toBeLessThanOrEqual(40);
-    // A fourth cycle is not asked for even when the stage allows more.
+    // A third cycle is not asked for even when the stage allows more.
     const more = await runCritic(
       { ...ctx, route: fixtureRoute(critiqueLines(prompt, Array(5).fill(critique(1, [F.swap])))).route },
       { inspect: fakeInspector([]), verify: null, registry, maxCycles: 5 },
     );
-    expect(more.cycles.length).toBeLessThanOrEqual(3);
+    expect(more.cycles.length).toBeLessThanOrEqual(2);
   });
 
   test("budget: a call whose upper bound does not fit is not made; the checks still run", async () => {
@@ -607,7 +612,8 @@ describe("V3-13 critic", () => {
     const out = await hook({ ...ctx, route: fx.route });
     expect(out.status).toBe("done");
     expect(out.files?.get("ui/site.json")).toContain("services-price-list");
-    expect(out.notes?.[0]).toMatch(/^Посмотрел сайт на телефоне, планшете и компьютере/);
+    expect(out.notes?.[0]).toMatch(/^Посмотрел сайт глазами дизайнера/);
+    expect(out.note).toContain("| Посмотрел сайт на телефоне, планшете и компьютере");
     expect(out.spentRub).toBe(0);
     expect(out.blockers).toBeUndefined();
     expect(out.note).toMatch(/циклов 2, оценка 44→75/);

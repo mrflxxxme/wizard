@@ -238,6 +238,8 @@ export interface V3Budgets {
   techreview: number;
   /** Least a scenario gets: below it the scenarios stop by budget. */
   scenarioMin: number;
+  /** V4-10: the vision pick of the site's photos (photo_pick, one call). */
+  photos: number;
 }
 
 export interface V3Params {

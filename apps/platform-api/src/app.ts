@@ -1,10 +1,13 @@
+import { dirname, join } from "node:path";
 import type { ModuleRegistry } from "@wizard/agents/planner";
 import type { Router, RouterOptions } from "@wizard/llm";
 import { createLogger } from "@wizard/pii/log";
+import { createFileStorage, type FileStorage } from "@wizard/runtime";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { checkAbuseSla } from "./abuse/reports.js";
 import { createAgentExecutors } from "./agents/executors.js";
+import { semanticPhotoSource } from "./agents/stock.js";
 import type { RuntimeAiBackfill } from "./ai/backfill.js";
 import { AiGateway } from "./ai/gateway.js";
 import type { Mailer } from "./auth/mailer.js";
@@ -16,6 +19,9 @@ import { Payments } from "./billing/payments.js";
 import { briefRoutes } from "./briefs/routes.js";
 import { sessionRoutes } from "./briefs/sessions.js";
 import { briefUploadRoutes } from "./briefs/upload.js";
+import { editRoutes } from "./builds-v3/edit/routes.js";
+import { photoRoutes } from "./builds-v3/photos/routes.js";
+import type { PhotoSearch } from "./builds-v3/photos/service.js";
 import { reportRoutes, reportStorage } from "./builds-v3/report/index.js";
 import { buildV3Routes } from "./builds-v3/routes.js";
 import { type ByokService, byokRoutes, byokServiceOf, type TransitKms } from "./byok/index.js";
@@ -141,6 +147,10 @@ export interface PlatformApiOptions {
   aiBackfill?: RuntimeAiBackfill | null;
   /** V3-09 «Три направления»: research of reference links (tests: recorded pages) and the model deadline. */
   directions?: Pick<DirectionsDeps, "researchFetch" | "researchMode" | "deadlineMs">;
+  /** V4-16: the shared file storage of systems (photo library and owner photos); default createFileStorage(env). */
+  photoFiles?: FileStorage;
+  /** V4-16: the semantic photo search (tests: a double; null — none); default the V4-10 library of photoFiles. */
+  photoSearch?: PhotoSearch | null;
   /** V3-33 BYOK service (tests: flag, KMS, gateway fetch); default from env (byok/index.ts byokServiceOf). */
   byok?: (d: { pg: DbHandle["pg"]; secrets: SecretStore }) => ByokService;
   /** V3-20 integrations harness: research of documentation links and the network of key checks (tests: local TLS). */
@@ -475,6 +485,34 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   api.route("/", capabilityRoutes({ ...abuse, ...(opts.now ? { now: opts.now } : {}) }));
   // V3-18: /admin «Системы и сбои» — every system with its last build and spend, failed runs with the error.
   api.route("/", adminSystemsRoutes(abuse));
+  // V4-15: instant edits of the draft — texts and photos by their source literal, no model.
+  api.route(
+    "/",
+    editRoutes({
+      db: deps.db,
+      pg: deps.pg,
+      blobs: deps.blobs,
+      ...(executors.onG0Passed ? { onG0Passed: executors.onG0Passed } : {}),
+    }),
+  );
+  // V4-16: photos of a system — the choice for a slot by meaning (V4-10) and the owner's own uploads.
+  let photoFiles: FileStorage | undefined = opts.photoFiles;
+  const sharedPhotoFiles = (): FileStorage => {
+    photoFiles ??= createFileStorage(process.env, {
+      defaultDir: join(dirname(config.artifactsDir), "files"),
+    });
+    return photoFiles;
+  };
+  api.route(
+    "/",
+    photoRoutes({
+      db: deps.db,
+      blobs: deps.blobs,
+      files: sharedPhotoFiles,
+      search: () =>
+        opts.photoSearch !== undefined ? opts.photoSearch : semanticPhotoSource(sharedPhotoFiles()),
+    }),
+  );
   // V4-04: /admin/runs/:id/report — the report of a v3 build (screenshots, gates, scenarios with HTTP, critic, ₽, records).
   let reportFiles: ReturnType<typeof reportStorage> | undefined;
   api.route(

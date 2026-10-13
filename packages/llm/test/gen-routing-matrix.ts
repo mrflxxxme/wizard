@@ -37,6 +37,7 @@ export const CALL_TYPES = [
   "repo_code",
   "repo_review",
   "page_edit",
+  "photo_pick",
 ] as const;
 
 /** Real texts per payload class; the router sees these through @wizard/pii.detect. */

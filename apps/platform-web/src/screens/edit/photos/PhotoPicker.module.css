@@ -1,0 +1,115 @@
+/* V4-16 photo choice of a slot: search, «Загрузить своё», a grid of 480 px previews. Tokens --p-*. */
+
+.root {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+}
+
+.search {
+  display: flex;
+  gap: 6px;
+}
+
+.input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--p-line);
+  border-radius: var(--p-r-pill);
+  background: var(--p-surface);
+  color: var(--p-ink);
+  font: 400 14px / 1.3 var(--p-f-ui);
+}
+
+.upload {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cell {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--p-r-md);
+  overflow: hidden;
+  background: var(--p-sunken);
+  cursor: pointer;
+}
+
+.cell[aria-pressed="true"] {
+  border-color: var(--p-graphite);
+}
+
+.cell:focus-visible,
+.input:focus-visible {
+  outline: 2px solid var(--p-tint-ring, var(--p-ink));
+  outline-offset: 2px;
+}
+
+.cell:disabled {
+  cursor: default;
+}
+
+.img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.badge {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  padding: 2px 6px;
+  border-radius: var(--p-r-pill);
+  background: var(--p-glass-solid);
+  color: var(--p-ink);
+  font: 500 11px / 1.3 var(--p-f-ui);
+}
+
+.spin {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--p-surface) 55%, transparent);
+}
+
+.hint {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--p-ink-2);
+}
+
+.error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--p-bad);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

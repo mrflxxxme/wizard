@@ -4,10 +4,12 @@
 // preview revision), the browser check of a scenario (G0, then G1 with the scenario's goal scenarios in the process
 // Chromium of B2-28), «Запросы на развитие», the ready notice by e-mail and the niche memory of the art director.
 // platform-api runs it behind WIZARD_BUILD_PIPELINE=v3 (agents/executors.ts).
+import { createHash } from "node:crypto";
 import {
   createPageComposer,
   erroredBlockers,
   failedBlockers,
+  familyOf,
   type LibraryIndex,
   type PageComposer,
   type PhotoHost,
@@ -18,6 +20,7 @@ import {
   type ScenarioCheckResult,
   seedHintsFromBrief,
   V3_BUILD_LIMITS,
+  type V3BuildQuestion,
   type V3GateLevel,
   type V3Host,
   type V3ReadyNotice,
@@ -39,6 +42,7 @@ import { Kysely, sql } from "kysely";
 import { PostgresJSDialect } from "kysely-postgres-js";
 import type postgres from "postgres";
 import type { GoalBrowserProvider } from "../agents/goal-browser.js";
+import { loadBuildQuestions } from "../agents/interview-v3-store.js";
 import type { Mailer } from "../auth/mailer.js";
 import { getLatestBrief } from "../briefs/store.js";
 import { buildPipelineOf } from "../config.js";
@@ -316,6 +320,14 @@ export async function checkScenario(
   return { ok: true, problems: [], browser: withBrowser };
 }
 
+/** V4-09: model families that wrote the pages of run `runId` (its successful page_compose calls). */
+export async function pageAuthorFamilies(pg: postgres.Sql, runId: string): Promise<string[]> {
+  const rows = await pg<{ model_id: string }[]>`
+    select distinct c.model_id from platform.llm_calls c
+    where c.run_id = ${runId} and c.call_type = 'page_compose' and c.status = 'ok'`;
+  return [...new Set(rows.map((r) => familyOf(r.model_id)).filter((f): f is string => f !== null))];
+}
+
 /** The ready notice (D77 (10)): one letter per run to the one who started the build, with the link to the system. */
 export async function notifyReady(
   db: Db,
@@ -441,6 +453,13 @@ export async function buildByBrief(
         return v ? { version: v.version, brief: v.brief } : null;
       }),
     checkpoints: pgCheckpointStore(o.pg, systemId, host.run.id, once),
+    // V4-08: the interview's non-blocking questions come in the build, each with the assumption it builds on meanwhile.
+    questions: {
+      pending: () =>
+        once("v3_build_questions", async () =>
+          deferredAsBuildQuestions(await loadBuildQuestions(o.db, systemId)),
+        ),
+    },
     currentSpec: () => host.store.getSpec(),
     commit: (input) => host.store.commitCompiled(input),
     runGates: async (level, ov) =>
@@ -472,6 +491,8 @@ export async function buildByBrief(
               ...(o.files ? { photo: criticLibraryPhotos(o.files) } : {}),
               data: demoRows,
               log: criticLog(host.run.id, systemId),
+              // V4-09: the critic is never of the family of the model that wrote this build's pages.
+              authorFamilies: () => pageAuthorFamilies(o.pg, host.run.id),
             }),
           }
         : {}),
@@ -537,4 +558,19 @@ export async function buildByBrief(
   );
   if (out.status === "succeeded") return { status: "succeeded", summary_ru: out.summary_ru };
   throw new RunFailure(out.code, out.message_ru, out.retryable);
+}
+
+/** The interview's deferred questions as build questions: one option, the assumption, taken until the owner answers. */
+export function deferredAsBuildQuestions(
+  deferred: readonly { topic: string; text: string; assumption: string }[],
+): V3BuildQuestion[] {
+  const seen = new Set<string>();
+  const out: V3BuildQuestion[] = [];
+  for (const d of deferred) {
+    const id = `deferred_${createHash("sha256").update(d.text).digest("hex").slice(0, 12)}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, text: d.text, options: [{ id: "assumed", label: d.assumption }], recommended: "assumed" });
+  }
+  return out;
 }

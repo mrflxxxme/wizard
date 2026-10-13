@@ -2,6 +2,7 @@
 // a finding {sign, where, replace, severity, evidence} (a finding without a replacement or an observable sign is not
 // accepted), the pass decision, the score that tells whether a cycle helped, and the codes of the deterministic checks
 // (catalog B, column «код») the model is told about so that it does not repeat them.
+import { STUB_RUBRIC } from "@wizard/gates";
 import { z } from "zod";
 import { editOpSchema } from "./ops.js";
 
@@ -70,6 +71,17 @@ export function parseWhere(where: string): { route: string; width: CriticWidth; 
 
 const axisScore = z.number().int().min(0).max(4);
 
+/** V4-09: a code edit of the critic: a unique fragment of a page or section file and its replacement. */
+export const codePatchSchema = z.object({
+  file: z
+    .string()
+    .trim()
+    .regex(/^ui\/[A-Za-z0-9_/.-]+\.tsx$/),
+  find: z.string().min(3).max(1500),
+  replace: z.string().max(3000),
+});
+export type CodePatch = z.output<typeof codePatchSchema>;
+
 /** A finding: the observed sign, where, how bad, the evidence, the replacement and the edit that applies it. */
 export const findingSchema = z.object({
   sign: z.string().trim().min(3).max(200),
@@ -79,6 +91,11 @@ export const findingSchema = z.object({
   replace: z.string().trim().min(3).max(300),
   /** The closed operation that applies the replacement; null — only a person can apply it (a note). */
   edit: editOpSchema.nullable().optional(),
+  /**
+   * V4-09: a code edit of a page or section file instead of a closed operation: `find` occurs exactly once in the file,
+   * `replace` takes its place (the deterministic checks decide whether it stays).
+   */
+  patch: codePatchSchema.nullable().optional(),
 });
 export type Finding = z.output<typeof findingSchema>;
 
@@ -118,7 +135,7 @@ export function critiquePasses(c: Critique): boolean {
 
 // ------------------------------------------------------------------------------------------- deterministic checks
 
-/** Codes of the checks run in the browser without a model (catalog B ids; CLS and RENDER are ours). */
+/** Codes of the checks run in the browser without a model (catalog B ids; CLS and RENDER are ours; S01–S04 — V4-18). */
 export const CHECK_CODES = [
   "RENDER",
   "L11",
@@ -131,6 +148,10 @@ export const CHECK_CODES = [
   "I03",
   "L13",
   "M05",
+  "S01",
+  "S02",
+  "S03",
+  "S04",
 ] as const;
 export type CheckCode = (typeof CHECK_CODES)[number];
 
@@ -147,6 +168,9 @@ export const CHECK_RUBRIC: Readonly<Record<CheckCode, { label: string; severity:
   I03: { label: "картинка не загрузилась", severity: "P1" },
   L13: { label: "кнопка первого экрана ниже сгиба на 390×844", severity: "P2" },
   M05: { label: "текст скрыт в покое (opacity 0 после загрузки)", severity: "P1" },
+  // V4-18 «Без заглушек» (@wizard/gates stubs): dead links and buttons, placeholder texts, empty sections and cards,
+  // contacts not from the brief.
+  ...STUB_RUBRIC,
 };
 
 /** One problem of a deterministic check on one page at one viewport. */

@@ -33,6 +33,8 @@ export const CALL_TYPES = [
   "repo_review",
   // V4-05 (plan v4 §3): mass edits of page code (point edits, chat edits).
   "page_edit",
+  // V4-10 (D79 (6)): the vision model picks the site's photos among the library candidates.
+  "photo_pick",
 ] as const;
 export type CallType = (typeof CALL_TYPES)[number];
 /** AI actions of systems (M3-02): T0 only. */

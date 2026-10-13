@@ -1,0 +1,325 @@
+/* «Сначала показать» (V4-08): the first screen of a direction on the whole canvas (like the system itself, V4-11), the
+   bar with its name, the arrows and «Собрать в этом стиле» floats top-left over it; tokens --p-*. */
+
+.root,
+.wait,
+.sketch {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  background: var(--p-bg);
+}
+
+.frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+
+.bar {
+  position: fixed;
+  z-index: 30;
+  top: calc(env(safe-area-inset-top, 0px) + 14px);
+  left: 16px;
+  width: min(560px, calc(100% - 32px));
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: var(--p-r-xl);
+  background: var(--p-glass-solid);
+  box-shadow: var(--p-sh-float);
+  color: var(--p-ink);
+  font: 400 14px / 1.45 var(--p-f-ui);
+}
+
+.text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.count {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--p-ink-2);
+}
+
+.name {
+  margin: 0;
+  font-family: var(--p-f-serif);
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.why {
+  margin: 0;
+  color: var(--p-ink-2);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+
+.nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.arrow {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--p-line);
+  border-radius: var(--p-r-pill);
+  background: var(--p-surface);
+  color: var(--p-ink);
+  cursor: pointer;
+}
+
+.arrow svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.arrow:focus-visible {
+  outline: 2px solid var(--p-tint-ring, var(--p-ink));
+  outline-offset: 2px;
+}
+
+.dots {
+  display: inline-flex;
+  gap: 5px;
+}
+
+.dots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--p-line-2, var(--p-line));
+}
+
+.dots i[data-on] {
+  background: var(--p-ink);
+}
+
+.error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--p-bad);
+}
+
+/* ——— waiting for the screens ——— */
+.wait {
+  display: grid;
+  place-items: center;
+  padding: 24px 16px 96px;
+}
+
+.waitBox {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  max-width: 520px;
+  text-align: center;
+  color: var(--p-ink);
+}
+
+.waitTitle {
+  margin: 0;
+  font-family: var(--p-f-serif);
+  font-size: clamp(26px, 4vw, 38px);
+  line-height: 1.15;
+}
+
+.waitText {
+  margin: 0;
+  color: var(--p-ink-2);
+  font-size: 15px;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* ——— V4-17: the skeleton of the first screen while it is drawn (the brief's words, the brand colour) ——— */
+.sketch {
+  --first-accent: var(--p-ink);
+  overflow: hidden;
+}
+
+.sketchPage {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100%;
+  padding: 20px clamp(16px, 5vw, 72px);
+  background: var(--p-surface, #fff);
+}
+
+.sketchNav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 20px;
+}
+
+.sketchNav > i {
+  display: block;
+  width: 120px;
+  height: 18px;
+  border-radius: var(--p-r-pill);
+  background: var(--p-skel, var(--p-sunken));
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.sketchNav span {
+  display: flex;
+  gap: 18px;
+}
+
+.sketchNav span i {
+  display: block;
+  width: 64px;
+  height: 12px;
+  border-radius: var(--p-r-pill);
+  background: var(--p-skel, var(--p-sunken));
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.sketchHero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: clamp(20px, 4vw, 56px);
+  align-items: center;
+  padding-bottom: 120px;
+}
+
+.sketchText {
+  display: grid;
+  justify-items: start;
+  gap: 18px;
+}
+
+.sketchTitle {
+  margin: 0;
+  font-family: var(--p-f-serif);
+  font-size: clamp(32px, 5vw, 64px);
+  line-height: 1.08;
+  color: var(--p-ink);
+  opacity: 0.86;
+}
+
+.sketchLead {
+  margin: 0;
+  max-width: 44ch;
+  font-size: clamp(16px, 1.4vw, 19px);
+  color: var(--p-ink-2);
+}
+
+.sketchButton {
+  display: inline-flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 0 22px;
+  border-radius: var(--p-r-pill);
+  background: var(--first-accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.sketchPhoto {
+  height: min(56vh, 520px);
+  border-radius: var(--p-r-xl);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--first-accent) 22%, var(--p-sunken)),
+    var(--p-skel, var(--p-sunken))
+  );
+  animation: pulse 2.2s ease-in-out infinite;
+}
+
+.status {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--p-ink-2);
+}
+
+.dots i[data-wait] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--p-line-2, var(--p-line));
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.arrow:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+@media (max-width: 720px) {
+  .sketchHero {
+    grid-template-columns: 1fr;
+    align-content: start;
+    padding-top: 12px;
+  }
+
+  .sketchPhoto {
+    height: 32vh;
+    order: -1;
+  }
+
+  .sketchNav span {
+    display: none;
+  }
+}
+
+/* A wide window: the bar sits low between the island and the chat panel, off the first screen's own top. */
+@media (min-width: 1200px) {
+  .bar {
+    top: auto;
+    left: 50%;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+    transform: translateX(-50%);
+  }
+}
+
+@media (max-width: 720px) {
+  .bar {
+    top: auto;
+    left: 8px;
+    width: calc(100% - 16px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 86px);
+    padding: 12px;
+  }
+
+  .name {
+    font-size: 19px;
+  }
+
+  .why {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sketchNav > i,
+  .sketchNav span i,
+  .sketchPhoto,
+  .dots i[data-wait] {
+    animation: none;
+  }
+}

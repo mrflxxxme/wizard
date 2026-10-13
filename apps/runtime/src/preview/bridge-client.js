@@ -9,7 +9,8 @@ function wizardBridge(win, config) {
   if (!parent || parent === win) return; // not framed by the platform
   const origin = config.platformOrigin;
   const ROUTE_RE = /^\/(?![/\\])/;
-  const TOKEN_RE = /^--w-[a-z0-9-]{1,64}$/;
+  // --w-* — v2 themes; --ds-* — the v3 design system (V4-15: the sliders' preview).
+  const TOKEN_RE = /^--(?:w|ds)-[a-z0-9-]{1,64}$/;
   const MODES = ["light", "dark", "auto"];
   const PENDING = "wz-bridge-pending";
   const WZ_ID_RE = /^[0-9a-f]{8}:[0-9]+$/;
@@ -116,7 +117,7 @@ function wizardBridge(win, config) {
     for (const m of marks) place(m.box, m.el);
   };
   const swallow = (e) => {
-    if (!selecting) return;
+    if (!selecting && !editing) return;
     e.preventDefault();
     e.stopImmediatePropagation();
   };
@@ -172,6 +173,119 @@ function wizardBridge(win, config) {
   const stopSelect = () => {
     selecting = false;
     hover(null);
+  };
+
+  // ---- V4-15 instant edits: edit-mode finds the text or photo under the pointer by its source literal — data-wz-src
+  // of free TSX, else the page literals of /_wizard/source-map.json by value — and posts only their refs (never the
+  // element's text: the platform reads the literals of the revision itself).
+  const REF_RE = /^[0-9a-f]{8}:[0-9]+$/;
+  let editing = false;
+  let literals = null;
+  const loadLiterals = () => {
+    literals ??= win
+      .fetch("/_wizard/source-map.json", { credentials: "same-origin" })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null)
+      .then((m) => {
+        const text = new Map();
+        const image = new Map();
+        for (const [ref, l] of Object.entries(m && typeof m === "object" ? m : {})) {
+          if (!REF_RE.test(ref) || !l || typeof l.value !== "string") continue;
+          const index = l.kind === "image" ? image : text;
+          const key = l.kind === "image" ? l.value : l.value.replace(/\s+/g, " ").trim();
+          index.set(key, [...(index.get(key) || []), ref]);
+        }
+        return { text, image };
+      });
+    return literals;
+  };
+  let index = null;
+  const ownText = (el) => {
+    let t = "";
+    for (const n of el.childNodes) if (n.nodeType === 3) t += n.nodeValue;
+    return t.replace(/\s+/g, " ").trim();
+  };
+  /** The element showing a literal at or above `target` and its refs (up to 3 ancestors). */
+  const literalOf = (target) => {
+    let el = target && target.nodeType === 1 ? target : (target?.parentElement ?? null);
+    for (let i = 0; el && i < 4; i++, el = el.parentElement) {
+      const marked = (el.getAttribute("data-wz-src") || "").split(" ").filter((r) => REF_RE.test(r));
+      if (marked.length) return { el, refs: marked, kind: el.tagName === "IMG" ? "image" : "text" };
+      if (!index) continue;
+      if (el.tagName === "IMG") {
+        let path = "";
+        try {
+          path = new win.URL(el.currentSrc || el.src, win.location.href).pathname;
+        } catch (_e) {}
+        const refs = index.image.get(path) || index.image.get(el.getAttribute("src") || "");
+        if (refs) return { el, refs, kind: "image" };
+      }
+      const refs = index.text.get(ownText(el));
+      if (refs) return { el, refs, kind: "text" };
+    }
+    return null;
+  };
+  const onEditMove = (e) => {
+    if (!editing) return;
+    const hit = literalOf(e.target);
+    hover(hit ? hit.el : null);
+  };
+  const onEditClick = (e) => {
+    if (!editing) return;
+    swallow(e);
+    const hit = literalOf(e.target);
+    if (!hit) return;
+    const r = hit.el.getBoundingClientRect();
+    post("literal-selected", {
+      refs: hit.refs.slice(0, 20),
+      kind: hit.kind,
+      route: route(),
+      rect: { x: r.left, y: r.top, width: r.width, height: r.height },
+    });
+  };
+  const onEditKey = (e) => {
+    if (!editing || e.key !== "Escape") return;
+    swallow(e);
+    stopEdit();
+    post("select-cancelled", {});
+  };
+  let editListening = false;
+  const startEdit = () => {
+    editing = true;
+    void loadLiterals().then((i) => {
+      index = i;
+    });
+    if (editListening) return;
+    editListening = true;
+    win.addEventListener("mousemove", onEditMove, true);
+    win.addEventListener("click", onEditClick, true);
+    win.addEventListener("keydown", onEditKey, true);
+    for (const t of BLOCKED) win.addEventListener(t, swallow, true);
+    win.addEventListener("scroll", reposition, true);
+    win.addEventListener("resize", reposition);
+  };
+  const stopEdit = () => {
+    editing = false;
+    hover(null);
+  };
+  const highlightLiterals = (refs) => {
+    for (const m of marks) m.box.remove();
+    marks = [];
+    const wanted = new Set(
+      Array.isArray(refs) ? refs.filter((r) => typeof r === "string" && REF_RE.test(r)) : [],
+    );
+    if (!wanted.size) return;
+    void loadLiterals().then((i) => {
+      index = i;
+      for (const el of win.document.body.querySelectorAll("*")) {
+        if (el.getAttribute("data-wz-overlay")) continue;
+        const hit = literalOf(el);
+        if (!hit || hit.el !== el || !hit.refs.some((r) => wanted.has(r))) continue;
+        const box = overlay("selected");
+        place(box, el);
+        marks.push({ el, box });
+      }
+    });
   };
 
   const handlers = {
@@ -233,6 +347,15 @@ function wizardBridge(win, config) {
     },
     highlight: (p) => {
       if (win.document?.body) highlight(p?.wzId ?? null);
+    },
+    "edit-mode": (p) => {
+      if (p?.enabled === true) {
+        stopSelect();
+        startEdit();
+      } else if (p?.enabled === false) stopEdit();
+    },
+    "highlight-literal": (p) => {
+      if (win.document?.body) highlightLiterals(p?.refs ?? null);
     },
     navigate: (p) => {
       if (typeof p?.route !== "string" || !ROUTE_RE.test(p.route) || p.route.length > 2000) return;

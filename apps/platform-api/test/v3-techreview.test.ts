@@ -201,8 +201,8 @@ describe("platform: the techreview of a v3 build (V3-15)", () => {
     // The evidence of the chains: the latest G1 of this run.
     expect((await latestG1(api.deps.pg, run.id)).map((r) => r.level)).toEqual(["G1"]);
     const finished = ev.find((e) => e.type === "run_finished")?.payload as { summary_ru: string };
-    expect(finished.summary_ru).toContain("Техревью: проверил сборку и типы");
-    expect(finished.summary_ru).toContain("Ревьюер на модели другого семейства нашёл 0 замечаний");
+    expect(finished.summary_ru).toContain("Проверил код системы: сборку, права доступа");
+    expect(finished.summary_ru).toContain("Проверка кода второй моделью: замечаний нет.");
     expect(sys.stage).toBe("ready");
     expect(new OutboxMailer(outboxDir).list(DEV_USER_EMAIL)).toHaveLength(1);
     const cps = await api.deps.pg<{ data: { status: string; blockers: string[] } }[]>`

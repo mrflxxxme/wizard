@@ -2398,8 +2398,8 @@ tasks:
     owner: agents
     parallel_group: v4-b
     estimate_days: 1
-    status: todo
-    claimed_by: null
+    status: done
+    claimed_by: session_01G2aRP3L1VgXctxShsFmu58
     owns: ["packages/agents/src/builder/v3/art-director.ts", "packages/agents/src/directions/**", "packages/ui-kit/src/v3/design/**"]
     acceptance:
       - "Модель предлагает палитру, шрифтовую пару из каталога OFL, сетку, ритм и движение; код проверяет контраст WCAG AA, лицензии и токены и возвращает на исправление"
@@ -2408,13 +2408,13 @@ tasks:
   - id: V4-08
     title: "«Сначала показать»: три первых экрана за 90 с, 3–5 блокирующих вопросов параллельно, выбор = «Собрать»"
     milestone: V4
-    deps: [V4-07, V4-11]
+    deps: [V4-11]
     specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4"]
     owner: frontend
     parallel_group: v4-c
     estimate_days: 1.5
-    status: todo
-    claimed_by: null
+    status: done
+    claimed_by: session_01X8jgGUBZgh2j9RwccJpmf6
     owns: ["apps/platform-web/src/screens/v3/**", "packages/agents/src/interview/**", "apps/platform-api/src/builds-v3/directions/**"]
     acceptance:
       - "После первого сообщения три первых экрана на весь холст за ≤ 90 с (медиана по 3 эталонным брифам), листаются, выбор одной кнопкой"
@@ -2424,13 +2424,13 @@ tasks:
   - id: V4-09
     title: "Критик v4: снимки 390/1440, правки кода страницы, другое семейство, решают детерминированные проверки"
     milestone: V4
-    deps: [V4-05, V4-06]
+    deps: [V4-05]
     specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4", specs/agents/builder-v3.md]
     owner: agents
     parallel_group: v4-b
     estimate_days: 1
-    status: todo
-    claimed_by: null
+    status: done
+    claimed_by: session_01FAiGcdwk6WNp3eioRKs2Fc
     owns: ["packages/agents/src/builder/v3/critic/**"]
     acceptance:
       - "Критик видит настоящие снимки, правит код страниц (не только закрытый список операций), не больше 2 циклов; правка, ломающая гейт или сценарий, откатывается"
@@ -2444,7 +2444,7 @@ tasks:
     owner: platform
     parallel_group: v4-a
     estimate_days: 1.5
-    status: in_progress
+    status: done
     claimed_by: session_01HWKT1m6cHQBBtUV7d9pQhf
     owns: ["packages/build/src/stock/**", "tools/stock/** (новый)", ".github/workflows/stock-library.yml (новый)"]
     acceptance:
@@ -2472,18 +2472,38 @@ tasks:
   - id: V4-12
     title: "Правки в три слоя: мгновенные без модели, «Укажи и измени» ≤ 60 с, чат (заменяет M3-01)"
     milestone: V4
-    deps: [V4-06, V4-11]
+    deps: [V4-11, V4-15]
     specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4"]
     owner: frontend
     parallel_group: v4-c
     estimate_days: 2
-    status: todo
-    claimed_by: null
-    owns: ["apps/platform-web/src/screens/edit/** (новый)", "packages/build/src/source-map/** (новый)", "packages/agents/src/builder/v3/edit/** (новый)"]
+    status: done
+    claimed_by: session_01X8jgGUBZgh2j9RwccJpmf6
+    owns: ["apps/platform-web/src/screens/edit/** (новый)"]
+    description: >
+      Интерфейс правок (поток В). Сервер — V4-15: разметка исходников, мост превью, API мгновенных правок и ползунков,
+      агент «Укажи и измени».
     acceptance:
       - "Сборка размечает тексты и изображения ссылками на исходник; правка текста или замена фото применяется ≤ 3 с без вызова модели"
       - "Ползунки токенов (скругление, плотность, контраст, шрифтовая пара) меняют сайт мгновенно и сохраняются в дизайн-систему"
       - "Клик по элементу → правка словами меняет только файл этого компонента и применяется ≤ 60 с"
+
+  - id: V4-15
+    title: "Правки в три слоя — сервер: разметка исходников, мгновенная правка без модели, ползунки токенов, агент «Укажи и измени» для v3"
+    milestone: V4
+    deps: []
+    specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4", specs/ui/platform-screens.yaml]
+    owner: platform
+    parallel_group: v4-c
+    estimate_days: 1.5
+    status: done
+    claimed_by: session_01FAiGcdwk6WNp3eioRKs2Fc
+    owns: ["packages/build/src/source-map/** (новый)", "apps/platform-api/src/builds-v3/edit/** (новый)", "packages/agents/src/builder/v3/edit/** (новый)", "apps/runtime/src/preview/bridge-client.js"]
+    acceptance:
+      - "Черновик размечает тексты и изображения ссылками на исходник (паттерны и свободный TSX); мост отдаёт ссылки по клику без текста элемента"
+      - "Правка текста или замена фото по ссылке без модели даёт новую ревизию превью ≤ 3 с (тест)"
+      - "Ползунки токенов (скругление, плотность, контраст, шрифтовая пара) пересобирают CSS и сохраняются в дизайн-систему (тест)"
+      - "«Укажи и измени» для системы v3 меняет только файл выбранного компонента, гейты после правки, ≤ 60 с на записях (тест)"
 
   - id: V4-13
     title: "Ключи Moonshot, Xiaomi MiMo, DeepSeek и проверка визуальной модели GLM; формулировка согласия на передачу брифа у юриста"
@@ -2511,6 +2531,69 @@ tasks:
     claimed_by: null
     acceptance:
       - "Основатель собрал свои системы и дал «да»; отчёты сборок в docs/progress/v4-*"
+
+  - id: V4-16
+    title: "Фото системы: замена из библиотеки по смыслу и загрузка своих"
+    milestone: V4
+    deps: [V4-10, V4-12]
+    specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4", "specs/product.yaml#decisions.D61_stock_photos"]
+    owner: frontend
+    parallel_group: v4-c
+    estimate_days: 1
+    status: done
+    claimed_by: session_01X8jgGUBZgh2j9RwccJpmf6
+    owns: ["apps/platform-web/src/screens/edit/photos/** (новый)", "apps/platform-api/src/builds-v3/photos/** (новый)"]
+    description: >
+      Поток В. Поиск — только через публичный API библиотеки V4-10 (@wizard/agents/stock), замена — мгновенной правкой
+      V4-15 (POST /edit/literals); цветокоррекция направления ложится на фото библиотеки сама (CSS по /_wizard/photos/).
+    acceptance:
+      - "Клик по фото открывает 12–20 фото ниши, подобранных по смыслу места (текст секции + бриф), с поиском по-русски"
+      - "Выбор применяется ≤ 3 с без модели через мост V4-15 и получает цветокоррекцию направления"
+      - "«Загрузить своё»: JPEG/PNG/HEIC до 15 МБ через конвейер изображений (WebP 1600/960/480, без EXIF), фото попадает в библиотеку этой системы и сразу в слот"
+      - "Фото владельца хранятся в РФ и не попадают в общую библиотеку"
+      - "e2e: замена фото и загрузка своего в превью на 390 и 1440"
+
+  - id: V4-17
+    title: "Первые экраны потоком: первый — за 45 с, остальные дорисовываются; скелет и живой статус"
+    milestone: V4
+    deps: [V4-08]
+    specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4"]
+    owner: frontend
+    parallel_group: v4-c
+    estimate_days: 1
+    status: in_progress
+    claimed_by: session_01X8jgGUBZgh2j9RwccJpmf6
+    owns: ["apps/platform-api/src/directions/**", "apps/platform-web/src/screens/v3/first/**", "apps/platform-web/src/v3/directions/api.ts"]
+    description: >
+      Поток В. Kimi K3 отвечает 60–80 с на вызов: ждать все три направления — не «вау за 90 с». /directions рисует в
+      фоне и отдаёт направления по мере готовности, холст показывает первый экран сразу. Разбиение генерации на
+      параллельные вызовы — пути V4-07 (поток А, packages/agents/src/builder/v3/directions/**), по согласованию с ним.
+    acceptance:
+      - "/directions отдаёт направления по мере готовности (опрос); холст показывает первый экран сразу, остальные дорисовываются, готовые можно листать"
+      - "Три направления генерируются параллельно, а не одним длинным вызовом"
+      - "Пока ждём — скелет первого экрана в цветах брифа и живой статус, а не пустой экран"
+      - "Живой замер на 3 входах: время до первого экрана (цель ≤ 45 с), до всех трёх (≤ 90 с), ₽"
+
+  - id: V4-18
+    title: "Без заглушек: проверка собранного сайта на мёртвые ссылки, текст-заглушки, пустые секции и чужие контакты"
+    milestone: V4
+    deps: [V4-05]
+    specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4"]
+    owner: platform
+    parallel_group: v4-c
+    estimate_days: 1
+    status: done
+    claimed_by: session_01HWKT1m6cHQBBtUV7d9pQhf
+    owns: ["packages/gates/src/stubs/** (новый)", "packages/gates/src/index.ts (регистрация)", "packages/gates/test/stubs*.ts", ".github/workflows/ci.yml (шаг e2e: браузерный тест)", "packages/agents/src/builder/v3/critic/{rubric,types,hook}.ts (подключение S01–S04, согласовано с потоком Г)", "apps/platform-api/src/builds-v3/critic.ts (инспектор: __wzStubs.run)", "packages/agents/test/v4-critic-stubs.test.ts"]
+    description: >
+      Поток Б. Основатель видит сайты с заглушками; G0 ловит только заглушку страницы билдера. Детерминированная проверка
+      (DOM в Chromium на 390 и 1440 и разбор TSX) находит мёртвые ссылки и кнопки, текст-заглушки, пустые и повторяющиеся
+      секции, карточки без фото при слоте, контакты не из брифа. Находки — {file, селектор или литерал, код, что не так};
+      проверка принимает правку у критика V4-09 (поток Г), находки без автоисправления уходят критику как задача.
+    acceptance:
+      - "Фикстура на каждый вид заглушки находится (тест); чистый сайт — без находок"
+      - "Скрипт страницы в Chromium на 390 и 1440 находит те же виды в DOM (браузерный тест, skipIf(!hasChromium))"
+      - "Критик V4-09 получает находки как детерминированные проблемы: правка, поднявшая их штраф, отклоняется"
 
   # ---------------- M4: запуск ----------------
   - id: M4-01
