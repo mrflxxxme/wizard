@@ -1,0 +1,21 @@
+{
+  "interview_v3": ["packages/agents/src/interview-v3/prompt.ts", "packages/agents/src/interview-v3/schemas.ts"],
+  "brief_extract": ["packages/agents/src/brief-extract/draft.ts"],
+  "art_direction": [
+    "packages/agents/src/builder/v3/art-director.ts",
+    "packages/agents/src/builder/v3/directions/texts.ts",
+    "packages/agents/src/builder/v3/prompts/art-direction"
+  ],
+  "page_compose": [
+    "packages/agents/src/builder/v3/compose/scenario.ts",
+    "packages/agents/src/builder/v3/compose/copy.ts",
+    "packages/agents/src/builder/v3/prompts/page-compose"
+  ],
+  "signature_section": [
+    "packages/agents/src/builder/v3/compose/scenario.ts",
+    "packages/agents/src/builder/v3/prompts/signature-section"
+  ],
+  "critic_visual": ["packages/agents/src/builder/v3/critic/prompt.ts"],
+  "techreview": ["packages/agents/src/builder/v3/techreview/reviewer.ts"],
+  "research": ["packages/agents/src/research/research.ts"]
+}
