@@ -28,6 +28,8 @@ concurrency:
 jobs:
   acceptance:
     runs-on: ubuntu-latest
+    # The photo library bucket and its keys live in the prod environment (as stock-library.yml): read only here.
+    environment: prod
     timeout-minutes: 120
     services:
       postgres:
@@ -93,8 +95,9 @@ jobs:
           WIZARD_S3_ENDPOINT: https://s3.twcstorage.ru
           WIZARD_S3_REGION: ru-1
         run: |
-          if [ -z "$WIZARD_S3_BUCKET" ] || [ -z "$WIZARD_S3_ACCESS_KEY_ID" ]; then
-            echo "::error::Нет бакета или ключей S3 библиотеки фото (vars.WIZARD_FILES_BUCKET, secrets.AWS_*) — приёмка без фото не репрезентативна"
+          # No vars.WIZARD_FILES_BUCKET: the run finds the bucket wizard-prod-files by the key (tools/stock/fill.mjs).
+          if [ -z "$WIZARD_S3_ACCESS_KEY_ID" ]; then
+            echo "::error::Нет ключей S3 библиотеки фото (secrets.AWS_* окружения prod) — приёмка без фото не репрезентативна"
             exit 1
           fi
           pnpm --filter @wizard/e2e exec tsx ../../tools/eval/acceptance/v4.ts
