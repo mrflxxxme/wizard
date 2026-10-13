@@ -53,6 +53,7 @@ import {
   V3_STAGE_LABELS,
 } from "./harness/stages.js";
 import {
+  type ScenarioCheckResult,
   V3_HOOK_STAGES,
   V3_STAGES,
   type V3BriefVersion,
@@ -810,6 +811,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
       if (states.has(f.id) || cp?.fingerprint !== scenarioFp(f) || cp.data.status !== "passed") return false;
       priorMilli += cp.costMilli;
       scenarioLayers.set(f.id, toMap(cp.data.files));
+      const unkept = Array.isArray(cp.data.unkept) ? (cp.data.unkept as string[]) : [];
       states.set(f.id, {
         id: f.id,
         title: f.title,
@@ -817,6 +819,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
         status: "passed",
         costRub: 0,
         reused: true,
+        ...(unkept.length ? { unkept } : {}),
       });
       scenariosLeft -= 1;
       return true;
@@ -1021,25 +1024,54 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
         });
         continue;
       }
-      const extra = Math.max(0, Math.round(((r.spentRub - wallet.spentRub) / rpc) * 1000));
-      const costMilli = wallet.spentMilli + extra;
-      runMilli += costMilli;
-      calls += wallet.calls;
       // Tentatively on top of the system; the browser check decides whether it stays.
       scenarioLayers.set(next.id, r.files);
       revision = await commit(`Сценарий: ${next.title}`);
-      const routes = r.pages.map((pg) => pg.route);
       const goals = goalScenariosFor(next.scenario, brief, backend.scenarios);
-      const check = host.checkScenario
-        ? await host.runStep(`v3:check:${next.id}`, () =>
-            (host.checkScenario as NonNullable<V3Host["checkScenario"]>)({
-              scenario: next.scenario,
-              goalScenarios: goals,
-              routes,
-              revision,
-            }),
-          )
-        : { ok: true, problems: [], browser: false };
+      const checkLayer = (layer: V3ComposeResult, step: string): Promise<ScenarioCheckResult> =>
+        host.checkScenario
+          ? host.runStep(step, () =>
+              (host.checkScenario as NonNullable<V3Host["checkScenario"]>)({
+                scenario: next.scenario,
+                goalScenarios: goals,
+                routes: layer.pages.map((pg) => pg.route),
+                revision,
+              }),
+            )
+          : Promise.resolve({ ok: true, problems: [], browser: false });
+      let check = await checkLayer(r, `v3:check:${next.id}`);
+      let composedRub = r.spentRub;
+      // V4-21: the gates passed but promises of its «видит …» steps are not shown — one repair with the reasons, then
+      // the better of the two layers (fewer promises not kept); never more than one round per scenario.
+      const unkept = check.ok ? (check.unkept ?? []) : [];
+      if (unkept.length) {
+        const first = { r, check };
+        let again: V3ComposeResult | null = null;
+        try {
+          again = await host.runStep(`v3:${key}:repair`, () =>
+            host.composer.scenario({ ...ctxFor(wallet), repair: unkept }, next.scenario),
+          );
+        } catch (e) {
+          if (!(e instanceof V3BudgetError)) throw e;
+        }
+        if (again) {
+          composedRub += again.spentRub;
+          scenarioLayers.set(next.id, again.files);
+          revision = await commit(`Сценарий: ${next.title} (исправление)`);
+          const second = await checkLayer(again, `v3:check:${next.id}:repair`);
+          if (second.ok && !second.unavailable && (second.unkept?.length ?? 0) < unkept.length) {
+            r = again;
+            check = second;
+          } else {
+            scenarioLayers.set(next.id, first.r.files);
+            revision = await commit(`Сценарий: ${next.title}`);
+          }
+        }
+      }
+      const extra = Math.max(0, Math.round(((composedRub - wallet.spentRub) / rpc) * 1000));
+      const costMilli = wallet.spentMilli + extra;
+      runMilli += costMilli;
+      calls += wallet.calls;
       const durationMs = Math.max(0, now() - started);
       durations.push(durationMs);
       scenarioSec = Math.round(durations.reduce((s, x) => s + x, 0) / durations.length / 1000);
@@ -1068,23 +1100,31 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
           `Готово: ${next.title}. Проверить в браузере не удалось из-за временного сбоя — сценарий проверят итоговые проверки. Сейчас ${spendLine(spentRub(), limits.capRub)}.`,
         );
       } else if (check.ok) {
+        const left = check.unkept ?? [];
         states.set(next.id, {
           id: next.id,
           title: next.title,
           priority: next.priority,
           status: "passed",
           costRub,
+          ...(left.length ? { unkept: left } : {}),
         });
         await save({
           key,
           fingerprint: fp,
-          data: { status: "passed", files: toEntries(r.files), pages: r.pages, notes: r.notes },
+          data: {
+            status: "passed",
+            files: toEntries(r.files),
+            pages: r.pages,
+            notes: r.notes,
+            ...(left.length ? { unkept: left } : {}),
+          },
           costMilli,
           durationMs,
         });
         await say(
           `v3s_${next.id}`,
-          `Готово: ${next.title}.${host.checkScenario ? ` Проверил в браузере.` : ""} Сейчас ${spendLine(spentRub(), limits.capRub)}.`,
+          `Готово: ${next.title}.${host.checkScenario ? ` Проверил в браузере.` : ""}${left.length ? ` Не всё обещанное показано: ${left[0]} Записал в «Запросы на развитие».` : ""} Сейчас ${spendLine(spentRub(), limits.capRub)}.`,
         );
       } else {
         scenarioLayers.delete(next.id);
@@ -1254,7 +1294,14 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
     if (gates.data.ownerInput === true) notes = [...notes, OWNER_INPUT_NOTE_RU];
 
     // What is left goes to «Запросы на развитие»; the substitute is the system without it.
-    for (const s of states.values())
+    for (const s of states.values()) {
+      // V4-21: a scenario that works but does not show all it promises.
+      if (s.status === "passed" && s.unkept?.length)
+        await request(
+          `promise:${s.id}:${sha256(s.unkept).slice(0, 16)}`,
+          `Сценарий брифа: ${s.title} — ${s.unkept.join(" ")}`,
+          "Сценарий работает; недостающее можно доделать правкой.",
+        );
       if (s.status !== "passed")
         await request(
           `scenario:${s.id}:${sha256(features.find((f) => f.id === s.id)?.scenario ?? s.id).slice(0, 16)}`,
@@ -1263,6 +1310,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
             ? "Пока система работает без этого сценария — его можно доделать правкой."
             : "Не успели в этой сборке — можно доделать правкой или следующей сборкой.",
         );
+    }
   } catch (e) {
     const costRub = milliRub(runMilli, rpc);
     if (e instanceof V3Failure) {
