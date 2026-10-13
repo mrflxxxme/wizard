@@ -40,6 +40,7 @@ import {
   signatureFallback,
   variantsFor,
 } from "./ops.js";
+import { ownerCriticNotes, ownerEdit, ruPlaces } from "./owner.js";
 import { CRITIC_CALL_TYPE, type CritiqueHistory, critiqueMessages, critiqueTool } from "./prompt.js";
 import {
   CHECK_RUBRIC,
@@ -147,7 +148,12 @@ export interface CriticReport {
   inspections: number;
   /** Changed files (path → source; null — delete). */
   files: Map<string, string | null>;
+  /** What the owner reads (V4-09: plain words, no routes or keys; ownerCriticNotes). */
   notes: string[];
+  /** The accepted model edits as the owner reads them («заголовок первого экрана главной»). */
+  owner: string[];
+  /** The technical lines for the staff (routes, anchors, scores) — the report V4-04, not the owner. */
+  details: string[];
   /** The design system after token edits (absent — the critic kept ctx.design); the harness applies it (V3-14 seam). */
   design?: DesignSystemV3;
 }
@@ -272,12 +278,7 @@ export function describeEdit(op: EditOp): string {
   }
 }
 
-const RU_PROBLEMS = (n: number) =>
-  n % 10 === 1 && n % 100 !== 11
-    ? "место"
-    : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14)
-      ? "места"
-      : "мест";
+const RU_PROBLEMS = ruPlaces;
 
 /** Runs the critic on a build context (the hook wraps it; tests read the report). */
 export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<CriticReport> {
@@ -306,6 +307,8 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
     inspections: 0,
     files: new Map(),
     notes: [],
+    owner: [],
+    details: [],
   };
   const skip = (reason: string): CriticReport => ({ ...report, status: "skipped", reason, notes: [reason] });
 
@@ -744,6 +747,7 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
         shotsOf = state;
       }
       cycle.applied = accepted.map((x) => x.summary);
+      report.owner.push(...accepted.map((x) => ownerEdit(state.site, x.change)));
     } else {
       let s2 = state;
       for (const x of accepted) {
@@ -755,6 +759,7 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
           state = s2;
           problems = t2.problems;
           cycle.applied.push(x.summary);
+          report.owner.push(ownerEdit(state.site, x.change));
         } else {
           cycle.rejected.push({ edit: describeChange(x.change), reason_ru: `откат: ${t2.reason}` });
           report.rolledBack.push(`${x.summary} (${t2.reason})`);
@@ -777,12 +782,18 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
     state.site === site0 && state.design === ctx.design && !state.code?.length
       ? new Map()
       : changed(layerOf(state), ctx.files);
-  report.notes = criticNotes(report);
+  report.details = criticNotes(report);
+  report.notes = ownerCriticNotes({
+    edits: report.owner,
+    fixes: report.fixes,
+    left: problemDigest(report.left),
+    site: state.site,
+  });
   if (state.design !== ctx.design) report.design = state.design;
   return report;
 }
 
-/** Short Russian notes for the client: what was looked at, what changed, what is left. */
+/** The technical lines for the staff report: what was looked at, what changed (routes, anchors), what is left. */
 function criticNotes(r: CriticReport): string[] {
   const out: string[] = [];
   const scores = r.cycles.map((c) => c.score);
@@ -823,15 +834,16 @@ export function createCriticHook(o: CriticOptions): V3StageHook {
       },
       // Model calls went through ctx.route: the harness wallet has them.
       spentRub: 0,
-      note: [
-        `циклов ${r.cycles.length}`,
-        ...(scores.length ? [`оценка ${scores.join("→")}`] : []),
-        `проверки ${r.before.penalty}→${r.after.penalty}`,
-        `правок ${r.fixes.length + r.cycles.reduce((s, c) => s + c.applied.length, 0)}`,
-        ...(r.rolledBack.length ? [`откатов ${r.rolledBack.length}`] : []),
-        `${r.spentRub} ₽`,
-        `стоп ${r.stop}`,
-      ].join(", "),
+      note:
+        [
+          `циклов ${r.cycles.length}`,
+          ...(scores.length ? [`оценка ${scores.join("→")}`] : []),
+          `проверки ${r.before.penalty}→${r.after.penalty}`,
+          `правок ${r.fixes.length + r.cycles.reduce((s, c) => s + c.applied.length, 0)}`,
+          ...(r.rolledBack.length ? [`откатов ${r.rolledBack.length}`] : []),
+          `${r.spentRub} ₽`,
+          `стоп ${r.stop}`,
+        ].join(", ") + (r.details.length ? ` | ${r.details.join(" ")}` : ""),
     };
   };
 }

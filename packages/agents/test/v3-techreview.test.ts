@@ -698,9 +698,7 @@ describe("V3-15 techreview: the reviewer of another family, ≤ 2 rounds, blocke
     expect(poor.seen).toEqual([]);
     expect(r.reviewer).toMatchObject({ status: "skipped", reason: "бюджет этапа исчерпан", calls: 0 });
     expect(r.blockers).toEqual([]);
-    expect(r.notes[1]).toBe(
-      "Ревьюер не ответил (бюджет этапа исчерпан) — систему проверила детерминированная часть.",
-    );
+    expect(r.notes[1]).toBe("Вторая проверка кода сейчас недоступна — систему проверили автоматические проверки.");
     // No recorded answer (models unavailable): the same.
     const none = reviewed([]);
     const r2 = await runTechreview(none.ctx);
@@ -798,7 +796,7 @@ describe("V3-15 techreview in the harness v3", () => {
     if (out.status !== "succeeded") throw new Error(JSON.stringify(out));
     expect(out.stages.techreview?.status).toBe("done");
     expect(out.stages.techreview?.note).toMatch(/ревьюер mimo-v2.6-pro/);
-    expect(out.summary_ru).toContain("Техревью: проверил сборку и типы");
+    expect(out.summary_ru).toContain("Проверил код системы: сборку, права доступа");
     expect(ok.calls.filter((c) => c.callType === "techreview").map((c) => c.avoidFamilies)).toEqual([
       ["glm", "kimi"],
     ]);
