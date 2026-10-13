@@ -179,7 +179,7 @@ describe("V4-06: the page as free code", () => {
     const { ctx, site, facts } = await prepared();
     const home = site.pages[0] as SitePage;
     const req = pageCodeRequest({ facts, site, page: home, scenario: LEAD, design: ctx.design });
-    const thin = { ...HOME, sections: HOME.sections.filter((s) => s.kind === "keep" || s.id === "hero") };
+    const thin = { ...HOME, sections: HOME.sections.filter((s) => s.id === "hero" || s.id === "catalog" || s.id === "form") };
     expect(thin.sections.length).toBeLessThan(HOME_MIN_SECTIONS);
     expect(((await req.tool.check?.(thin)) ?? []).map((i) => i.code)).toContain("THIN_PAGE");
     expect(((await req.tool.check?.(HOME)) ?? []).map((i) => i.code)).not.toContain("THIN_PAGE");
