@@ -189,9 +189,9 @@ describe("platform: the techreview of a v3 build (V3-15)", () => {
     // the final G0 is not run again — the revision is the one the last scenario's G0 passed (nothing changed since).
     expect(gates.map((g) => g.level)).toEqual(["G0", "G0", "G1", "G0", "G1", "G1", "G2"]);
     expect(gates.at(-2)?.revision).toBe(gates.at(-3)?.revision);
-    // The reviewer: MiMo V2.6 Pro (V4-05), a model of another family than the builder's page_compose (Kimi K3).
+    // The reviewer: MiMo V2.6 Pro (V4-05), a model of another family than the builder's page_compose (GLM-5.3, V4-06).
     const builder = await runBuilderFamilies(api.deps.pg, run.id);
-    expect(builder).toEqual(["kimi"]);
+    expect(builder).toEqual(["glm"]);
     const review = calls.filter((c) => c.call_type === "techreview");
     expect(review).toEqual([
       { call_type: "techreview", tier: "T1", model_id: "mimo-v2.6-pro", status: "ok" },
