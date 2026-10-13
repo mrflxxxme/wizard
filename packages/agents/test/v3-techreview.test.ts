@@ -698,7 +698,9 @@ describe("V3-15 techreview: the reviewer of another family, ≤ 2 rounds, blocke
     expect(poor.seen).toEqual([]);
     expect(r.reviewer).toMatchObject({ status: "skipped", reason: "бюджет этапа исчерпан", calls: 0 });
     expect(r.blockers).toEqual([]);
-    expect(r.notes[1]).toBe("Вторая проверка кода сейчас недоступна — систему проверили автоматические проверки.");
+    expect(r.notes[1]).toBe(
+      "Вторая проверка кода сейчас недоступна — систему проверили автоматические проверки.",
+    );
     // No recorded answer (models unavailable): the same.
     const none = reviewed([]);
     const r2 = await runTechreview(none.ctx);
