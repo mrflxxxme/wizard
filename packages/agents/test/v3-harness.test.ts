@@ -388,6 +388,76 @@ describe("harness v3: browser check, stop rules, «Запросы на разв�
     expect(rec.calls).toHaveLength(6);
   });
 
+  // V4-21: promises of a scenario's «видит …» steps not shown — the gates passed, so the layer stays; one repair with
+  // the reasons; the better of the two layers; what is still not shown goes to the requests.
+  const PRICES =
+    "Обещано в сценарии «показывает услуги с ценами «от»»: цены не показаны — нужны цены у услуг.";
+  test("promises not kept: one repair with the reasons fixes them; the scenario passed, no request", async () => {
+    const sys = newSys();
+    let n = 0;
+    const { out, rec, composer } = await build(sys, {
+      check: (c) =>
+        c.scenario.id === "s_prices" && n++ === 0
+          ? { ok: true, problems: [], browser: true, unkept: [PRICES] }
+          : { ok: true, problems: [], browser: true },
+    });
+    const r = ok(out);
+    expect(composer.log.filter((l) => l.id === "s_prices").map((l) => l.repair ?? null)).toEqual([
+      null,
+      [PRICES],
+    ]);
+    expect(rec.checks.filter((c) => c.scenario.id === "s_prices")).toHaveLength(2);
+    expect(rec.calls).toHaveLength(7);
+    expect(r.scenarios.find((s) => s.id === "s_prices")).toMatchObject({ status: "passed" });
+    expect(r.scenarios.find((s) => s.id === "s_prices")?.unkept).toBeUndefined();
+    expect(sys.requests).toEqual([]);
+  });
+
+  test("promises the repair does not fix: the layer stays (not rolled back), one round only, they go to the requests", async () => {
+    const sys = newSys();
+    const { out, rec, composer } = await build(sys, {
+      check: (c) =>
+        c.scenario.id === "s_prices"
+          ? { ok: true, problems: [], browser: true, unkept: [PRICES] }
+          : { ok: true, problems: [], browser: true },
+    });
+    const r = ok(out);
+    expect(composer.log.filter((l) => l.id === "s_prices")).toHaveLength(2);
+    expect(rec.calls).toHaveLength(7);
+    expect(r.scenarios.find((s) => s.id === "s_prices")).toMatchObject({
+      status: "passed",
+      unkept: [PRICES],
+    });
+    expect(r.scenarios.every((s) => s.status === "passed")).toBe(true);
+    // The scenario's page stays on the system.
+    expect(Object.values(sys.files).some((src) => src.includes("показывает услуги с ценами"))).toBe(true);
+    expect(sys.requests).toEqual([
+      expect.objectContaining({ quote: expect.stringContaining("цены не показаны — нужны цены у услуг") }),
+    ]);
+    const lines = rec.events.filter((e) => e.type === "agent_message").map((e) => String(e.payload.text));
+    expect(lines.some((t) => t.includes("Не всё обещанное показано"))).toBe(true);
+  });
+
+  test("a repair that breaks the gates: the first layer is put back, its promises go to the requests", async () => {
+    const sys = newSys();
+    let n = 0;
+    const { out } = await build(sys, {
+      check: (c) => {
+        if (c.scenario.id !== "s_prices") return { ok: true, problems: [], browser: true };
+        return n++ === 0
+          ? { ok: true, problems: [], browser: true, unkept: [PRICES] }
+          : { ok: false, problems: ["Страница не открылась"], browser: true };
+      },
+    });
+    const r = ok(out);
+    expect(r.scenarios.find((s) => s.id === "s_prices")).toMatchObject({
+      status: "passed",
+      unkept: [PRICES],
+    });
+    expect(sys.commits.filter((c) => c.includes("услуги и цены"))).toHaveLength(3);
+    expect(Object.values(sys.files).some((src) => src.includes("показывает услуги с ценами"))).toBe(true);
+  });
+
   test("time: scenarios stop before the 30-minute cap; the rest goes to the requests with a Russian reason", async () => {
     const sys = newSys();
     const { out, clock, composer } = await build(sys, { latency: { page_compose: 8 * MIN } });

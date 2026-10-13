@@ -6,9 +6,17 @@ on:
   workflow_dispatch:
     inputs:
       probes:
-        description: "Пробы через запятую: llm (модели маршрута v4), art (арт-директор V4-07), page (страница кодом V4-06)"
+        description: "Пробы через запятую: llm (модели маршрута v4), art (арт-директор V4-07), page (страница кодом V4-06), quality (качество главной по моделям: снимки и критик)"
         type: string
         default: "page"
+      sections:
+        description: "Страница по секциям (проба page, V4-06 скорость)"
+        type: boolean
+        default: false
+      models:
+        description: "Модели одна за другой на маршрутах страницы (проба page), через запятую"
+        type: string
+        default: ""
   push:
     branches: ["task/V4-0*"]
     paths:
@@ -25,7 +33,7 @@ concurrency:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -34,13 +42,21 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The critic and quality probes open the site in Chromium (real screenshots at 390/1440).
+      - if: contains(inputs.probes, 'critic') || contains(inputs.probes, 'quality')
+        run: pnpm --filter @wizard/e2e exec playwright install --with-deps chromium
       - name: Probe
         env:
           # Which probes run (each test skips unless named); a push runs the probe of the stage in work.
           WIZARD_STAGE_PROBE: ${{ inputs.probes || 'page' }}
           WIZARD_LLM_MODE: live
+          WIZARD_PROBE_SECTIONS: ${{ inputs.sections && '1' || '' }}
+          WIZARD_PROBE_MODELS: ${{ inputs.models || '' }}
           KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          # The RF chains (Cloud.ru FM): the T0 reserve of every route and the models measured on T0.
+          CLOUDRU_API_KEY: ${{ secrets.CLOUDRU_API_KEY }}
+          CLOUDRU_BASE_URL: ${{ vars.CLOUDRU_BASE_URL }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           MIMO_API_KEY: ${{ secrets.MIMO_API_KEY }}
         run: npx vitest run stage-probe --reporter=verbose

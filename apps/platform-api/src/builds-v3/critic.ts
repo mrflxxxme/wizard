@@ -128,6 +128,8 @@ export interface CriticInspectorOptions {
    */
   data?: (spec: AppSpec) => CriticDemoRows | Promise<CriticDemoRows>;
   log?: (msg: string, fields?: Record<string, string | number>) => void;
+  /** V4-21: called on each open page once its pictures have loaded (the scenario promises read its sections). */
+  probe?: (page: Page, route: string) => Promise<void>;
 }
 
 type Doc = Record<string, unknown>;
@@ -572,6 +574,7 @@ export function criticInspector(o: CriticInspectorOptions): CriticInspector {
               )) as StubPageResult;
               for (const p of stubs.problems)
                 if (p.code !== "S04" || input.contacts) at(p.section, p.code, `${p.text}: «${p.literal}»`);
+              if (o.probe) await o.probe(page, route);
               for (const s of wanted.filter((x) => x.route === route))
                 shots.push(await shoot(page, blank as Page, s, r, vp.height, inflight));
             } catch (e) {
