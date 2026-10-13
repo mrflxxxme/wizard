@@ -26,6 +26,8 @@ export {
   type SemanticPhotosResult,
   semanticPhotos,
 } from "./photos.js";
+/** photo_pick: the vision model assigns the candidates to the slots (null on failure — rank order). */
+export { modelPhotoPicker, PHOTO_PICK_CALL_TYPE, photoPickMessages, photoPickTool } from "./pick.js";
 /** Shards, manifest and requests in the file storage; SemanticLibrary.search — candidates by cosine. */
 export {
   type Candidate,

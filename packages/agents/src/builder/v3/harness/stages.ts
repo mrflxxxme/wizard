@@ -44,6 +44,8 @@ export const DEFAULT_V3_BUDGETS: Readonly<V3Budgets> = {
   critic: 60,
   techreview: 60,
   scenarioMin: 40,
+  // V4-10: 20 small photos and a short answer; the upper bound takes Kimi K3 of the chain (≈ 4 ₽).
+  photos: 6,
 };
 
 const rubText = (x: number) => `${Math.round(x).toLocaleString("ru-RU")} ₽`;
