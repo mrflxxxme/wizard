@@ -24,7 +24,6 @@ import {
   storedProposal,
   toProposal,
 } from "../src/builder/index.js";
-import { defineTool } from "../src/core/tool.js";
 import { fixtureLine } from "./build-v2-fixtures.js";
 import { fiveDirections } from "./v4-art-fixtures.js";
 

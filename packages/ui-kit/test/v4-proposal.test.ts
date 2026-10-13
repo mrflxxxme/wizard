@@ -6,7 +6,7 @@ import { contrast } from "../src/tokens/color.js";
 import {
   cssHex,
   type DesignProposal,
-  designDistance,
+  designDiversity,
   designFromProposal,
   designLintErrors,
   pickDistinct,
@@ -128,8 +128,6 @@ describe("V4-07 design proposal: code checks, the model chooses", () => {
     }));
     const picked = pickDistinct(list, 3);
     expect(picked.map((x) => x.name)).toEqual(["Тёплая витрина", "Ночная пекарня", "Чистая сетка"]);
-    for (let i = 0; i < 3; i++)
-      for (let j = i + 1; j < 3; j++)
-        expect(designDistance(picked[i]!.design, picked[j]!.design)).toBeGreaterThan(0.5);
+    expect(designDiversity(picked.map((x) => x.design)).minDistance).toBeGreaterThan(0.5);
   });
 });
