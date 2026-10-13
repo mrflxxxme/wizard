@@ -2413,8 +2413,8 @@ tasks:
     owner: frontend
     parallel_group: v4-c
     estimate_days: 1.5
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: session_01X8jgGUBZgh2j9RwccJpmf6
     owns: ["apps/platform-web/src/screens/v3/**", "packages/agents/src/interview/**", "apps/platform-api/src/builds-v3/directions/**"]
     acceptance:
       - "После первого сообщения три первых экрана на весь холст за ≤ 90 с (медиана по 3 эталонным брифам), листаются, выбор одной кнопкой"
