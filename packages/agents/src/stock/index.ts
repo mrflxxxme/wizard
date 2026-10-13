@@ -1,0 +1,72 @@
+// @wizard/agents/stock (V4-10, D79 (6)): the semantic photo library — niche catalog, shards with SigLIP embeddings,
+// search by the meaning of a Russian query, backfill requests, the SigLIP encoders and the photo grade of a direction.
+
+/** Niches CI fills, in priority order; shard slugs of requested niches. */
+export {
+  CATALOG,
+  type CatalogNiche,
+  catalogNiche,
+  NICHE_TARGET,
+  normalizeNicheText,
+  requestSlug,
+} from "./catalog.js";
+/** One CSS filter for every photo of a site from the direction's treatment and accent. */
+export { GRADED_PHOTOS, type PhotoGrade, photoGrade, photoGradeCss } from "./grade.js";
+/** Shards, manifest and requests in the file storage; SemanticLibrary.search — candidates by cosine. */
+export {
+  type Candidate,
+  decodeVectors,
+  EMBED_DIM,
+  encodeVectors,
+  GOOD_SCORE,
+  hitOfEntry,
+  type LibraryObjects,
+  type LibraryPhotoEntry,
+  loadSemanticLibrary,
+  MAX_REQUESTS,
+  type Manifest,
+  MIN_GOOD,
+  type NicheRequests,
+  needsBackfill,
+  normalize,
+  pick,
+  type QuantizedVectors,
+  quantize,
+  readManifest,
+  readRequests,
+  readShard,
+  requestBackfill,
+  SEMANTIC_MODEL,
+  SEMANTIC_OBJECTS,
+  SEMANTIC_VERSION,
+  type SearchOptions,
+  type SemanticEntry,
+  SemanticLibrary,
+  type Shard,
+  sourceOf,
+  storageObjects,
+  vectorsChecksum,
+  writeManifest,
+  writeRequests,
+  writeShard,
+} from "./semantic.js";
+/** SigLIP 2 towers over onnxruntime-node: pinned files, image input without sharp, a lazily loaded text encoder. */
+export {
+  ensureModelFiles,
+  type ImageEmbedder,
+  imageInput,
+  lazyTextEncoder,
+  loadImageEncoder,
+  loadTextEncoder,
+  localName,
+  padTokens,
+  type Rgba,
+  SIGLIP,
+  type SiglipFile,
+  sha256,
+  siglipUrl,
+  TEXT_FILES,
+  type TextEmbedder,
+  textForModel,
+  VISION_FILES,
+} from "./siglip.js";
