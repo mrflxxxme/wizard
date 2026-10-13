@@ -9,7 +9,8 @@ function wizardBridge(win, config) {
   if (!parent || parent === win) return; // not framed by the platform
   const origin = config.platformOrigin;
   const ROUTE_RE = /^\/(?![/\\])/;
-  const TOKEN_RE = /^--w-[a-z0-9-]{1,64}$/;
+  // --w-* — v2 themes; --ds-* — the v3 design system (V4-15: the sliders' preview).
+  const TOKEN_RE = /^--(?:w|ds)-[a-z0-9-]{1,64}$/;
   const MODES = ["light", "dark", "auto"];
   const PENDING = "wz-bridge-pending";
   const WZ_ID_RE = /^[0-9a-f]{8}:[0-9]+$/;

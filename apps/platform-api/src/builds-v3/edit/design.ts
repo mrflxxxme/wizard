@@ -26,6 +26,37 @@ export interface DesignControlsView extends DesignControls {
   fontPairs: { id: string; label: string }[];
 }
 
+/** CSS variables (--ds-*) each slider value changes against the current design — for apply-theme-tokens, no request. */
+export interface DesignPreview {
+  radius: Record<string, Record<string, string>>;
+  density: Record<string, Record<string, string>>;
+  contrast: Record<string, Record<string, string>>;
+  fontPair: Record<string, Record<string, string>>;
+}
+
+/** The --ds-* variables of the design's :root (the light scheme for colours: public sites keep their scheme). */
+function designVars(ds: DesignSystemV3): Map<string, string> {
+  const css = designCss(ds);
+  return new Map(
+    [...css.matchAll(/(--ds-[a-z0-9-]+):([^;{}]+);/g)].map((m) => [m[1] as string, (m[2] as string).trim()]),
+  );
+}
+
+export function designPreview(ds: DesignSystemV3, original?: DesignSystemV3): DesignPreview {
+  const base = designVars(ds);
+  const diff = (c: Partial<DesignControls>) => {
+    const next = designVars(applyControls(ds, c, original));
+    return Object.fromEntries([...next].filter(([k, v]) => base.get(k) !== v));
+  };
+  const view = designControls(ds);
+  return {
+    radius: Object.fromEntries(RADII.map((v) => [v, diff({ radius: v })])),
+    density: Object.fromEntries(DENSITIES.map((v) => [v, diff({ density: v })])),
+    contrast: Object.fromEntries(CONTRASTS.map((v) => [v, diff({ contrast: v })])),
+    fontPair: Object.fromEntries(view.fontPairs.map((p) => [p.id, diff({ fontPair: p.id })])),
+  };
+}
+
 /** Checkpoints whose design the harness merges, later ones over earlier (run.ts: design, then the hooks). */
 const DESIGN_KEYS = ["design", "critic", "template_gate", "techreview"] as const;
 

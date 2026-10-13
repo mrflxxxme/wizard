@@ -8,7 +8,15 @@ import { z } from "zod";
 import { notFound } from "../../errors.js";
 import { type AppEnv, checkOrgAccess, isUuid } from "../../http/auth.js";
 import { jsonBody } from "../../http/util.js";
-import { CONTRASTS, DENSITIES, designControls, editDesign, effectiveDesign, RADII } from "./design.js";
+import {
+  CONTRASTS,
+  DENSITIES,
+  designControls,
+  designPreview,
+  editDesign,
+  effectiveDesign,
+  RADII,
+} from "./design.js";
 import { draftLiterals, type EditDeps, editLiterals } from "./literals.js";
 
 const REF = z.string().regex(/^[0-9a-f]{8}:\d{1,7}$/);
@@ -60,7 +68,12 @@ export function editRoutes(d: EditDeps & { pg: postgres.Sql }): Hono<AppEnv> {
     checkOrgAccess(c.get("user"), s.org_id, "viewer", "Система");
     const eff = await effectiveDesign(d.pg, s.id);
     if (!eff) throw notFound("Стиль");
-    return c.json({ revision: s.draft_revision, ...designControls(eff.design) });
+    const first = eff.holders[0]?.data?.design as Parameters<typeof designPreview>[1];
+    return c.json({
+      revision: s.draft_revision,
+      ...designControls(eff.design),
+      preview: designPreview(eff.design, first),
+    });
   });
 
   r.post("/systems/:id/edit/design", async (c) => {

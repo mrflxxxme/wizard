@@ -119,4 +119,15 @@ describe("V4-15: edit-mode of the preview bridge", () => {
     await flush();
     expect(document.querySelectorAll('[data-wz-overlay="selected"]')).toHaveLength(0);
   });
+
+  test("apply-theme-tokens takes the v3 design variables (--ds-*) of the sliders' preview", () => {
+    const { send } = boot();
+    send("apply-theme-tokens", {
+      tokens: { "--ds-radius-md": "0px", "--evil": "x", "--ds-color-muted": "oklch(0.3 0 0)" },
+    });
+    const st = document.documentElement.style;
+    expect(st.getPropertyValue("--ds-radius-md")).toBe("0px");
+    expect(st.getPropertyValue("--ds-color-muted")).toBe("oklch(0.3 0 0)");
+    expect(st.getPropertyValue("--evil")).toBe("");
+  });
 });

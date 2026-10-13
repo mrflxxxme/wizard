@@ -210,6 +210,11 @@ describe("V4-15: instant edits without a model", () => {
     expect(g.status).toBe(200);
     const pair = (g.body.fontPairs as { id: string }[]).find((p) => p.id !== g.body.fontPair);
     const radius = g.body.radius === "sharp" ? "round" : "sharp";
+    // The preview of every slider value: the --ds-* variables it changes (apply-theme-tokens, no request).
+    expect(Object.keys(g.body.preview.radius).sort()).toEqual(["crisp", "round", "sharp", "soft"]);
+    expect(g.body.preview.radius[radius]).toHaveProperty("--ds-radius-md");
+    expect(g.body.preview.radius[g.body.radius]).toEqual({});
+    expect(g.body.preview.contrast.high).toHaveProperty("--ds-color-muted");
     const density = g.body.density === "airy" ? "compact" : "airy";
     const t0 = Date.now();
     const r = await api.req("POST", `/systems/${systemId}/edit/design`, {
