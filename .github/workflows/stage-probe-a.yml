@@ -38,7 +38,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # The critic probe opens the site in Chromium (real screenshots at 390/1440).
       - if: contains(inputs.probes || 'critic', 'critic')
-        run: npx playwright install --with-deps chromium
+        run: pnpm --filter @wizard/e2e exec playwright install --with-deps chromium
       - name: Probe
         env:
           # Which probes run (each test skips unless named); a push runs the probe of the stage in work.
