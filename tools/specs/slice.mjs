@@ -234,9 +234,13 @@ export function sliceFile(file, { anchor = null, milestone = null, root = ROOT }
  * else the task's own milestone; `milestone: false` disables filtering of entries without the suffix.
  */
 export function sliceTask(taskId, { milestone = null, root = ROOT } = {}) {
-  const backlog = parseYamlFiles([join(root, "specs/backlog.yaml")])[join(root, "specs/backlog.yaml")];
+  const sources = ["specs/backlog.yaml", "specs/backlog-archive.yaml"].map((f) => join(root, f)).filter((f) => existsSync(f));
+  const parsed = parseYamlFiles(sources);
+  const backlog = parsed[join(root, "specs/backlog.yaml")];
   if (!backlog || "error" in backlog) throw new Error(`backlog.yaml не разбирается: ${backlog?.error}`);
-  const task = backlog.ok.tasks.find((t) => t.id === taskId);
+  const archive = parsed[join(root, "specs/backlog-archive.yaml")];
+  const all = [...backlog.ok.tasks, ...(archive && !("error" in archive) ? (archive.ok?.tasks ?? []) : [])];
+  const task = all.find((t) => t.id === taskId);
   if (!task) throw new Error(`задача не найдена: ${taskId}`);
   const parts = [];
   const files = new Set();
