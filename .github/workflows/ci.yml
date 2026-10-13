@@ -1,13 +1,20 @@
 name: ci
 # GitHub Free: 2 000 Actions minutes a month for a private repository. Branch pushes are covered by their PR run
 # (no second run per push); a newer push to the same PR cancels the older run.
+# V4-02 fast lane (product.yaml#decisions.D79_v4 (11)): a PR runs lint, code checks, typecheck and the node tests of
+# what it changed (vitest --changed against the base) — target ≤ 10 min; the full suite (browser suites, e2e, goal
+# shards, perf) runs on main after the merge. Main keeps one running and one pending run (concurrency): merges that
+# land while a run is going collapse into the newest one. A red main opens or updates the issue «main красный»;
+# a green main is deployed to prod by deploy-auto.yml.
 on:
   push:
     branches: [main]
   pull_request:
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.sha }}
+  group: ci-${{ github.event.pull_request.number || 'main' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+permissions:
+  contents: read
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -26,6 +33,9 @@ jobs:
       WIZARD_LLM_MODE: fixture
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The PR's base is needed for the changed-only typecheck and tests.
+          fetch-depth: ${{ github.event_name == 'pull_request' && '0' || '1' }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -35,13 +45,37 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm check:code
-      - run: pnpm typecheck
-      - run: pnpm test
-      # Time budgets alone, after the parallel suite (vitest.config.ts: perf).
-      - run: pnpm test:perf
       - run: node tools/specs/validate.mjs
         if: hashFiles('tools/specs/validate.mjs') != ''
+      # PR: the packages it changed and their dependents; main: everything.
+      - name: typecheck (PR — changed packages and dependents)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # Root config or the lockfile changed → every package.
+          if git diff --name-only "$BASE" HEAD | grep -qE '^(pnpm-lock\.yaml|tsconfig\.base\.json|package\.json|pnpm-workspace\.yaml)$'; then
+            pnpm typecheck
+          else
+            pnpm --filter "...[$BASE]" --if-present typecheck
+          fi
+      - name: typecheck
+        if: github.event_name != 'pull_request'
+        run: pnpm typecheck
+      # PR: node tests related to the changed files (vitest's module graph); browser suites wait for main.
+      - name: test (PR — related to the change)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: pnpm exec vitest run --project node --changed "$BASE" --passWithNoTests
+      - name: test
+        if: github.event_name != 'pull_request'
+        run: pnpm test
+      # Time budgets alone, after the parallel suite (vitest.config.ts: perf).
+      - run: pnpm test:perf
+        if: github.event_name != 'pull_request'
   e2e:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     needs: build
     services:
@@ -115,6 +149,7 @@ jobs:
   # B2-24/B2-28 (gates.yaml#G1.browser.ci): goal scenarios of the modules and 390 px in Chromium, the matrix rows split
   # over three runners (WIZARD_GOALS_SHARD) next to e2e — each ≤ 8 min; the build job has no browser.
   goals:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     needs: build
     strategy:
@@ -294,3 +329,22 @@ jobs:
             tofu -chdir="$m" init -backend=false -input=false
             tofu -chdir="$m" test
           done
+  # V4-02: a red main opens the issue «main красный» (or comments on the open one) with the run — the agents fix main
+  # before anything else (AGENTS.md, fast lane). Closed by hand once main is green again.
+  main-red:
+    if: failure() && github.event_name == 'push'
+    needs: [build, e2e, goals, supply-chain, pgbouncer, deploy-lint]
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SHA: ${{ github.sha }}
+        run: |
+          title="main красный"
+          body="CI на main упал: $RUN (коммит $SHA). Чинится раньше всего остального (AGENTS.md, быстрая полоса V4)."
+          num=$(gh issue list -R "$REPO" --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$num" ]; then gh issue comment "$num" -R "$REPO" --body "$body"; else gh issue create -R "$REPO" --title "$title" --body "$body"; fi
