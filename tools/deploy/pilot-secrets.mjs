@@ -204,8 +204,7 @@ export const PLATFORM_PASSTHROUGH = [
   "YANDEX_API_KEY",
   "YANDEX_FOLDER_ID",
   "YANDEX_BASE_URL",
-  // V4-05 (D79 (5)): Kimi (Moonshot), DeepSeek and Xiaomi MiMo for the build stages; MIMO_API_KEY is fed from the
-  // working secret MIMO_SECOND_API_KEY by the workflow (V4-13 probe).
+  // V4-05 (D79 (5)): Kimi (Moonshot), DeepSeek and Xiaomi MiMo for the build stages (keys checked by provider-probe).
   "KIMI_API_KEY",
   "MOONSHOT_BASE_URL",
   "DEEPSEEK_API_KEY",
