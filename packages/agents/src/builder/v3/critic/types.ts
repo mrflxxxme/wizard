@@ -2,6 +2,7 @@
 // in its Chromium slot (apps/platform-api/src/builds-v3/critic.ts): it builds the system's files, opens each page at
 // each viewport, runs CRITIC_CHECKS_SCRIPT and takes the screenshots, downscaled to the sizes asked.
 import type { AppSpec } from "@wizard/appspec";
+import type { KnownContacts } from "@wizard/gates";
 import type { CriticViewport } from "./checks.js";
 import type { CriticWidth, DeterministicProblem } from "./rubric.js";
 
@@ -37,6 +38,8 @@ export interface CriticInspectInput {
   shots: readonly CriticShotRequest[];
   /** Families of the design system the pages must load (T16). */
   fonts: readonly string[];
+  /** V4-18: contacts the owner gave (brief, request, operator's data); a phone or e-mail beyond them is S04. */
+  contacts?: KnownContacts;
   signal?: AbortSignal;
 }
 

@@ -107,6 +107,8 @@ export {
 } from "./goals/types.js";
 /** passed = no blocker with fail/error; summary counts by status. */
 export { isPassed, summarize } from "./report.js";
+/** V4-18 «Без заглушек»: stubFindings (TSX), STUB_CHECKS_SCRIPT (page), codes S01–S04 with STUB_RUBRIC, knownContacts. */
+export * from "./stubs/index.js";
 /**
  * V3-14 template gate: site fingerprint (site-model structure, DOM_SKETCH_SCRIPT shapes, pHash/dHash of screenshots),
  * siteSimilarity and templateVerdict against the memory of recent sites with TEMPLATE_THRESHOLD; no model.

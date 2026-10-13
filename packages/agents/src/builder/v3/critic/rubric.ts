@@ -2,6 +2,7 @@
 // a finding {sign, where, replace, severity, evidence} (a finding without a replacement or an observable sign is not
 // accepted), the pass decision, the score that tells whether a cycle helped, and the codes of the deterministic checks
 // (catalog B, column «код») the model is told about so that it does not repeat them.
+import { STUB_RUBRIC } from "@wizard/gates";
 import { z } from "zod";
 import { editOpSchema } from "./ops.js";
 
@@ -134,7 +135,7 @@ export function critiquePasses(c: Critique): boolean {
 
 // ------------------------------------------------------------------------------------------- deterministic checks
 
-/** Codes of the checks run in the browser without a model (catalog B ids; CLS and RENDER are ours). */
+/** Codes of the checks run in the browser without a model (catalog B ids; CLS and RENDER are ours; S01–S04 — V4-18). */
 export const CHECK_CODES = [
   "RENDER",
   "L11",
@@ -147,6 +148,10 @@ export const CHECK_CODES = [
   "I03",
   "L13",
   "M05",
+  "S01",
+  "S02",
+  "S03",
+  "S04",
 ] as const;
 export type CheckCode = (typeof CHECK_CODES)[number];
 
@@ -163,6 +168,9 @@ export const CHECK_RUBRIC: Readonly<Record<CheckCode, { label: string; severity:
   I03: { label: "картинка не загрузилась", severity: "P1" },
   L13: { label: "кнопка первого экрана ниже сгиба на 390×844", severity: "P2" },
   M05: { label: "текст скрыт в покое (opacity 0 после загрузки)", severity: "P1" },
+  // V4-18 «Без заглушек» (@wizard/gates stubs): dead links and buttons, placeholder texts, empty sections and cards,
+  // contacts not from the brief.
+  ...STUB_RUBRIC,
 };
 
 /** One problem of a deterministic check on one page at one viewport. */
