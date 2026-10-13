@@ -400,23 +400,24 @@ describe("V3-15 techreview: the deterministic part", () => {
 });
 
 describe("V3-15 techreview: the reviewer of another family, ≤ 2 rounds, blockers", () => {
-  test("another family than the builder: the chain skips glm and kimi (and the run's own families), T0 only", async () => {
+  test("another family than the builder: the chain skips glm and kimi (and the run's own families)", async () => {
     expect(defaultBuilderFamilies()).toEqual(["glm", "kimi"]);
     const { ctx, seen, outs } = reviewed([{ findings: [] }]);
     const r = await runTechreview(ctx);
     expect(r.blockers).toEqual([]);
     expect(seen.map((s) => s.callType)).toEqual(["techreview"]);
     expect(seen[0]?.avoidFamilies).toEqual(["glm", "kimi"]);
-    expect(outs[0]).toMatchObject({ tier: "T0", model: "gpt-oss-120b" });
-    expect(familyOf(outs[0]?.model ?? "")).toBe("gpt-oss");
-    expect(r.reviewer).toMatchObject({ status: "done", calls: 1, model: "gpt-oss-120b" });
+    // V4-05 (plan v4 §3): MiMo V2.6 Pro heads the techreview.
+    expect(outs[0]).toMatchObject({ tier: "T1", model: "mimo-v2.6-pro" });
+    expect(familyOf(outs[0]?.model ?? "")).toBe("mimo");
+    expect(r.reviewer).toMatchObject({ status: "done", calls: 1, model: "mimo-v2.6-pro" });
     expect(r.reviewer.costRub).toBeGreaterThan(0);
-    // The run's builder answered on gpt-oss (a fallback): the reviewer goes further down the chain.
+    // The run's builder answered on mimo (a fallback): the reviewer goes further down the chain.
     const again = reviewed([{ findings: [] }]);
-    const r2 = await runTechreview(again.ctx, { builderFamilies: async () => ["gpt-oss"] });
-    expect(again.seen[0]?.avoidFamilies).toEqual(["glm", "gpt-oss", "kimi"]);
-    expect(again.outs[0]?.model).toBe("gigachat-3.5");
-    expect(r2.reviewer.model).toBe("gigachat-3.5");
+    const r2 = await runTechreview(again.ctx, { builderFamilies: async () => ["mimo"] });
+    expect(again.seen[0]?.avoidFamilies).toEqual(["glm", "kimi", "mimo"]);
+    expect(again.outs[0]?.model).toBe("gpt-oss-120b");
+    expect(r2.reviewer.model).toBe("gpt-oss-120b");
   }, 120_000);
 
   test("a deterministic blocker fixed by the reviewer's patch in functions/custom/**; round 2 is clean → published", async () => {
@@ -796,7 +797,7 @@ describe("V3-15 techreview in the harness v3", () => {
     const out = await runBuildV3(ok.host, { appName: "Клиника" });
     if (out.status !== "succeeded") throw new Error(JSON.stringify(out));
     expect(out.stages.techreview?.status).toBe("done");
-    expect(out.stages.techreview?.note).toMatch(/ревьюер gpt-oss-120b/);
+    expect(out.stages.techreview?.note).toMatch(/ревьюер mimo-v2.6-pro/);
     expect(out.summary_ru).toContain("Техревью: проверил сборку и типы");
     expect(ok.calls.filter((c) => c.callType === "techreview").map((c) => c.avoidFamilies)).toEqual([
       ["glm", "kimi"],

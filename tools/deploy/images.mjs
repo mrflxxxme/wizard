@@ -6,9 +6,10 @@
 // with --push they go to the environment's registry (tools/deploy/infra.mjs --build-images on the self-hosted runner):
 // the in-cluster registry of a k3s environment over the VPC (plain HTTP: list it in the runner's Docker
 // insecure-registries) or a managed registry after `docker login`. Images are loaded into the local Docker first and
-// pushed by the daemon, so its registry settings apply. --mirror public.ecr.aws takes the Docker Hub base images
-// (the `ARG *_IMAGE=` defaults of the Dockerfiles) from the ECR Public mirror of the official images: GitHub-hosted
-// runners hit Docker Hub's anonymous pull limit (429).
+// pushed by the daemon, so its registry settings apply. --mirror <host>[/path] takes the Docker Hub base images
+// (the `ARG *_IMAGE=` defaults of the Dockerfiles) from a mirror with ECR Public's layout: CI uses the GHCR copy
+// ghcr.io/<owner>/mirror (mirror-images.yml), because GitHub-hosted runners hit the anonymous pull limits of Docker
+// Hub and of ECR Public (429); --mirror public.ecr.aws still works.
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -41,7 +42,7 @@ export function parseArgs(argv) {
   if (command !== "build") throw new Error("command: build");
   if (!/^[a-z0-9.-]+(:\d+)?(\/[a-z0-9._-]+)*$/.test(o.registry)) throw new Error("bad --registry");
   if (!/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/.test(o.tag)) throw new Error("bad --tag");
-  if (o.mirror && !/^[a-z0-9.-]+(:\d+)?$/.test(o.mirror)) throw new Error("bad --mirror");
+  if (o.mirror && !/^[a-z0-9.-]+(:\d+)?(\/[a-z0-9._-]+)*$/.test(o.mirror)) throw new Error("bad --mirror");
   return o;
 }
 

@@ -217,13 +217,13 @@ describe("three directions after the brief", () => {
       );
       expect(d.palette.accent).toMatch(/^#[0-9A-F]{6}$/);
     }
-    // The texts call is journaled like every model call (T1 after scrub).
+    // The texts call is journaled like every model call (T1, a build stage without scrub — D79 (3)).
     const calls = await api.deps.pg<
       { call_type: string; tier: string; scrubbed: boolean; cost_rub: string }[]
     >`
       select call_type, tier, scrubbed, cost_rub from platform.llm_calls where system_id = ${main}`;
     expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatchObject({ call_type: "art_direction", tier: "T1", scrubbed: true });
+    expect(calls[0]).toMatchObject({ call_type: "art_direction", tier: "T1", scrubbed: false });
     expect(Number(calls[0]?.cost_rub)).toBeLessThanOrEqual(40);
     // A chat card announces them; GET returns the same set.
     const chat = await api.deps.pg<{ role: string; text: string; payload: Record<string, unknown> }[]>`

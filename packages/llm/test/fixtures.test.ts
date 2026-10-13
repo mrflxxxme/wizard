@@ -296,7 +296,7 @@ describe("record mode (eval.yaml#fixtures.rules, L3-07)", () => {
     expect(loadAllowedBriefHashes().has(briefHash(EVAL_BRIEF))).toBe(true);
   });
 
-  test("appends tools/fixtures/<suite>/<name>.jsonl; T0 requests stored after scrub; replay by the scrubbed key", async () => {
+  test("appends tools/fixtures/<suite>/<name>.jsonl; requests stored after scrub; replay by the scrubbed key", async () => {
     const recorder = createRouter({
       mode: "record",
       fixture: { suite: "eval", name: "ev-01", dir, brief: EVAL_BRIEF },
@@ -307,7 +307,7 @@ describe("record mode (eval.yaml#fixtures.rules, L3-07)", () => {
     const messages: LlmMessage[] = [
       { role: "user", content: `${EVAL_BRIEF}\nКонтакт: rec.canary@example.ru, +7 916 555-44-33` },
     ];
-    // interview with PII → T0; the request still goes out raw to T0, but the fixture keeps only the scrubbed form.
+    // interview with PII: a build stage goes out raw (D79 (3)), but the fixture keeps only the scrubbed form.
     const live = await recorder.route({
       callType: "interview",
       messages,
@@ -315,14 +315,14 @@ describe("record mode (eval.yaml#fixtures.rules, L3-07)", () => {
       orgPolicy: OPEN,
       ctx,
     });
-    expect(live.tier).toBe("T0");
+    expect(live.tier).toBe("T1");
     expect(stub.requests.at(-1)?.raw).toContain("rec.canary@example.ru");
     const file = readFileSync(join(dir, "eval", "ev-01.jsonl"), "utf8");
     expect(file).not.toContain("rec.canary@example.ru");
     expect(file).not.toContain("555-44-33");
-    expect(file).not.toMatch(/test-cloudru|authorization/i);
+    expect(file).not.toMatch(/test-zai|authorization/i);
     const rec = JSON.parse(file.trim()) as FixtureLine;
-    expect(rec).toMatchObject({ v: 1, callType: "interview", modelId: "glm-5.1" });
+    expect(rec).toMatchObject({ v: 1, callType: "interview", modelId: "glm-5.3" });
     expect(JSON.stringify(rec.request.messages)).toContain("[EMAIL_1]");
     expect(rec.usage).toEqual({ promptTokens: 1000, cachedPromptTokens: 400, completionTokens: 200 });
 

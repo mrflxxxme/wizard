@@ -34,7 +34,7 @@ export function storageObjects(
         size: number;
         entity: string;
         field: string;
-        uploadedBy: null;
+        uploadedBy: string | null;
         uploadedAt: string;
       },
     ): Promise<void>;

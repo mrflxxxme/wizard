@@ -41,17 +41,18 @@ const CALL_PROFILE = {
   system_plan: { reasoning: 4000, latencyMs: 120_000 },
   build_texts: { reasoning: 800, latencyMs: 40_000 },
   build_design: { reasoning: 500, latencyMs: 18_000 },
-  art_direction: { reasoning: 500, latencyMs: 18_000 },
+  // V4-05 (plan v4 §3): Kimi K3 heads the art director and the page code.
+  art_direction: { reasoning: 500, latencyMs: 18_000, model: "kimi-k3" },
   build_custom: { reasoning: 1500, latencyMs: 90_000 },
-  // V3-04: T0 only — the first model of the route chain answers (models.yaml#routes.brief_extract).
-  brief_extract: { reasoning: 0, latencyMs: 25_000, model: "gigachat-3.5" },
+  // V4-05: the brief is a build stage (D79 (3)) — GLM-5.3 on T1, no scrub.
+  brief_extract: { reasoning: 0, latencyMs: 25_000 },
   // V3-03: one turn of the grill interview (brief update + question, or a search).
   interview_v3: { reasoning: 1200, latencyMs: 30_000 },
   // V3-12 / V3-11: the page composer of a scenario and the signature sections (compose/, v3-harness-fixtures.ts).
-  page_compose: { reasoning: 1200, latencyMs: 60_000 },
+  page_compose: { reasoning: 1200, latencyMs: 60_000, model: "kimi-k3" },
   signature_section: { reasoning: 1500, latencyMs: 90_000 },
-  // V3-13: the visual critic — with screenshots the router keeps it on T0, the first vision model of the chain answers.
-  critic_visual: { reasoning: 1500, latencyMs: 45_000, model: "kimi-k2.6" },
+  // V4-05: the visual critic — screenshots go abroad (D79 (3)), the GLM vision model answers.
+  critic_visual: { reasoning: 1500, latencyMs: 45_000, model: "glm-5v-turbo" },
   // V3-15: the reviewer of the techreview — T0, another family than the builder (models.yaml#routes.techreview head).
   techreview: { reasoning: 1500, latencyMs: 60_000, model: "deepseek-v4-pro" },
 } as const;

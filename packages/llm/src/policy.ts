@@ -1,7 +1,13 @@
 // Deterministic routing policy: models.yaml#routing_algorithm steps 1–7, constraints of data-boundary.yaml#routing.
 import { KIND_INFO, type Kind, scrubJson } from "@wizard/pii";
 import { LlmError } from "./errors.js";
-import { CLIENT_CODE_CALL_TYPES, PII_FORBIDDEN_FOR_T1, type Registry } from "./registry.js";
+import {
+  CLIENT_CODE_CALL_TYPES,
+  isBuildCallType,
+  PII_FORBIDDEN_FOR_T1,
+  type Registry,
+  SIGNAL_PII_KINDS,
+} from "./registry.js";
 import {
   CALL_TYPES,
   type CallType,
@@ -25,6 +31,13 @@ export interface PolicyDecision {
   dlp: Dlp;
   /** Messages after pii scrub (one numbering across the whole call). Always computed: fixture keys use it for any tier. */
   scrubbedMessages: LlmMessage[];
+  /**
+   * What a T1 model receives (D79 (3)): build stages — the original messages, nothing is masked; the other call types
+   * — scrubbedMessages.
+   */
+  outboundMessages: LlmMessage[];
+  /** outboundMessages are the scrubbed ones (usage_record.scrubbed of a T1 attempt). */
+  scrub: boolean;
 }
 
 export function isCallType(v: string): v is CallType {
@@ -38,14 +51,14 @@ export function hasAttachments(messages: readonly LlmMessage[]): boolean {
 
 /**
  * Hard guard of the T0-only calls (data-boundary.yaml#call_types: runtime_ai_*, support; the client's repository code
- * of V3-32 — repo_code, repo_review; multimodal calls of models.yaml#credits.runtime_ai). The router checks it before
- * every attempt, whatever the policy decided.
+ * of V3-32 — repo_code, repo_review; multimodal calls outside the build stages, models.yaml#credits.runtime_ai). The
+ * router checks it before every attempt, whatever the policy decided. Images of build stages may go abroad (D79 (3)).
  */
 export function t1Forbidden(callType: CallType, messages: readonly LlmMessage[]): boolean {
   return (
     PII_FORBIDDEN_FOR_T1.always.includes(callType) ||
     CLIENT_CODE_CALL_TYPES.includes(callType) ||
-    hasAttachments(messages)
+    (!isBuildCallType(callType) && hasAttachments(messages))
   );
 }
 
@@ -89,7 +102,15 @@ export interface DecideInput {
   messages: readonly LlmMessage[];
   containsPiiHint?: boolean;
   orgPolicy?: OrgPolicy | null;
+  /**
+   * The pre-v4 boundary (BYOK, D77 (14б)): every call is scrubbed, any high-risk PII, an image or PII in the raw owner
+   * input (STRICT_ANY_PII) keeps it in RF. Platform calls of build stages follow D79 (3) instead.
+   */
+  strict?: boolean;
 }
+
+/** Raw owner input (chat, brief files) under the strict boundary: any detector finding → T0 (pii_detected_interview). */
+export const STRICT_ANY_PII: readonly CallType[] = ["interview", "interview_v3", "brief_extract"];
 
 export function decideTier(input: DecideInput, reg: Registry): PolicyDecision {
   let scrubbed: { messages: LlmMessage[]; dlp: Dlp };
@@ -102,24 +123,30 @@ export function decideTier(input: DecideInput, reg: Registry): PolicyDecision {
       reason: "pii_high_risk",
       dlp: { counts: {}, total: 0, highRisk: true },
       scrubbedMessages: [...input.messages],
+      outboundMessages: [...input.messages],
+      scrub: false,
     };
   }
   const { dlp } = scrubbed;
+  const ct = input.callType;
+  const build = input.strict !== true && isBuildCallType(ct);
+  const outbound = { outboundMessages: build ? [...input.messages] : scrubbed.messages, scrub: !build };
   const t0 = (reason: RouteReason): PolicyDecision => ({
     tier: "T0",
     reason,
     dlp,
     scrubbedMessages: scrubbed.messages,
+    ...outbound,
   });
   const policy = input.orgPolicy;
-  const ct = input.callType;
   if (policy?.ruOnly === true) return t0("policy_ru_only");
   if (policy?.t1Restricted !== false) return t0("policy_region_restricted");
   if (PII_FORBIDDEN_FOR_T1.always.includes(ct)) return t0("callType_forbidden_T1");
   // V3-32 (D77 (4)): a client's repository code goes only to models with inference in RF.
   if (CLIENT_CODE_CALL_TYPES.includes(ct)) return t0("callType_forbidden_T1");
-  // Images and PDFs cannot be scrubbed: a multimodal call is T0 whatever its callType (M3-02).
-  if (hasAttachments(input.messages)) return t0("pii_hint");
+  // Images and PDFs cannot be scrubbed: a multimodal call outside the build stages is T0 (M3-02); build stages send
+  // their screenshots, logos and references abroad (D79 (3)).
+  if (!build && hasAttachments(input.messages)) return t0("pii_hint");
   if (
     PII_FORBIDDEN_FOR_T1.conditional.includes(ct) &&
     !(input.containsPiiHint === false && dlp.total === 0)
@@ -127,12 +154,15 @@ export function decideTier(input: DecideInput, reg: Registry): PolicyDecision {
     return t0("callType_forbidden_T1");
   }
   if (input.containsPiiHint === true) return t0("pii_hint");
-  if (dlp.highRisk) return t0("pii_high_risk");
-  if (PII_FORBIDDEN_FOR_T1.anyPii.includes(ct) && dlp.total > 0) return t0("pii_detected_interview");
+  // D79 (3): build stages stop only at the signal filter (passport, SNILS, card number); the rest — at any high risk.
+  if (build ? SIGNAL_PII_KINDS.some((k) => (dlp.counts[k] ?? 0) > 0) : dlp.highRisk)
+    return t0("pii_high_risk");
+  if (input.strict === true && STRICT_ANY_PII.includes(ct) && dlp.total > 0)
+    return t0("pii_detected_interview");
   const route = reg.routes[ct];
   const tier: Tier = route.defaultTier === "T1" && reg.buildDefaultTier === "T1" ? "T1" : "T0";
   return tier === "T1"
-    ? { tier, reason: "default_T1", dlp, scrubbedMessages: scrubbed.messages }
+    ? { tier, reason: "default_T1", dlp, scrubbedMessages: scrubbed.messages, ...outbound }
     : t0("default_T0");
 }
 

@@ -46,7 +46,7 @@ export const SHAPE_MODELS = {
 
 /** The routes' answer limits (models.yaml#routes; a test keeps them equal). */
 export const SHAPE_ROUTES = {
-  critic: { maxTokens: 4000, timeoutMs: 180_000 },
+  critic: { maxTokens: 4000, timeoutMs: 240_000 },
   techreview: { maxTokens: 8000, timeoutMs: 300_000 },
 };
 

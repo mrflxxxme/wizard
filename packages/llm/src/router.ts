@@ -320,7 +320,7 @@ export function createRouter(opts: RouterOptions = {}): Router {
       },
       reg,
     );
-    if (decision.tier === "T1") assertNoTokens(decision.scrubbedMessages);
+    if (decision.tier === "T1") assertNoTokens(decision.outboundMessages);
 
     // Step 8 + fallback_rules: the T1 chain only when the policy chose T1; T0 is always the reserve. T0 → T1 only as
     // the opt-in reserve of a call that is T0 by default alone (t1Reserve, D76), scrubbed and token-free.
@@ -331,7 +331,7 @@ export function createRouter(opts: RouterOptions = {}): Router {
       !t0Only &&
       decision.tier === "T0" &&
       decision.reason === "default_T0" &&
-      !containsTokens(decision.scrubbedMessages);
+      !containsTokens(decision.outboundMessages);
     const tiers =
       decision.tier === "T1" && !t0Only
         ? (["T1", "T0"] as const)
@@ -396,7 +396,7 @@ export function createRouter(opts: RouterOptions = {}): Router {
         routeReason: reason,
         fallbackFrom,
         policyVersion: version,
-        scrubbed: model.tier === "T1",
+        scrubbed: model.tier === "T1" && decision.scrub,
         piiCategoriesCount: { ...decision.dlp.counts },
         inputTokens: usage.inputTokens,
         cachedTokens: usage.cachedTokens,
@@ -423,7 +423,7 @@ export function createRouter(opts: RouterOptions = {}): Router {
       creditsCharged: charged / 1000,
       creditsMilli: charged,
       routeReason: reason,
-      scrubbed: model.tier === "T1",
+      scrubbed: model.tier === "T1" && decision.scrub,
       ruFallback: (decision.tier === "T1" || switched !== null) && model.tier === "T0",
     });
 
@@ -515,8 +515,8 @@ export function createRouter(opts: RouterOptions = {}): Router {
         continue;
       }
 
-      // T1 gets only scrubbed messages; T0 may receive the original ones (fallback_rules MAY).
-      const messages = model.tier === "T1" ? decision.scrubbedMessages : input.messages;
+      // T1 gets the outbound messages (scrubbed outside the build stages, D79 (3)); T0 may receive the original ones.
+      const messages = model.tier === "T1" ? decision.outboundMessages : input.messages;
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
         // The breaker may open (or the provider run dry) during our own retries: stop hitting this model.
         if (attempt > 1 && (circuit.providerBlocked(model.provider) || !circuit.allow(cKey))) break;
@@ -537,7 +537,8 @@ export function createRouter(opts: RouterOptions = {}): Router {
             messages,
             ...(input.tools ? { tools: input.tools } : {}),
             toolChoice: input.toolChoice ?? "auto",
-            temperature: routeDef.temperature,
+            // A model with a fixed temperature (kimi-k3: 1) gets it; the request key keeps the route's one.
+            temperature: model.temperature ?? routeDef.temperature,
             maxTokens: routeDef.maxTokens,
             signal,
             env,

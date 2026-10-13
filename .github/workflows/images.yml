@@ -65,8 +65,9 @@ jobs:
     env:
       TAG: ${{ inputs.sha || github.sha }}
       IMAGE: ${{ matrix.image }}
-      # Docker Hub base images from the ECR Public mirror (anonymous Docker Hub pulls hit 429 on hosted runners).
-      BASE_MIRROR: public.ecr.aws
+      # Docker Hub base images from the GHCR mirror (mirror-images.yml): anonymous pulls from Docker Hub and ECR Public
+      # hit 429 on hosted runners.
+      BASE_MIRROR: ghcr.io/${{ github.repository_owner }}/mirror
       REGISTRY: ${{ vars.WIZARD_REGISTRY_STAGING }}
       REGISTRY_USER: ${{ secrets.CLOUDRU_REGISTRY_USER }}
       REGISTRY_PASSWORD: ${{ secrets.CLOUDRU_REGISTRY_PASSWORD }}
@@ -97,6 +98,11 @@ jobs:
         if: steps.have.outputs.exists != 'true'
         with:
           driver: docker
+      - name: Log in to the base image mirror
+        if: steps.have.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
       - name: Build
         if: steps.have.outputs.exists != 'true'
         run: node tools/deploy/images.mjs build --only "$IMAGE" --tag "$TAG" --mirror "$BASE_MIRROR"

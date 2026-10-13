@@ -461,7 +461,10 @@ describe("the canvas of a built v3 system", () => {
       keys: { list: async () => ({ items: [], windows: [], needed: [] }) },
     } as unknown as Partial<ApiClient>;
     await mount(api, h(Canvas, { systemId: SYS, initial: view }));
+    // V4-11: the settings under «Ещё», the publication under its icon of the island.
+    await click("canvas-island-more");
     expect($("canvas-settings")?.getAttribute("href")).toBe(`/s/${SYS}/settings`);
+    await click("canvas-island-publish");
     expect($("canvas-v3-publish")).not.toBeNull();
     expect($("canvas-ready")).toBeNull();
 

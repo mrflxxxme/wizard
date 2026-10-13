@@ -26,6 +26,7 @@ permissions:
   contents: read
   actions: read
   issues: write
+  packages: read
 # One live run at a time: the ledger is read, spent and written back without races.
 concurrency:
   group: eval-live-budget
@@ -40,7 +41,10 @@ jobs:
     environment: eval-live
     services:
       postgres:
-        image: public.ecr.aws/docker/library/postgres:16
+        image: ghcr.io/${{ github.repository_owner }}/mirror/docker/library/postgres:16
+        credentials:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
         env:
           POSTGRES_USER: wizard
           POSTGRES_HOST_AUTH_METHOD: trust

@@ -153,8 +153,8 @@ describe("--dry-run: canaries and pii_leaks", async () => {
       expect(r?.g0g1_pass, id).toBe(true);
       expect(r?.pii.t1Payloads, id).toBeGreaterThan(0);
       expect(r?.pii_leaks, id).toBe(0);
-      // The brief with PII goes to T0 for the interview (models.yaml#routing_algorithm).
-      expect(r?.llm_calls.byCallType.interview, id).toMatch(/^T0:pii_detected/);
+      // V4-05 (D79 (3)): the interview is a build stage — the brief with basic PII goes to T1 as is.
+      expect(r?.llm_calls.byCallType.interview, id).toMatch(/^T1:default_T1/);
     }
     expect(result.runs.find((x) => x.brief === "hz-04-client-crm")).toMatchObject({ fixture: "demo/forum" });
     expect(hardViolations(result)).toEqual([]);

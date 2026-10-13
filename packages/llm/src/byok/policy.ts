@@ -119,7 +119,7 @@ export function byokDecision(input: DecideInput, reg: Registry): ByokDecision {
     buildDefaultTier: "T1",
     routes: { ...reg.routes, [input.callType]: { ...route, defaultTier: "T1" } },
   };
-  const decision = decideTier(input, asT1);
+  const decision = decideTier({ ...input, strict: true }, asT1);
   if (decision.tier !== "T1") return { ok: false, reason: decision.reason };
   if (containsTokens(decision.scrubbedMessages)) return { ok: false, reason: "tokens" };
   return { ok: true, decision, messages: decision.scrubbedMessages };

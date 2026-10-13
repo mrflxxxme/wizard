@@ -202,9 +202,17 @@ describe("multimodal: images and PDF only on T0", () => {
     { role: "user", content: "Что на фото?", attachments: [{ mime: "image/png", data: png }] },
   ];
 
-  test("decideTier: an attachment forces T0 for any callType and policy (pii_hint)", () => {
+  test("decideTier: an attachment forces T0 outside the build stages (pii_hint); build stages send it abroad (D79 (3))", () => {
     const reg = createRegistry({ buildDefaultTier: "T1" });
-    for (const callType of ["interview", "build_code", "qa_explain", "import_mapping"] as const) {
+    for (const callType of ["interview", "build_code", "critic_visual", "art_direction"] as const) {
+      const d = decideTier(
+        { callType, messages: withImage, orgPolicy: { ruOnly: false, t1Restricted: false } },
+        reg,
+      );
+      expect([d.tier, d.reason], callType).toEqual(["T1", "default_T1"]);
+      expect(() => assertTierAllowed(callType, "T1", withImage)).not.toThrow();
+    }
+    for (const callType of ["import_mapping", "runtime_ai_extract", "support", "repo_code"] as const) {
       const d = decideTier(
         {
           callType,

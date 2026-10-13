@@ -172,7 +172,7 @@ describe("Z.ai as the reserve of Cloud.ru (t1Reserve, D76)", () => {
   const t0Default = createRegistry({ buildDefaultTier: "T0" });
   const PHONE = "+7 916 123-45-67";
 
-  test("T0 by default only + Cloud.ru empty → Z.ai gets the call, scrubbed", async () => {
+  test("T0 by default only + Cloud.ru empty → Z.ai gets the call (a build stage — as is, D79 (3))", async () => {
     stub.respond.cloudru = paymentRequired;
     const { router } = mk({ registry: t0Default, t1Reserve: true });
     const out = await router.route({
@@ -181,10 +181,9 @@ describe("Z.ai as the reserve of Cloud.ru (t1Reserve, D76)", () => {
       orgPolicy: OPEN,
       ctx,
     });
-    expect([out.tier, out.model, out.scrubbed, out.ruFallback]).toEqual(["T1", "glm-5.3", true, false]);
+    expect([out.tier, out.model, out.scrubbed, out.ruFallback]).toEqual(["T1", "glm-5.3", false, false]);
     const zai = stub.requests.filter((r) => r.provider === "zai");
     expect(zai).toHaveLength(1);
-    expect(zai[0]?.raw).not.toContain("916");
   });
 
   test("off by default, and never for T0 chosen for data reasons or T0-only calls", async () => {

@@ -363,8 +363,8 @@ describe("V3-13 critic", () => {
       [1, 38, false],
       [2, 75, true],
     ]);
-    // Screenshots are images: the router keeps critic_visual on T0 (data-boundary critic_visual: T1 only after D62).
-    expect(r.cycles.map((c) => `${c.tier}:${c.model}`)).toEqual(["T0:kimi-k2.6", "T0:kimi-k2.6"]);
+    // V4-05 (D79 (3)): screenshots go abroad to the GLM vision model.
+    expect(r.cycles.map((c) => `${c.tier}:${c.model}`)).toEqual(["T1:glm-5v-turbo", "T1:glm-5v-turbo"]);
     expect(fx.calls.map((c) => c.callType)).toEqual(["critic_visual", "critic_visual"]);
     const user = fx.calls[0]?.messages.find((m) => m.role === "user");
     expect(user && "attachments" in user ? user.attachments?.length : 0).toBe(2);
