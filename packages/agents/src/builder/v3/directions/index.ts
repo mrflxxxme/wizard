@@ -20,6 +20,7 @@ export {
 } from "./preview.js";
 export {
   briefDesign,
+  type DirectionsBase,
   type DirectionsInput,
   type DirectionsModel,
   type DirectionsProposal,
@@ -27,6 +28,7 @@ export {
   directionsNiche,
   isDirectionsProposal,
   PROPOSAL_KIND,
+  type ProposeOptions,
   pickedDesign,
   previewNav,
   proposalDesigns,
@@ -92,9 +94,11 @@ export {
 } from "./tuning.js";
 export {
   ATTEMPT_CEILING_RUB,
+  DIRECTION_CALL_DEADLINE_MS,
   DIRECTIONS_BUDGET_RUB,
   DIRECTIONS_CALL_DEADLINE_MS,
   deadlineSignal,
+  IDEAS_CALL_DEADLINE_MS,
   RUB_PER_CREDIT,
   RubWallet,
 } from "./wallet.js";
