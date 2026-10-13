@@ -125,3 +125,13 @@ Job `sandbox` (`.github/workflows/sandbox.yml`, M2-01) скачивает их �
 |---|---|---|
 | HyperUI, https://github.com/markmead/hyperui | MIT, Copyright (c) Mark Mead | раскладки header-classic, header-centered, hero-split, hero-centered, cta-band, cta-centered, cta-split-image, footer-columns, footer-centered, form-split, catalog-grid, catalog-list, blog-cards: композиция по мотивам, код свой |
 | shadcn/ui, https://github.com/shadcn-ui/ui | MIT, Copyright (c) 2023 shadcn | имена токенов темы (background и foreground, primary, muted, card, border, ring), стиль кнопок и карточек в header-floating, cta-card, form-centered и catalog-table |
+
+## Подбор фото по смыслу (V4-10, D79 (6))
+
+Серверная сторона и CI: в бандлы систем не попадает. Модель не изменяется и не распространяется: CI скачивает её файлы с Hugging Face по закреплённой ревизии и контрольным суммам (`packages/agents/src/stock/siglip.ts`) и кладёт текстовую часть в хранилище платформы в РФ. Платформа считает эмбеддинг русского запроса из брифа на своём CPU. transformers.js и sharp не используются: в sharp входят бинарники libvips под LGPL. Изображение уменьшается своим кодом, JPEG/PNG/WebP читают уже используемые кодеки @jsquash.
+
+| Пакет или модель | Версия | Лицензия | Где используется |
+|---|---|---|---|
+| onnxruntime-node (Microsoft) и onnxruntime-common | 1.30.0 | MIT | `packages/agents/src/stock/siglip.ts`: запуск SigLIP на CPU. Бинарники для linux x64 входят в пакет, скрипт установки не запускается (CUDA не нужна). Зависимости: adm-zip (MIT), global-agent (BSD-3-Clause) |
+| @huggingface/tokenizers | 0.2.0 | Apache-2.0 | `packages/agents/src/stock/siglip.ts`: токенизатор Gemma для текстовой части SigLIP 2 |
+| SigLIP 2 base patch16-224 (Google, `google/siglip2-base-patch16-224`), ONNX-экспорт `onnx-community/siglip2-base-patch16-224-ONNX` (ревизия ba1f3b08) | ba1f3b0843f24bc5417d38e19c37b287d719b2f4 | Apache-2.0 | эмбеддинги фото библиотеки в CI (`tools/stock/fill.mjs`, `vision_model.onnx`) и русского запроса на платформе (`text_model_int8.onnx`) |

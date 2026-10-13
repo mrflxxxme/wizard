@@ -2325,7 +2325,7 @@ tasks:
     owner: qa
     parallel_group: v4-a
     estimate_days: 1
-    status: in_progress
+    status: done
     claimed_by: session_01FAiGcdwk6WNp3eioRKs2Fc
     owns: ["packages/llm/src/fixture/**", "tools/fixtures/**", "packages/e2e/stand/**"]
     acceptance:
@@ -2342,8 +2342,8 @@ tasks:
     owner: platform
     parallel_group: v4-b
     estimate_days: 1
-    status: todo
-    claimed_by: null
+    status: done
+    claimed_by: session_01FAiGcdwk6WNp3eioRKs2Fc
     owns: ["apps/platform-api/src/builds-v3/report/** (новый)", "apps/worker/src/report/** (новый)"]
     acceptance:
       - "Любая сборка сохраняет отчёт: снимки 390/1440, итог гейтов и сценариев, оценку критика, HTTP-ответы шагов сценариев, ₽ и минуты по этапам"
@@ -2444,8 +2444,8 @@ tasks:
     owner: platform
     parallel_group: v4-a
     estimate_days: 1.5
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: session_01HWKT1m6cHQBBtUV7d9pQhf
     owns: ["packages/build/src/stock/**", "tools/stock/** (новый)", ".github/workflows/stock-library.yml (новый)"]
     acceptance:
       - "CI наполняет хранилище в РФ фото Pexels и Pixabay по нишам с атрибуцией; эмбеддинги (SigLIP, Apache-2.0) считаются при наполнении"

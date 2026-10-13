@@ -21,6 +21,7 @@ import {
 } from "../../platform-api/test/helpers.js";
 import {
   BILLING_CRON,
+  BUILD_ISSUES,
   CREDITS_CRON,
   DBOS_RETENTION,
   IMPORTS_TTL,
@@ -385,6 +386,7 @@ describe("runs as DBOS workflows (M1-01)", () => {
     expect(names).toEqual(
       [
         BILLING_CRON,
+        BUILD_ISSUES,
         CREDITS_CRON,
         DBOS_RETENTION,
         IMPORTS_TTL,

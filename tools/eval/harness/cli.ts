@@ -53,13 +53,18 @@ export interface HarnessResult {
 const DEFAULT_DB = "postgres://wizard@localhost:5433/wizard";
 
 /** Env names of provider keys a live/record run needs and that are not set (names only, never values). */
+const OPTIONAL_PROVIDERS: ReadonlySet<string> = new Set(["moonshot", "xiaomi", "deepseek", "ollama"]);
+
 export function missingKeys(o: HarnessOptions): string[] {
   if (o.llmMode === "fixture") return [];
   const reg = registryFor(undefined, o.env);
   const ids = o.models.length
     ? o.models
     : [...new Set(Object.values(reg.routes).flatMap((r) => r.chain.T1 ?? []))];
-  const providers = new Set(ids.map((id) => getModel(reg, id).provider));
+  // V4-05: the providers of the v4 roles (Moonshot, MiMo, DeepSeek) are optional unless named by --models — without a
+  // key the router skips them and the chain goes on.
+  const optional = o.models.length ? new Set<string>() : OPTIONAL_PROVIDERS;
+  const providers = new Set(ids.map((id) => getModel(reg, id).provider).filter((p) => !optional.has(p)));
   providers.add("cloudru"); // T0 reserve of every chain
   const out: string[] = [];
   for (const p of providers) {
