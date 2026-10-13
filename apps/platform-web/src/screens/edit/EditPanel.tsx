@@ -51,7 +51,7 @@ export interface EditPanelProps {
   onRun(runId: string): void;
   /** Drops an unsaved preview of the style (the frame reloads the shown revision). */
   onReloadFrame(): void;
-  /** The owner starts picking on the site (a phone hides the panel meanwhile). */
+  /** The owner starts picking on the site (the canvas hides the panel meanwhile). */
   onPick?(): void;
   /** Test double of the edit API. */
   api?: EditApi;

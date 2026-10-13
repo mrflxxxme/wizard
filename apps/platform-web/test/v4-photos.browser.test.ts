@@ -186,7 +186,7 @@ describe.skipIf(!hasChromium)("photos of a system on the canvas (chromium)", () 
       // A click on the photo on the site: 20 photos for the slot, chosen by its meaning.
       await page.getByTestId("canvas-island-edit").click();
       await page.getByTestId("edit-text-pick").click();
-      if (vp.width < 600) await page.getByTestId("canvas-panel-edit").waitFor({ state: "hidden" });
+      await page.getByTestId("canvas-panel-edit").waitFor({ state: "hidden" });
       await frame.getByTestId("draft-photo").click();
       const choices = page.getByTestId("photo-choice");
       await expect.poll(() => choices.count(), { timeout: 10_000 }).toBe(20);
