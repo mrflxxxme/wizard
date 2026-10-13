@@ -25,6 +25,21 @@ export {
   seoHeadTags,
   seoTitle,
 } from "./seo.js";
+/** V4-15: page literals mapped to their source (texts, photos), data-wz-src on free TSX, instant literal edits. */
+export {
+  annotateSource,
+  applyLiteralEdits,
+  buildSourceMap,
+  type EditOutcome,
+  fileLiterals,
+  isMappedFile,
+  LITERAL_MAX,
+  type LiteralEdit,
+  type LiteralForm,
+  type LiteralKind,
+  type SourceLiteral,
+  type SourceMap,
+} from "./source-map/index.js";
 /**
  * Tailwind v4 of v3 systems (builder-v3.md §1): ui/design.css switches it on; candidates from string literals of
  * ui/pages|patterns|sections; the ui-kit CSS sits in layer «wizard» between preflight and utilities.

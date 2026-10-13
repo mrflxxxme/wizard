@@ -21,6 +21,7 @@ import {
   type ArtDirectorInput,
   createPageComposer,
   directionsNiche,
+  pointEditV3,
   proposeDirections,
   runArtDirector,
   runTechreview,
@@ -140,6 +141,33 @@ export const STAGES: Record<string, Stage> = {
         fallback: false,
         summary: `находок ${r.findings.length}, блокеров ${r.blockers.length}`,
       };
+    },
+  },
+  point_edit: {
+    callTypes: ["page_compose"],
+    async run(input, route, ctx) {
+      const built = await builtClinic(route, ctx.systemId, input.photos !== false);
+      const file = String(input.file ?? "ui/pages/site/Home.tsx");
+      const source = built.files.get(file);
+      if (source === undefined) throw new Error(`в клинике нет файла ${file}`);
+      const needle = String(input.near ?? "");
+      const line = needle ? source.split("\n").findIndex((l) => l.includes(needle)) + 1 : 1;
+      const r = await pointEditV3({
+        input: {
+          target: {
+            file,
+            line: Math.max(1, line),
+            componentName: String(input.component ?? ""),
+            route: String(input.route ?? "/"),
+            instruction: String(input.instruction),
+          },
+          source,
+        },
+        route,
+        orgPolicy: OPEN,
+        ctx,
+      });
+      return { fallback: !r.ok, summary: r.ok ? r.summary : `отказ: ${r.reason}` };
     },
   },
   raw: {
