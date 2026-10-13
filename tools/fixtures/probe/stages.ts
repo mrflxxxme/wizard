@@ -77,6 +77,16 @@ function brief(name: unknown): SystemBrief {
 /** Points the critic's score of the same shots may differ by between calls of one model. */
 export const CRITIC_SPREAD = 20;
 
+/**
+ * The probe's route for the stages' own calls: the platform's queue gives every call its org's policy (orgs.t1_restricted
+ * false by default); a stage that calls without one (the composer, the techreview, the point edit) would be held to T0
+ * by decideTier (policy_region_restricted) — the probe takes the open policy unless the caller set one.
+ */
+export const withOpenPolicy =
+  (route: RouteFn): RouteFn =>
+  (ri) =>
+    route({ ...ri, orgPolicy: ri.orgPolicy ?? OPEN });
+
 async function builtClinic(
   route: RouteFn,
   systemId: string,
@@ -87,7 +97,7 @@ async function builtClinic(
   const design = archetype
     ? designSystemV3({ archetype, brandColor: "#2a7f9e", seed: 7, niche: fixture.plan.niche })
     : fixture.design;
-  const base = { ...fixture, design, route, budgetRub: 40 };
+  const base = { ...fixture, design, route: withOpenPolicy(route), budgetRub: 40 };
   const out = await createPageComposer({ patterns: PATTERNS }).skeleton(base);
   const files = new Map(base.files);
   for (const [p, v] of out.files) {
