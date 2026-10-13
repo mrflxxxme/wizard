@@ -28,6 +28,9 @@ import { PhotoPicker } from "./photos/PhotoPicker.js";
 import { photosRu } from "./photos/ru.js";
 import { editRu as T } from "./ru.js";
 
+/** «0,4» — seconds in Russian, a comma, one decimal. */
+const seconds = (ms: number) => (ms / 1000).toFixed(1).replace(".", ",");
+
 /** POST /edit/literals: a text is at most this long (V4-15 VALIDATION). */
 export const LITERAL_MAX = 500;
 const RADII: Radius[] = ["sharp", "crisp", "soft", "round"];
@@ -189,7 +192,7 @@ export function EditPanel(p: EditPanelProps): ReactNode {
       const r = await api.saveLiterals(p.systemId, lits.revision, [
         { ref, value: swapPhotoValue(value, id) },
       ]);
-      setNote(photosRu.applied((r.ms / 1000).toFixed(1)));
+      setNote(photosRu.applied(seconds(r.ms)));
       p.onSaved(r.previewRevision);
       await loadLiterals().catch(() => {});
     } catch (e) {
@@ -210,7 +213,7 @@ export function EditPanel(p: EditPanelProps): ReactNode {
     setNote(null);
     try {
       const r = await api.saveLiterals(p.systemId, lits.revision, edits);
-      setNote(T.text.saved((r.ms / 1000).toFixed(1)));
+      setNote(T.text.saved(seconds(r.ms)));
       p.onSaved(r.previewRevision);
       await loadLiterals().catch(() => {});
     } catch (e) {

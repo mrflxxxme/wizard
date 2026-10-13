@@ -924,7 +924,8 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
             {buildQuestions.map((q) => (
               <div key={q.id} className={s.bq} data-testid="canvas-build-question">
                 <p className={s.bqTitle}>{firstRu.buildQuestion}</p>
-                <p className={s.bqText}>{q.text}</p>
+                {/* The card's title already says it: the question's own lead-in is not repeated. */}
+                <p className={s.bqText}>{q.text.replace(/^Вопрос по ходу сборки:\s*/i, "")}</p>
                 <p className={s.note}>{firstRu.buildAnswerLater}</p>
               </div>
             ))}
@@ -1350,7 +1351,8 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
             }}
           />
         )}
-        {v3live.toast}
+        {/* The ready toast never covers the panel of an edit or the publication (it would catch their clicks). */}
+        {panel !== "edit" && panel !== "publish" && v3live.toast}
         <div className={s.srOnly} aria-live="polite" data-testid="canvas-live">
           {live}
         </div>
