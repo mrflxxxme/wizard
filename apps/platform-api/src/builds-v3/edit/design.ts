@@ -3,7 +3,7 @@
 // them) is changed, ui/design.css rebuilt from it and committed as a new draft revision with its preview, and the
 // design is saved into the build's checkpoints: the next build reuses it.
 import { DESIGN_CSS_FILE, designCss } from "@wizard/agents/builder";
-import { fontStack } from "@wizard/ui-kit";
+import { fontStack } from "@wizard/ui-kit/fonts";
 import { ARCHETYPES, type DesignSystemV3, RADIUS_SETS, SECTION_SPACE } from "@wizard/ui-kit/v3/design";
 import type postgres from "postgres";
 import { invalid } from "../../errors.js";

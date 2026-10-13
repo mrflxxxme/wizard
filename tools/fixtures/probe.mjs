@@ -20,4 +20,10 @@ if (!loader) {
 const { register } = await import(pathToFileURL(join(dirname(loader), "esm", "api", "index.mjs")).href);
 register();
 const { probeCli } = await import(pathToFileURL(join(import.meta.dirname, "probe", "run.ts")).href);
-process.exitCode = await probeCli(process.argv.slice(2));
+// The router's retry pauses never keep a process alive (unref'd timers): the probe keeps itself alive until it is done.
+const alive = setInterval(() => {}, 60_000);
+try {
+  process.exitCode = await probeCli(process.argv.slice(2));
+} finally {
+  clearInterval(alive);
+}
