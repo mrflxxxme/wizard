@@ -291,7 +291,10 @@ export const MODELS: ModelDef[] = [
   ),
   m("deepseek-v4.1-flash", "deepseek", "deepseek-flash", "T1", "external", 1000000, 34.77, 0.7, 139.08),
   m("deepseek-v4-pro-0813", "deepseek", "deepseek-v4-pro", "T1", "external", 1000000, 152.99, 5.1, 458.96),
-  m("mimo-v2.6-pro", "xiaomi", "mimo-v2.6-pro", "T1", "external", 256000, 50.42, 0.42, 100.83),
+  {
+    ...m("mimo-v2.6-pro", "xiaomi", "mimo-v2.6-pro", "T1", "external", 256000, 50.42, 0.42, 100.83),
+    thinking: "off",
+  },
   m("mimo-v2.6-flash", "xiaomi", "mimo-v2.6-flash", "T1", "external", 256000, 16.23, 1.62, 32.45),
 ];
 
@@ -451,10 +454,16 @@ export const ROUTES: Record<CallType, RouteDef> = {
     1500,
     120000,
   ),
+  // MiMo V2.6 Pro with reasoning off (models[].thinking): it timed out at 300 s on every attempt while it reasoned; off,
+  // the techreview takes 39–60 s (median 45 s) with 1–8 findings (stage probe 13.10.2026). DeepSeek V4-Pro is the
+  // reserve: 1.8 s, but it submitted no findings at all on the same input.
   techreview: r(
     "reviewer",
     "T1",
-    { T1: ["mimo-v2.6-pro"], T0: ["gpt-oss-120b", "gigachat-3.5", "deepseek-v4-pro", "kimi-k2.6"] },
+    {
+      T1: ["mimo-v2.6-pro", "deepseek-v4-pro-0813"],
+      T0: ["gpt-oss-120b", "gigachat-3.5", "deepseek-v4-pro", "kimi-k2.6"],
+    },
     0.1,
     8000,
     300000,

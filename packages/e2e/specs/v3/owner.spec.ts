@@ -13,8 +13,8 @@ import { PROMPTS } from "../../../agents/test/interview-v3/helpers.js";
 import { V3, V3_OUTBOX, V3_RECORDS_LOG } from "../../stand/ports.js";
 import { V3_WISH, V3_WISH_AUDIENCE, type V3RecordUse } from "../../stand/v3-models.js";
 
-/** V4-03: a recording run (WIZARD_V3_RECORDS=record) waits for live models — the long waits grow tenfold. */
-const SLOW = process.env.WIZARD_V3_RECORDS === "record" ? 10 : 1;
+/** V4-03: a recording run (WIZARD_V3_RECORDS=record or record-stale) waits for live models — the long waits grow tenfold. */
+const SLOW = process.env.WIZARD_V3_RECORDS?.startsWith("record") ? 10 : 1;
 
 /** What the model calls of the stand took (stand/v3-models.ts): records, misses, new recordings. */
 function recordUses(): V3RecordUse[] {

@@ -1,9 +1,10 @@
 // Models of the v3 stand (stand/v3.ts, D78; V4-03): the build's calls — the texts of the three directions and the art
 // director (art_direction), the pages (page_compose, signature_section), the visual critic (critic_visual), the
-// techreview — answer from the records of a real recorded run (tools/fixtures/records/e2e-v3.jsonl): no network and no
-// money in CI. A call without a record fails loudly: the miss goes to V3_RECORDS_LOG and the spec fails the run — no
-// stage takes its deterministic fallback silently. WIZARD_V3_RECORDS=record (the stage-probe workflow, e2e=v3) runs
-// the same calls on live models and writes the records anew.
+// techreview — answer from the records of a real recorded run (tools/fixtures/records/e2e-v3/<callType>.jsonl, V4-19):
+// no network and no money in CI. A call without a record fails loudly: the miss goes to V3_RECORDS_LOG and the spec
+// fails the run — no stage takes its deterministic fallback silently. WIZARD_V3_RECORDS=record runs every call on live
+// models and writes the records anew; record-stale (the stage-probe workflow's default) only the stale stages and the
+// stages after them (stand/v3-records.ts).
 // The grill interview stays the dental dialog of V3-03 (packages/agents/test/interview-v3/helpers.ts DENTAL_SCRIPT
 // without its search turn — the stand has no web tools): the spec walks its questions in the UI; then a wish after the
 // build edits the brief and finishes again.
@@ -13,8 +14,10 @@ import {
   createRegistry,
   createRouter,
   LlmError,
-  RecordBook,
+  PromptVersions,
+  type RecordBook,
   RecordScopes,
+  type Registry,
   type RouteInput,
   type RouteOutput,
   type Router,
@@ -29,18 +32,17 @@ import {
   update,
 } from "../../agents/test/interview-v3/helpers.js";
 import { V3_RECORDS_LOG } from "./ports.js";
+import { levelOf, liveFromLevel, stageBook, stageBooks, staleStages } from "./v3-records.js";
 
 /** The wish of the owner after the build, as the spec types it in the chat. */
 export const V3_WISH = "Добавьте, что к нам приходят и родители с детьми";
 /** The audience of the brief after the wish (the model's edit). */
 export const V3_WISH_AUDIENCE = "Пациенты клиники в Казани и родители с детьми";
-/** The records of the stand's run (tools/fixtures/records/e2e-v3.jsonl). */
-export const V3_RECORDS = "e2e-v3";
 
 /** One line of V3_RECORDS_LOG: what each call of the run took. */
 export interface V3RecordUse {
   callType: string;
-  outcome: "hit" | "miss" | "beyond" | "recorded";
+  outcome: "hit" | "miss" | "beyond" | "recorded" | "stale";
   model?: string;
   message?: string;
 }
@@ -88,60 +90,130 @@ function use(u: V3RecordUse): void {
 }
 
 /** One order of systems for every router of the stand's process (the platform makes a router per build). */
-const scopes = new RecordScopes();
-let book: RecordBook | null = null;
+let scopes = new RecordScopes();
+const versions = new PromptVersions();
 
-/** WIZARD_V3_RECORDS=record: live models, the run's records written anew; otherwise replay. */
-const recording = () => process.env.WIZARD_V3_RECORDS === "record";
+/**
+ * WIZARD_V3_RECORDS: unset — replay; `record` — every stage live, the records written anew; `record-stale` (V4-19) — the
+ * stale stages (an older prompt, a model off the route, no record) and everything after them in the pipeline live, the
+ * rest replayed.
+ */
+type RecordMode = "replay" | "record" | "record-stale";
+const mode = (): RecordMode => {
+  const v = process.env.WIZARD_V3_RECORDS;
+  return v === "record" || v === "record-stale" ? v : "replay";
+};
+const recording = () => mode() !== "replay";
 /** A recording run stops calling models at this spend (WIZARD_V3_RECORDS_CAP_RUB, default 60 ₽). */
 const capRub = () => Number(process.env.WIZARD_V3_RECORDS_CAP_RUB) || 60;
 let spentRub = 0;
 
-/** The platform router of the v3 stand: the scripted interview, every other call from the records. */
-export function v3Router(opts: RouterOptions): Router {
-  const registry = opts.registry ?? createRegistry({ buildDefaultTier: "T1" });
-  if (!book) {
-    book = RecordBook.named(V3_RECORDS);
-    if (recording()) book.clear();
+/** The stage books of the run, and the pipeline level from which this run calls live models. */
+let books: Map<string, RecordBook> | null = null;
+let liveFrom = Number.POSITIVE_INFINITY;
+/** Stages re-recorded by this run: their book was emptied on the first live call. */
+const rewritten = new Set<string>();
+
+/** Tests: the state of a run (the books, the live level, the spend, the scopes) starts anew. */
+export function resetV3Records(): void {
+  books = null;
+  liveFrom = Number.POSITIVE_INFINITY;
+  rewritten.clear();
+  spentRub = 0;
+  scopes = new RecordScopes();
+}
+
+function setup(registry: Registry, root?: string): Map<string, RecordBook> {
+  if (books) return books;
+  books = stageBooks(root);
+  if (mode() === "record") {
+    for (const b of books.values()) b.clear();
+    liveFrom = 0;
+  } else if (mode() === "record-stale") {
+    const stale = staleStages(books, { versions, registry });
+    for (const [ct, why] of stale) use({ callType: ct, outcome: "stale", message: why });
+    liveFrom = liveFromLevel(stale.keys());
   }
-  const records: Router = recording()
-    ? recordingRouter(
-        createRouter({ ...opts, registry, mode: "live", sink: { write: () => {} }, t1Reserve: true }),
-        {
-          book,
-          source: "e2e",
-          scopes,
-          onRecord: (l) => {
-            spentRub += l.costRub;
-            use({ callType: l.callType, outcome: "recorded", model: l.model });
-          },
-        },
-      )
-    : replayRouter({
-        registry,
-        books: [book],
+  return books;
+}
+
+/** A record of the call's prompt version exists (the replay would answer or say the run ended there). */
+const recorded = (all: ReadonlyMap<string, RecordBook>, input: RouteInput): boolean => {
+  const version = versions.of(input);
+  return (all.get(input.callType)?.all() ?? []).some((l) => l.promptVersion === version);
+};
+
+/** The platform router of the v3 stand: the scripted interview, every other call from the records (or live). */
+export function v3Router(opts: RouterOptions, t: { root?: string; live?: Router } = {}): Router {
+  const registry = opts.registry ?? createRegistry({ buildDefaultTier: "T1" });
+  const all = setup(registry, t.root);
+  let inner: Router | null = null;
+  const writers = new Map<string, Router>();
+  const writer = (callType: string): Router => {
+    let w = writers.get(callType);
+    if (!w) {
+      inner ??=
+        t.live ??
+        createRouter({ ...opts, registry, mode: "live", sink: { write: () => {} }, t1Reserve: true });
+      let book = all.get(callType);
+      if (!book) {
+        book = stageBook(callType, t.root);
+        all.set(callType, book);
+      }
+      if (!rewritten.has(callType)) {
+        book.clear();
+        rewritten.add(callType);
+      }
+      w = recordingRouter(inner, {
+        book,
+        source: "e2e",
         scopes,
-        onHit: (l) => use({ callType: l.callType, outcome: "hit", model: l.model }),
-        onBeyond: (m) => use({ callType: m.callType, outcome: "beyond", message: m.message }),
-        onMiss: (m) => {
-          use({ callType: m.callType, outcome: "miss", message: m.message });
-          console.error(`::error::[v3-stand] ${m.message} — перезапишите записи e2e: stage-probe с e2e=v3`);
+        versions,
+        onRecord: (l) => {
+          spentRub += l.costRub;
+          use({ callType: l.callType, outcome: "recorded", model: l.model });
         },
       });
+      writers.set(callType, w);
+    }
+    return w;
+  };
+  const replay = replayRouter({
+    registry,
+    books: [...all.values()],
+    scopes,
+    versions,
+    onHit: (l) => use({ callType: l.callType, outcome: "hit", model: l.model }),
+    onBeyond: (m) => use({ callType: m.callType, outcome: "beyond", message: m.message }),
+    onMiss: (m) => {
+      use({ callType: m.callType, outcome: "miss", message: m.message });
+      console.error(
+        `::error::[v3-stand] ${m.message} — перезапишите записи e2e: stage-probe с e2e_v3 (устаревшие этапы — сами)`,
+      );
+    },
+  });
   return {
-    mode: records.mode,
+    mode: recording() ? "live" : replay.mode,
     registry,
     async route(input: RouteInput): Promise<RouteOutput> {
       if (input.callType === "interview_v3") return interview(input);
-      if (recording() && spentRub >= capRub()) {
-        use({
-          callType: input.callType,
-          outcome: "miss",
-          message: `запись остановлена на потолке ${capRub()} ₽`,
-        });
-        throw new LlmError("BUDGET_EXCEEDED", `Запись остановлена на потолке ${capRub()} ₽.`);
+      if (recording()) {
+        // record-stale: a stage without a record of its prompt is stale too — it and the later stages go live.
+        if (mode() === "record-stale" && !rewritten.has(input.callType) && !recorded(all, input))
+          liveFrom = Math.min(liveFrom, levelOf(input.callType));
+        if (levelOf(input.callType) >= liveFrom) {
+          if (spentRub >= capRub()) {
+            use({
+              callType: input.callType,
+              outcome: "miss",
+              message: `запись остановлена на потолке ${capRub()} ₽`,
+            });
+            throw new LlmError("BUDGET_EXCEEDED", `Запись остановлена на потолке ${capRub()} ₽.`);
+          }
+          return writer(input.callType).route(input);
+        }
       }
-      return records.route(input);
+      return replay.route(input);
     },
   };
 }
