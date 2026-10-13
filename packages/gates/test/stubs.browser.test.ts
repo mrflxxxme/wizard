@@ -33,7 +33,8 @@ const page = (sections: string) => `<!doctype html><html lang="ru"><head><meta c
 const CLEAN = `<div id="services"><h2>Почему мы</h2><ul class="grid">
   <li class="card"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="Томограф" width="10" height="10"><p>Томографы и микроскопы в каждом кабинете</p></li>
   <li class="card"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="Кресло" width="10" height="10"><p>Лечим без боли даже детей и взрослых</p></li>
-</ul><button id="more">Показать ещё</button></div>`;
+</ul><button id="more">Показать ещё</button></div>
+<div id="cta"><h2>Запишитесь сегодня</h2><a href="#form">Записаться</a></div>`;
 
 const DIRTY = `<div id="services"><h2>Заголовок</h2><ul class="grid">
   <li class="card"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="Текст" width="10" height="10"><p>Качественно и быстро, с гарантией</p></li>
@@ -41,7 +42,11 @@ const DIRTY = `<div id="services"><h2>Заголовок</h2><ul class="grid">
   <li class="card"><p>Lorem ipsum dolor sit amet</p></li>
 </ul><a href="#">Подробнее</a> <a href="/prices">Цены</a> <a href="#reviews">Отзывы</a>
 <button id="dead">Записаться</button><p>Звоните +7 (495) 765-43-21</p></div>
-<div id="empty"><span>   </span></div>`;
+<div id="empty"><span>   </span></div>
+<div id="how"><h2>Как работает запись</h2><a href="#form">Записаться</a></div>
+<div id="catalog"><h2>Услуги</h2><ul class="list">
+  <li class="row"><h3>Услуга 1</h3><p>30 мин</p></li><li class="row"><h3>Услуга 2</h3><p>2 ч</p></li>
+</ul></div>`;
 
 const OPTS: StubPageOptions = {
   route: "/",
@@ -95,6 +100,9 @@ describe.skipIf(!hasChromium)("V4-18 stub checks in Chromium", () => {
           ["S03", "services", "Качественно и быстро, с гарантией"],
           ["S03", "services", "1 из 3"],
           ["S03", "empty", "(пусто)"],
+          ["S03", "how", "Как работает запись"],
+          ["S02", "catalog", "Услуга 1"],
+          ["S02", "catalog", "Услуга 1, Услуга 2"],
           ["S04", "services", "+7 (495) 765-43-21"],
         ]),
       );

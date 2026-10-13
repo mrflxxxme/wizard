@@ -24,6 +24,62 @@ const NOT_OFFER =
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+/** A list of the staff in the owner's words («пять врачей: терапевт, два хирурга, ортодонт и детский стоматолог»). */
+const STAFF_COLON = /(?:врач|специалист|мастер|сотрудник)\S*\s*:\s*([^.;]+)/giu;
+/**
+ * V4-20: the direction a specialist of the brief works in («хирург» → «Хирургия»): a clinic or a salon that lists its
+ * staff, not its services, still shows the owner's own offer instead of «Услуга 1». Only what the brief names.
+ */
+const DIRECTIONS: readonly (readonly [RegExp, string])[] = [
+  [/детск\S*\s+стоматолог/i, "Детская стоматология"],
+  [/терапевт/i, "Терапия"],
+  [/хирург/i, "Хирургия"],
+  [/ортодонт/i, "Ортодонтия"],
+  [/ортопед/i, "Ортопедия"],
+  [/имплантолог/i, "Имплантация"],
+  [/пародонтолог/i, "Пародонтология"],
+  [/гигиенист/i, "Профессиональная гигиена"],
+  [/педиатр/i, "Педиатрия"],
+  [/гинеколог/i, "Гинекология"],
+  [/кардиолог/i, "Кардиология"],
+  [/невролог/i, "Неврология"],
+  [/дерматолог/i, "Дерматология"],
+  [/косметолог/i, "Косметология"],
+  [/массажист/i, "Массаж"],
+  [/визажист/i, "Макияж"],
+  [/колорист/i, "Окрашивание волос"],
+  [/парикмахер|стилист/i, "Стрижки и укладки"],
+  [/маникюр/i, "Маникюр"],
+  [/педикюр/i, "Педикюр"],
+  [/бровист/i, "Оформление бровей"],
+  [/логопед/i, "Логопедия"],
+  [/психолог/i, "Консультации психолога"],
+];
+
+/** The directions of a staff list, in its order; null — fewer than two known. */
+function directionsOf(items: readonly string[]): string[] | null {
+  const out: string[] = [];
+  for (const item of items)
+    for (const [re, name] of DIRECTIONS)
+      if (re.test(item)) {
+        if (!out.includes(name)) out.push(name);
+        break;
+      }
+  return out.length >= 2 ? out : null;
+}
+
+/**
+ * The staff of the owner's own words («пять врачей: терапевт, …») as directions of the offer. A list the brief shows
+ * («показывает врачей: …») is the doctors' page, not the offer, and stays out.
+ */
+function staffDirections(request?: string | null): string[] | null {
+  for (const m of (request ?? "").matchAll(STAFF_COLON)) {
+    const d = directionsOf((m[1] as string).split(/,\s*|\s+и\s+/));
+    if (d) return d;
+  }
+  return null;
+}
+
 /** Distinct values (case-insensitive), capitalised, at most SEED_HINT_MAX_VALUES. */
 function names(items: readonly string[]): string[] {
   const seen = new Set<string>();
@@ -62,7 +118,8 @@ export function seedHintsFromBrief(
   const sections = lists.find((l) => SECTION_LIST.test(l.what))?.items ?? null;
   const items =
     lists.find((l) => !SECTION_LIST.test(l.what))?.items ??
-    (request ? offerOf(request, businessOf(request)) : null);
+    (request ? offerOf(request, businessOf(request)) : null) ??
+    staffDirections(request);
   const has = new Set(spec.entities.map((e) => e.name));
   const out: SeedHint[] = [];
   for (const [entities, list] of [
