@@ -1,8 +1,10 @@
-// «Три направления» (V3-09; D77 (7); docs/plans/2026-10-08-v3.md §2): after the brief, three first screens in three
-// different archetypes with the client's texts. Code picks the archetypes (V3-07 candidates with the niche memory),
-// their design systems (with the hints of the logo and references), the header and hero patterns (spread layouts);
-// one model call writes the three sets of texts, with a deterministic fallback. The proposal is data: the platform
-// stores it, builds the previews and turns the owner's choice into a new brief version.
+// «Три направления» (V3-09; D77 (7); V4-07): after the brief, three first screens in three different design systems
+// with the client's texts. With a model the art director designs them (proposeDesignDirections: five directions with
+// probabilities, code checks and keeps the three most different); without one, or when its answer never passes, code
+// picks archetypes (V3-07 candidates with the niche memory) and their systems with the hints of the logo and
+// references. Header and hero patterns are spread by code; one model call writes the three sets of texts, with a
+// deterministic fallback. The proposal is data: the platform stores it, builds the previews and turns the owner's
+// choice into a new brief version.
 import { BRIEF_LIMITS, type SystemBrief } from "@wizard/appspec";
 import type { OrgPolicy, RouteContext } from "@wizard/llm";
 import { scrub } from "@wizard/pii";
@@ -11,6 +13,7 @@ import {
   ARCHETYPES,
   type ArchetypeId,
   archetype as archetypeById,
+  type DesignProposal,
   type DesignSystemV3,
   type DesignVoice,
   goalTags,
@@ -21,7 +24,13 @@ import { PATTERNS, type PatternMeta, selectPattern } from "@wizard/ui-kit/v3/pat
 import type { RunStepFn } from "../../../core/events.js";
 import { callTool, type RouteFn } from "../../../core/loop.js";
 import { defineTool } from "../../../core/tool.js";
-import { ART_DIRECTION_CALL_TYPE, artDirectionCandidates } from "../art-director.js";
+import {
+  ART_DIRECTION_CALL_TYPE,
+  artDirectionCandidates,
+  type ModelDirection,
+  proposeDesignDirections,
+  storedProposal,
+} from "../art-director.js";
 import { referenceHints, WORDS_HEAD, wordsLine } from "./references.js";
 import {
   briefFacts,
@@ -42,7 +51,7 @@ import {
   tuneDesign,
   tuningWords,
 } from "./tuning.js";
-import { DIRECTIONS_CALL_DEADLINE_MS, deadlineSignal, RubWallet } from "./wallet.js";
+import { DESIGN_CALL_DEADLINE_MS, DIRECTIONS_CALL_DEADLINE_MS, deadlineSignal, RubWallet } from "./wallet.js";
 
 export const PROPOSAL_KIND = "wizard.design-directions" as const;
 const BRIEF_REFERENCES = BRIEF_LIMITS.references;
@@ -61,6 +70,8 @@ export interface StoredDirection {
   textsSource: "model" | "brief";
   header: string;
   hero: string;
+  /** V4-07: the design system the art director's model proposed; `archetype` is its base. Absent — the archetype's. */
+  system?: DesignProposal;
 }
 
 export interface DirectionsProposal {
@@ -107,6 +118,8 @@ export interface DirectionsModel {
   wallet?: RubWallet;
   /** Deadline of one model call, ms (default DIRECTIONS_CALL_DEADLINE_MS). */
   deadlineMs?: number;
+  /** Deadline of the design call, ms (default DESIGN_CALL_DEADLINE_MS). */
+  designDeadlineMs?: number;
 }
 
 /** First screens that need facts the brief does not carry (an offer with a price, an event date) are not offered. */
@@ -195,6 +208,14 @@ export function directionDesign(
   p: Pick<DirectionsProposal, "seed" | "niche" | "brandColor">,
   d: StoredDirection,
 ): TunedDesign {
+  // Stored data is checked again: a proposal that no longer passes falls back to its base archetype.
+  const system = d.system
+    ? storedProposal(d.system, {
+        seed: p.seed,
+        niche: p.niche,
+        ...(p.brandColor ? { brandColor: p.brandColor } : {}),
+      })
+    : null;
   return tuneDesign(
     {
       archetype: d.archetype,
@@ -202,6 +223,7 @@ export function directionDesign(
       niche: p.niche,
       ...(p.brandColor ? { brandColor: p.brandColor } : {}),
       voice: d.voice,
+      ...(system ? { proposal: system } : {}),
     },
     d.tuning,
   );
@@ -258,28 +280,34 @@ export async function proposeDirections(
   const seed = String(input.seed);
   const references = [...(input.references ?? input.brief.design.references)];
   const hints = referenceHints(references);
-  const archetypes = archetypesFor(input, hints);
-  const tuning = normalizeTuning(hints.tuning);
+  const wallet = model.wallet ?? new RubWallet();
+  const notes: string[] = [];
+  const designed = await designDirections(input, references, hints.brandColor, model, wallet, notes);
+  const archetypes = designed ? designed.map((d) => d.proposal.base) : archetypesFor(input, hints);
+  // The model read the references itself: its systems are not tuned again by their hints.
+  const tuning = designed ? {} : normalizeTuning(hints.tuning);
   const tunings = archetypes.map(() => tuning);
   const patterns = patternsFor(archetypes, seed, tunings);
   const facts = briefFacts(input.brief, input.name, input.niche);
-  const voices = archetypes.map((id) => (archetypeById(id)?.voices[0] ?? "calm") as DesignVoice);
-  const wallet = model.wallet ?? new RubWallet();
-  const notes: string[] = [];
-  const texts = await writeTexts(facts, archetypes, voices, model, wallet, notes);
+  const voices = designed
+    ? designed.map((d) => d.voice)
+    : archetypes.map((id) => (archetypeById(id)?.voices[0] ?? "calm") as DesignVoice);
+  const texts = await writeTexts(facts, archetypes, voices, model, wallet, notes, designed);
   const directions: StoredDirection[] = archetypes.map((id, i) => {
     const a = archetypeById(id);
+    const system = designed?.[i]?.proposal;
     return {
       n: (i + 1) as 1 | 2 | 3,
       archetype: id,
-      name: a?.name ?? id,
-      why: a?.why ?? "",
+      name: system?.name ?? a?.name ?? id,
+      why: system?.why ?? a?.why ?? "",
       voice: voices[i] as DesignVoice,
       tuning,
       texts: texts.sets[i] as DirectionTexts,
       textsSource: texts.source,
       header: (patterns[i] as { header: string }).header,
       hero: (patterns[i] as { hero: string }).hero,
+      ...(system ? { system } : {}),
     };
   });
   return {
@@ -299,6 +327,57 @@ export async function proposeDirections(
   };
 }
 
+/**
+ * V4-07: the art director's model designs the three directions (one call, ≤ 2 repairs within the wallet, its own
+ * deadline). Null — no model, no money, or no three valid directions (a note says why): the archetypes of code.
+ */
+async function designDirections(
+  input: DirectionsInput,
+  references: readonly string[],
+  brandColor: string | undefined,
+  model: DirectionsModel,
+  wallet: RubWallet,
+  notes: string[],
+): Promise<ModelDirection[] | null> {
+  if (!model.route) return null;
+  model.signal?.throwIfAborted();
+  // One attempt stays for the texts.
+  const attempts = wallet.attempts() - 1;
+  if (attempts < 1) {
+    notes.push("бюджет шага исчерпан: направления по архетипам");
+    return null;
+  }
+  let r: Awaited<ReturnType<typeof proposeDesignDirections>>;
+  try {
+    r = await proposeDesignDirections({
+      input: {
+        niche: input.niche,
+        goals: input.brief.goals.map((g) => g.text),
+        ...(input.brief.audience ? { audience: input.brief.audience } : {}),
+        seed: input.seed,
+        recent: input.recent ?? [],
+        references,
+        ...(brandColor ? { brandColor } : {}),
+      },
+      route: wallet.route(model.route),
+      ...(model.orgPolicy !== undefined ? { orgPolicy: model.orgPolicy } : {}),
+      ...(model.ctx ? { ctx: model.ctx } : {}),
+      signal: deadlineSignal(model.signal, model.designDeadlineMs ?? DESIGN_CALL_DEADLINE_MS),
+      ...(model.runStep ? { runStep: model.runStep } : {}),
+      stepName: "design_directions",
+      maxRepairs: Math.min(2, attempts - 1),
+    });
+  } catch (e) {
+    // The step deadline is not the caller's abort: past it the archetypes of code stay.
+    if (model.signal?.aborted) throw e;
+    notes.push("модель не успела предложить направления: направления по архетипам");
+    return null;
+  }
+  if (r.directions) return r.directions;
+  notes.push(`${r.note ?? "ответ модели не прошёл проверку"}: направления по архетипам`);
+  return null;
+}
+
 async function writeTexts(
   facts: DirectionFacts,
   archetypes: readonly ArchetypeId[],
@@ -306,6 +385,7 @@ async function writeTexts(
   model: DirectionsModel,
   wallet: RubWallet,
   notes: string[],
+  designed: readonly ModelDirection[] | null = null,
 ): Promise<{ sets: DirectionTexts[]; source: "model" | "brief" }> {
   const fallback = () => ({
     sets: archetypes.map((_, i) => fallbackTexts(facts, i)),
@@ -339,7 +419,11 @@ async function writeTexts(
       stepName: "direction_texts",
       messages: directionTextsMessages(
         facts,
-        archetypes.map((archetype, i) => ({ archetype, voice: voices[i] as DesignVoice })),
+        archetypes.map((archetype, i) => ({
+          archetype,
+          voice: voices[i] as DesignVoice,
+          ...(designed?.[i] ? { name: designed[i].proposal.name, why: designed[i].proposal.why } : {}),
+        })),
       ),
       tool,
       maxRepairs: Math.min(2, attempts - 1),
@@ -413,9 +497,27 @@ export function briefDesign(
   brief: SystemBrief,
   o: { seed: string | number; niche: string },
 ): TunedDesign | null {
+  const hints = referenceHints(brief.design.references);
+  const system = storedProposal(brief.design.system, {
+    ...o,
+    ...(hints.brandColor ? { brandColor: hints.brandColor } : {}),
+  });
+  if (system) {
+    // The model read the references; only the owner's own words of the pick tune its system.
+    const words = referenceHints(brief.design.references.filter((r) => r.startsWith(WORDS_HEAD))).tuning;
+    return tuneDesign(
+      {
+        archetype: system.base,
+        seed: o.seed,
+        niche: o.niche,
+        ...(hints.brandColor ? { brandColor: hints.brandColor } : {}),
+        proposal: system,
+      },
+      words,
+    );
+  }
   const id = brief.design.archetype;
   if (!isArchetypeId(id)) return null;
-  const hints = referenceHints(brief.design.references);
   return tuneDesign(
     {
       archetype: id,
@@ -453,10 +555,13 @@ export function pickedDesign(
   if (!d) throw new Error(`no direction ${n}`);
   const refs = design.references.filter((r) => !r.startsWith(WORDS_HEAD));
   const pinned = n !== null;
-  const words = pinned ? tuningWords(tuningDelta(d.tuning, referenceHints(refs).tuning)) : [];
+  // A model direction was not tuned by the references: all its tuning is the owner's own words.
+  const base = d.system ? {} : referenceHints(refs).tuning;
+  const words = pinned ? tuningWords(tuningDelta(d.tuning, base)) : [];
   return {
     archetype: d.archetype,
     pinned,
     references: [...refs, ...(words.length ? [wordsLine(words)] : [])].slice(-BRIEF_REFERENCES),
+    ...(d.system ? { system: { ...d.system } } : {}),
   };
 }

@@ -7,13 +7,16 @@ import {
   type ArchetypeId,
   archetype as archetypeById,
   buildPalette,
+  type DesignProposal,
   type DesignSystemV3,
   type DesignVoice,
+  designFromProposal,
   designLintErrors,
   designSystemV3,
   fluid,
   normalizeBrand,
   type PaletteRules,
+  proposalPaletteRules,
   RADIUS_SETS,
   SECTION_SPACE,
 } from "@wizard/ui-kit/v3/design";
@@ -118,6 +121,8 @@ export interface DirectionDesignInput {
   brandColor?: string;
   voice?: DesignVoice;
   accentUse?: AccentUse;
+  /** V4-07: the model's design proposal of the direction; its system replaces the archetype's (archetype = its base). */
+  proposal?: DesignProposal;
 }
 
 export interface TunedDesign {
@@ -248,14 +253,22 @@ const SKIP_LINT = "это изменение нарушило бы правил�
  */
 export function tuneDesign(input: DirectionDesignInput, tuning: DirectionTuning): TunedDesign {
   const brandColor = normalizeBrand(input.brandColor);
-  const base = designSystemV3({
-    archetype: input.archetype,
-    seed: input.seed,
-    niche: input.niche,
-    ...(brandColor ? { brandColor } : {}),
-    ...(input.voice ? { voice: input.voice } : {}),
-    ...(input.accentUse ? { accentUse: input.accentUse } : {}),
-  });
+  const proposal = input.proposal;
+  const base = proposal
+    ? designFromProposal(proposal, {
+        seed: input.seed,
+        niche: input.niche,
+        ...(brandColor ? { brandColor } : {}),
+        ...(input.voice ? { voice: input.voice } : {}),
+      })
+    : designSystemV3({
+        archetype: input.archetype,
+        seed: input.seed,
+        niche: input.niche,
+        ...(brandColor ? { brandColor } : {}),
+        ...(input.voice ? { voice: input.voice } : {}),
+        ...(input.accentUse ? { accentUse: input.accentUse } : {}),
+      });
   const t = normalizeTuning(tuning);
   const a = archetypeById(input.archetype);
   const applied: TunedDesign["applied"] = [];
@@ -277,16 +290,24 @@ export function tuneDesign(input: DirectionDesignInput, tuning: DirectionTuning)
   // Palette: warmth, contrast, saturation and the scheme go through the archetype's rules at once (buildPalette).
   const paletteAxes = (["warmth", "contrast", "saturation"] as const).filter((x) => t[x]);
   if (a && (paletteAxes.length || t.scheme)) {
-    const rules = tunedRules(a.palette, t, !!brandColor);
+    // A model direction keeps its own colours as the brand colour does (proposalPaletteRules, V4-07).
+    const rules = tunedRules(
+      proposal ? proposalPaletteRules(proposal) : a.palette,
+      t,
+      !!brandColor || !!proposal,
+    );
     const accentUse: AccentUse | undefined =
       (t.saturation ?? 0) > 0 ? "fill" : (t.saturation ?? 0) < 0 ? "signal" : input.accentUse;
-    const palette = buildPalette({
+    const accent = brandColor ?? proposal?.colors.accent;
+    const built = buildPalette({
       rules,
-      ...(brandColor ? { brandColor } : {}),
+      ...(accent ? { brandColor: accent } : {}),
       seed: String(input.seed),
       key: `${a.id}|${input.niche.trim().toLowerCase()}`,
       ...(accentUse ? { accentUse } : {}),
     });
+    const { brandColor: _b, ...rest } = built;
+    const palette = proposal && !brandColor ? { ...rest, source: "archetype" as const } : built;
     const next = { ...ds, palette };
     if (designLintErrors(next).length) {
       for (const axis of paletteAxes) skipped.push({ axis, reasonRu: SKIP_LINT });

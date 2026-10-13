@@ -157,7 +157,8 @@ export function fluid(min: number, max: number): string {
   return `clamp(${round(min / 16)}rem, ${round(intercept / 16)}rem + ${round(slope * 100)}vw, ${round(max / 16)}rem)`;
 }
 
-function typeScale(scale: TypeScaleId, upper: boolean, tracking: "tight" | "normal") {
+/** The fluid type scale of a scale id (V4-07: also for model proposals, proposal.ts). */
+export function typeScale(scale: TypeScaleId, upper: boolean, tracking: "tight" | "normal") {
   const s = SCALES[scale];
   const mobileRatio = 1 + (s.ratio - 1) * 0.8;
   const step = (n: number): [number, number] => [s.base[0] * mobileRatio ** n, s.base[1] * s.ratio ** n];
@@ -203,7 +204,8 @@ export const SECTION_SPACE: Record<Density, { mobile: number; desktop: number }>
   regular: { mobile: 56, desktop: 96 },
   airy: { mobile: 72, desktop: 128 },
 };
-const GUTTER: Record<Density, { mobile: number; desktop: number }> = {
+/** Gutters of a density, mobile / desktop px. */
+export const GUTTER: Record<Density, { mobile: number; desktop: number }> = {
   compact: { mobile: 16, desktop: 32 },
   regular: { mobile: 16, desktop: 40 },
   airy: { mobile: 20, desktop: 48 },
@@ -223,7 +225,8 @@ export const EASING = {
   move: "cubic-bezier(0.77, 0, 0.175, 1)",
 } as const;
 
-function motion(
+/** Motion tokens of a profile, entrance and hover. */
+export function motion(
   profile: MotionProfile,
   entrance: MotionEntrance,
   hover: MotionHover,
@@ -259,7 +262,12 @@ export const IMAGE_FILTERS: Record<ImageTreatment, string> = {
   monochrome: "grayscale(1) contrast(1.05)",
 };
 
-const font = (family: string, weight: number): FontChoice => ({ family, weight, stack: fontStack(family) });
+/** A font choice with its CSS stack. */
+export const font = (family: string, weight: number): FontChoice => ({
+  family,
+  weight,
+  stack: fontStack(family),
+});
 
 /**
  * The client's design system: same input → same result (the seed picks the font pair, the accent hue when there is

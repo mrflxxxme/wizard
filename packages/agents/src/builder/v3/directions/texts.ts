@@ -218,11 +218,11 @@ const RULES = [
 /** Messages of the texts call: the facts of the brief and the three directions with their voices. */
 export function directionTextsMessages(
   facts: DirectionFacts,
-  directions: readonly { archetype: ArchetypeId; voice: DesignVoice }[],
+  directions: readonly { archetype: ArchetypeId; voice: DesignVoice; name?: string; why?: string }[],
 ): LlmMessage[] {
   const list = directions.map((d) => {
     const a = archetypeById(d.archetype);
-    return `- ${d.archetype} — «${a?.name ?? d.archetype}», голос: ${d.voice} — ${VOICE_LABELS[d.voice]}. ${a?.why ?? ""}`;
+    return `- ${d.archetype} — «${d.name ?? a?.name ?? d.archetype}», голос: ${d.voice} — ${VOICE_LABELS[d.voice]}. ${d.why ?? a?.why ?? ""}`;
   });
   const business = [
     `Название: ${facts.name || "не указано"}`,
