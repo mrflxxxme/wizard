@@ -167,8 +167,7 @@ export async function pageCode(
       return null;
     }
     const answer = r.value as PageCodeAnswer;
-    const code = applyPageCode(s.page, answer, s.library);
-    const applied = { ...code, page: keepPhotoPlaces(s.page, code.page) };
+    const applied = codePage(s.page, answer, s.library);
     const all = new Map([...s.signatures, ...applied.sources]);
     const sys = systemWith(ctx, s, applied.page, all);
     const check = await s.verify(sys.spec, sys.files, [...applied.sources.keys(), applied.page.file]);
@@ -305,7 +304,7 @@ export async function pageSections(
     const answer = planAnswer(plan, sources);
     const lint = pageLintIssues(answer, check);
     let problems = lint.map((i) => ({ path: i.path, message: i.message }));
-    let applied = applyPageCode(s.page, answer, s.library);
+    let applied = codePage(s.page, answer, s.library);
     if (!problems.length) {
       const sys = systemWith(ctx, s, applied.page, new Map([...s.signatures, ...applied.sources]));
       const g0 = await s.verify(sys.spec, sys.files, [...applied.sources.keys(), applied.page.file]);
@@ -327,10 +326,20 @@ export async function pageSections(
     if (!failing.size) break;
     await Promise.all(items.filter((it) => failing.has(it.id)).map((it) => write(it, failing.get(it.id))));
     if (stopped) return s.stop(stopped) ? "stop" : null;
-    applied = applyPageCode(s.page, planAnswer(plan, sources), s.library);
+    applied = codePage(s.page, planAnswer(plan, sources), s.library);
   }
   s.notes.push(`Код страницы ${s.page.route} не прошёл проверки — страница осталась прежней.`);
   return null;
+}
+
+/** The page with the model's code (applyPageCode); code sections keep the places of the owner's photos (V4-16). */
+function codePage(
+  page: SitePage,
+  answer: Parameters<typeof applyPageCode>[1],
+  library: readonly PatternMeta[],
+): ReturnType<typeof applyPageCode> {
+  const code = applyPageCode(page, answer, library);
+  return { ...code, page: keepPhotoPlaces(page, code.page) };
 }
 
 // ------------------------------------------------------------------------------------------------ first screen
