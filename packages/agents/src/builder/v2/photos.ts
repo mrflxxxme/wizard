@@ -31,6 +31,8 @@ export interface PhotosOutcome {
   providers: StockProvider[];
   /** true — some slots keep the theme graphic because the stock was unavailable. */
   fallback: boolean;
+  /** V4-10: true — the vision model assigned the library photos (photo_pick). */
+  modelPicked?: boolean;
   note: string;
 }
 
@@ -97,6 +99,7 @@ export async function runPhotosStage(o: {
         const missing = slots.length - r.photos.length;
         return done(r.photos, {
           slots: slots.length,
+          ...(r.picked ? { modelPicked: true } : {}),
           providers: [...new Set(r.photos.map((p) => p.provider))].sort(),
           note:
             `фото из библиотеки: ${r.photos.length} из ${slots.length}` +
