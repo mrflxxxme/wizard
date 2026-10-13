@@ -4248,7 +4248,7 @@ tasks:
     owner: agents
     parallel_group: v4-b
     estimate_days: 1
-    status: in_progress
+    status: done
     claimed_by: session_01G2aRP3L1VgXctxShsFmu58
     owns: ["packages/agents/src/builder/v3/art-director.ts", "packages/agents/src/directions/**", "packages/ui-kit/src/v3/design/**"]
     acceptance:

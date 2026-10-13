@@ -220,8 +220,8 @@ describe("with a model: the model designs, code checks (V4-07)", () => {
   test("an answer that never passes keeps its valid directions when three remain; fewer → the archetypes of code", () => {
     const answer = fiveDirections();
     (answer.directions[1] as DesignDirectionAnswer).colors.ink = "#C8C8C8";
-    const issues = designDirectionsIssues(answer, { ...INPUT, brandColor: undefined });
-    expect(issues.map((i) => i.path)).toEqual(["directions.1.colors.ink"]);
+    // Three valid directions remain: nothing goes back to the model, the broken one is dropped by code.
+    expect(designDirectionsIssues(answer, { ...INPUT, brandColor: undefined })).toEqual([]);
     const kept = acceptedDirections(answer, { ...INPUT, brandColor: undefined });
     expect(kept.map((d) => d.proposal.name)).not.toContain("Почти витрина");
     expect(kept).toHaveLength(3);

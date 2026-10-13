@@ -155,7 +155,7 @@ export function designProposalSchema() {
   const fonts = proposalFonts();
   return z.strictObject({
     name: text(2, 40),
-    why: text(10, 300),
+    why: text(10, 240),
     probability: z.number().min(0).max(1),
     base: z.enum(ARCHETYPE_IDS),
     scheme: z.enum(["light", "dark"]),
@@ -192,8 +192,8 @@ export const toProposal = (d: DesignDirectionAnswer): DesignProposal => {
 
 /**
  * Checks of the answer (code checks, the model chooses): each direction through proposalIssues — AA contrast, catalog
- * fonts, banned defaults, the brand colour, designLint; Russian names without colour codes; at least three valid
- * directions on different base archetypes.
+ * fonts, banned defaults, the brand colour, designLint; Russian names without colour codes. Issues go back only while
+ * fewer than three valid directions on different base archetypes remain.
  */
 export function designDirectionsIssues(v: DesignDirectionsAnswer, input: ArtDirectorInput): ToolIssue[] {
   const issues: ToolIssue[] = [];
@@ -221,12 +221,14 @@ export function designDirectionsIssues(v: DesignDirectionsAnswer, input: ArtDire
     if (own.length) issues.push(...own);
     else valid.add(d.base);
   });
-  if (valid.size < ART_DIRECTIONS)
-    issues.push({
-      path: "directions",
-      code: "TOO_FEW_DISTINCT",
-      message: `Нужно хотя бы ${ART_DIRECTIONS} годных направления на разных базовых архетипах (base); сейчас ${valid.size}.`,
-    });
+  // Three valid directions on different bases are enough: the rest is dropped by code, not sent back (each repair of
+  // Kimi K3 costs a minute and rubles — live probe 13.10.2026).
+  if (valid.size >= ART_DIRECTIONS) return [];
+  issues.push({
+    path: "directions",
+    code: "TOO_FEW_DISTINCT",
+    message: `Нужно хотя бы ${ART_DIRECTIONS} годных направления на разных базовых архетипах (base); сейчас ${valid.size}.`,
+  });
   return issues;
 }
 
