@@ -21,6 +21,8 @@ const SWIPE_PX = 48;
 export const FIRST_POLL_MS = 1500;
 /** Failed reads in a row before the wait gives up (a blip of the network is waited out). */
 const POLL_FAILURES = 4;
+/** No endless wait: past this the canvas says so and offers to try again (the server's own deadline is 6 min), ms. */
+export const FIRST_WAIT_MAX_MS = 8 * 60_000;
 
 export interface FirstScreensState {
   proposal: DirectionsProposalView | null;
@@ -53,6 +55,7 @@ export function useFirstScreens(o: {
   briefVersion: number | null;
   api?: DirectionsApi;
   pollMs?: number;
+  maxWaitMs?: number;
 }): FirstScreensState {
   const [api] = useState(() => o.api ?? createDirectionsApi());
   const [proposal, setProposal] = useState<DirectionsProposalView | null>(null);
@@ -85,14 +88,15 @@ export function useFirstScreens(o: {
   }, []);
 
   const ask = useCallback(
-    async (reroll: boolean) => {
+    // `fresh`: start a new proposal even when one is being drawn (a retry after a failure or a wait too long).
+    async (reroll: boolean, fresh = false) => {
       const me = ++turn.current;
       const mine = () => live.current && turn.current === me;
       setLoading(true);
       setError(null);
       setSince(Date.now());
       try {
-        let st = reroll ? null : await api.state(o.systemId);
+        let st = reroll || fresh ? null : await api.state(o.systemId);
         if (st?.proposal && !st.pending) {
           if (mine()) setProposal({ ...st.proposal, directions: keep(st.proposal.directions) });
           return;
@@ -103,12 +107,14 @@ export function useFirstScreens(o: {
           p = await api.start(o.systemId, reroll);
         }
         if (!mine()) return;
-        setSince(Date.now() - p.elapsedMs);
+        const began = Date.now() - p.elapsedMs;
+        setSince(began);
         setPending({ ...p, ready: keep(p.ready) });
         let failures = 0;
         for (;;) {
           await new Promise((r) => setTimeout(r, pollMs));
           if (!mine()) return;
+          if (Date.now() - began > (o.maxWaitMs ?? FIRST_WAIT_MAX_MS)) throw new Error(T.tooLong);
           try {
             st = await api.state(o.systemId);
             failures = 0;
@@ -138,7 +144,7 @@ export function useFirstScreens(o: {
         if (mine()) setLoading(false);
       }
     },
-    [api, o.systemId, keep, pollMs],
+    [api, o.systemId, keep, pollMs, o.maxWaitMs],
   );
 
   useEffect(() => {
@@ -160,7 +166,7 @@ export function useFirstScreens(o: {
     since,
     api,
     reroll: () => void ask(true),
-    retry: () => void ask(false),
+    retry: () => void ask(false, true),
   };
 }
 
@@ -190,7 +196,7 @@ export function FirstScreens({
   buildError,
   onBuild,
 }: FirstScreensProps): ReactNode {
-  const { pending, loading, error } = state;
+  const { proposal, pending, loading, error } = state;
   const [current, setCurrent] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const touch = useRef<number | null>(null);
@@ -334,6 +340,11 @@ export function FirstScreens({
           {pending && (
             <p className={s.status} aria-live="polite" data-testid="first-screens-status">
               {statusText(pending, n, sec)}
+            </p>
+          )}
+          {!pending && proposal?.fallback && (
+            <p className={s.status} data-testid="first-screens-fallback">
+              {T.fallback}
             </p>
           )}
         </div>

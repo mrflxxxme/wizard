@@ -5,6 +5,7 @@ export const islandRu = {
   chat: "Чат",
   build: "Ход сборки",
   buildLeft: (left: string) => `Ход сборки — ${left}`,
+  buildFailed: "Сборка не получилась — откройте, что делать",
   brief: "Бриф",
   device: { desktop: "Компьютер", phone: "Телефон", label: "Как показать систему" },
   edit: "Правка",
