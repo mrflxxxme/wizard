@@ -397,7 +397,8 @@ async function colourShare(
         probe.filter = filter;
         probe.fillStyle = `rgb(${raw[0]}, ${raw[1]}, ${raw[2]})`;
         probe.fillRect(0, 0, 1, 1);
-        const rgb = [...probe.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+        const px = probe.getImageData(0, 0, 1, 1).data;
+        const rgb = [px[0], px[1], px[2]] as [number, number, number];
         const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
         const bmp = await createImageBitmap(new Blob([bytes], { type: "image/jpeg" }));
         const c = new OffscreenCanvas(bmp.width, bmp.height);
