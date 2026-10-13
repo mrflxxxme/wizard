@@ -1,11 +1,11 @@
 name: ci
 # GitHub Free: 2 000 Actions minutes a month for a private repository. Branch pushes are covered by their PR run
 # (no second run per push); a newer push to the same PR cancels the older run.
-# V4-02 fast lane (product.yaml#decisions.D79_v4 (11)): a PR runs lint, code checks, typecheck and the node tests of
-# what it changed (vitest --changed against the base) — target ≤ 10 min; the full suite (browser suites, e2e, goal
-# shards, perf) runs on main after the merge. Main keeps one running and one pending run (concurrency): merges that
-# land while a run is going collapse into the newest one. A red main opens or updates the issue «main красный»;
-# a green main is deployed to prod by deploy-auto.yml.
+# V4-02 fast lane (product.yaml#decisions.D79_v4 (11)): a PR runs lint, code checks, typecheck, the node tests of what
+# it changed (vitest --changed against the base) and the owner's v3 e2e path (e2e-v3, ~3 min) — target ≤ 10 min; the
+# full suite (browser suites, every e2e stand, goal shards, perf) runs on main after the merge. Main keeps one running
+# and one pending run (concurrency): merges that land while a run is going collapse into the newest one. A red main
+# opens or updates the issue «main красный»; a green main is deployed to prod by deploy-auto.yml.
 on:
   push:
     branches: [main]
@@ -133,9 +133,9 @@ jobs:
       - run: pnpm exec vitest run --project browser apps/platform-api/test/v3-goals-variants.browser.test.ts
       # V4-04: the build report's screenshots 390/1440 and the HTTP responses of a scenario's steps.
       - run: pnpm exec vitest run --project browser apps/platform-api/test/v4-build-report.browser.test.ts
-      # V4-08/V4-12/V4-16: the canvas v4 — first screens, edits in three layers, photos of a slot from the library and
-      # the owner's own; 390/1440, screenshots test/artifacts/v4-*.png.
-      - run: pnpm exec vitest run --project browser apps/platform-web/test/v4-first.browser.test.ts apps/platform-web/test/v4-edit.browser.test.ts apps/platform-web/test/v4-photos.browser.test.ts
+      # V4-08/V4-17/V4-12/V4-16: the canvas v4 — first screens (also as a stream), edits in three layers, photos of a
+      # slot from the library and the owner's own; 390/1440, screenshots test/artifacts/v4-*.png.
+      - run: pnpm exec vitest run --project browser apps/platform-web/test/v4-first.browser.test.ts apps/platform-web/test/v4-first-stream.browser.test.ts apps/platform-web/test/v4-edit.browser.test.ts apps/platform-web/test/v4-photos.browser.test.ts
       # V3-40/V3-23: the measurement's ЮKassa automation in Chromium on a double of the real test page (masked card
       # fields that take typing only, the CVC as «•••», a split date, 3-D Secure) — skipped in the build job without
       # a browser, so it runs here.
@@ -158,6 +158,47 @@ jobs:
             apps/platform-web/test/artifacts/canvas-*.png
             apps/platform-web/test/artifacts/platform-*.png
             packages/build/test/artifacts/patterns-v3/*.png
+          retention-days: 7
+  # V4-02: the owner's v3 path (stand/v3.ts on recorded answers: interview → directions → «Собрать» → build → edit →
+  # publish) on every PR, next to build — a broken canvas or edit flow fails the PR, not main. Only the v3 stand starts
+  # (WIZARD_E2E_STAND); the full e2e still runs on main.
+  e2e-v3:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: ghcr.io/${{ github.repository_owner }}/mirror/docker/library/postgres:16
+        credentials:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          POSTGRES_USER: wizard
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: wizard
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U wizard" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      WIZARD_DB_URL: postgres://wizard@localhost:5433/wizard
+      WIZARD_LLM_MODE: fixture
+      WIZARD_E2E_STAND: v3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @wizard/e2e exec playwright install --with-deps chromium
+      - run: pnpm --filter @wizard/e2e exec playwright test --project v3
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-v3
+          path: |
+            packages/e2e/playwright-report
+            packages/e2e/test-results
           retention-days: 7
   # B2-24/B2-28 (gates.yaml#G1.browser.ci): goal scenarios of the modules and 390 px in Chromium, the matrix rows split
   # over three runners (WIZARD_GOALS_SHARD) next to e2e — each ≤ 8 min; the build job has no browser.

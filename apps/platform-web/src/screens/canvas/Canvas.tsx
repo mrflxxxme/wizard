@@ -47,6 +47,7 @@ import { v3Ru } from "../v3/ru.js";
 import { StyleDrawer, spentLine, V3BuildCard } from "../v3/V3Build.js";
 import { buildProgress, remainingText } from "./buildProgress.js";
 import s from "./Canvas.module.css";
+import { errorWords, failureAction, failureText, isBillingError } from "./failure.js";
 import { islandRu, stageRu } from "./ru.js";
 
 export interface CanvasProps {
@@ -153,6 +154,8 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The code of the request's error: a money one gets «Пополнить баланс» next to its words.
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [live, setLive] = useState("");
   const [news, setNews] = useState<{ id: number; text: string } | null>(null);
@@ -327,10 +330,12 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
   const turnFailure =
     failedEvent && runKind !== "build" && !publishing
       ? {
-          text:
-            typeof failedEvent.payload.message_ru === "string" && failedEvent.payload.message_ru
-              ? failedEvent.payload.message_ru
-              : canvas.chat.turnFailed,
+          // The server's words of a chat turn when they are words (the build's reasons speak of a build).
+          text: failureText(
+            "",
+            typeof failedEvent.payload.message_ru === "string" ? failedEvent.payload.message_ru : null,
+            canvas.chat.turnFailed,
+          ),
           retry: failedEvent.payload.retryable !== false ? retryTurn.current : null,
         }
       : null;
@@ -347,13 +352,18 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
   async function act<T>(name: string, fn: () => Promise<T>): Promise<T | null> {
     setBusy(name);
     setError(null);
+    setErrorCode(null);
     try {
       return await fn();
     } catch (e) {
       if (e instanceof ApiError && e.code === "PLAN_REVISION_STALE") {
         setNotice(canvas.plan.stale);
         await loadPlan();
-      } else setError(errText(e));
+      } else {
+        const code = e instanceof ApiError ? e.code : null;
+        setErrorCode(code);
+        setError(errorWords(code, errText(e)));
+      }
       return null;
     } finally {
       setBusy(null);
@@ -582,12 +592,11 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
     );
   } else if (failure) {
     attention = `fail:${failure.code}`;
+    const action = failureAction(failure.code);
     dock = (
-      <div className={s.fail} role="alert" data-testid="canvas-failure">
+      <div className={s.fail} role="alert" data-testid="canvas-failure" data-action={action ?? "none"}>
         <p className={s.failTitle}>{canvas.failed.title}</p>
-        <p className={s.failText}>
-          {canvas.failed.reasons[failure.code] ?? (failure.message || canvas.failed.generic)}
-        </p>
+        <p className={s.failText}>{failureText(failure.code, failure.message, canvas.failed.generic)}</p>
         <details className={s.more} data-testid="canvas-failure-more">
           <summary>{canvas.failed.more}</summary>
           <dl>
@@ -607,16 +616,22 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
             )}
           </dl>
         </details>
-        {failure.code !== "PLAN_INVALID" && (
+        {(action === "retry" || action === "fix") && (
           <ActionButton
             variant="primary"
             size="sm"
             testId="canvas-retry"
+            busy={busy === "fix"}
             disabled={busy !== null || runActive}
             onClick={() => void retry()}
           >
-            {canvas.failed.retry}
+            {action === "fix" ? canvas.failed.fix : canvas.failed.retry}
           </ActionButton>
+        )}
+        {action === "billing" && (
+          <AppLink to="/billing" className={s.failLink} testId="canvas-topup">
+            {canvas.failed.topUp}
+          </AppLink>
         )}
       </div>
     );
@@ -741,6 +756,8 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
       return;
     }
     if (stage !== "card") return;
+    // V4-17: a screen picked while the others are still drawn waits for the stored proposal (it carries the pick).
+    if (first.pending && !first.error) return;
     const proposalId = first.proposal?.id;
     if (!proposalId) return setStyleBuild(null);
     styleStep.current = true;
@@ -760,7 +777,7 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
         setStyleBuild(null);
       }
     })();
-  }, [styleBuild, stage, runActive, turnFailure]);
+  }, [styleBuild, stage, runActive, turnFailure, first.pending === null, first.proposal?.id]);
   // The chat opens by itself when it asks something new of the owner.
   const seenAttention = useRef<string | null>(null);
   useEffect(() => {
@@ -934,6 +951,14 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
             {error && (
               <p className={s.error} role="alert" data-testid="canvas-error">
                 {error}
+                {isBillingError(errorCode) && (
+                  <>
+                    {" "}
+                    <AppLink to="/billing" className={s.failLink} testId="canvas-error-topup">
+                      {canvas.failed.topUp}
+                    </AppLink>
+                  </>
+                )}
               </p>
             )}
             {upload.progress}
@@ -1103,14 +1128,9 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
                 onSaved={() => void reload().catch(() => {})}
                 onRun={(id) => setRunId(id)}
                 onReloadFrame={() => setReloadKey((k) => k + 1)}
-                onPick={() => {
-                  // On a phone the site is under the panel: it steps aside while the owner picks.
-                  if (
-                    typeof window.matchMedia === "function" &&
-                    window.matchMedia("(max-width: 720px)").matches
-                  )
-                    setPanel(null);
-                }}
+                // The panel covers part of the site at every width (a heading under it could not be clicked): it
+                // steps aside while the owner picks and comes back with the picked text or photo.
+                onPick={() => setPanel(null)}
               />
             </div>
           </Glass>
@@ -1149,12 +1169,22 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
                 type="button"
                 className={s.ibtn}
                 aria-pressed={panel === "build"}
-                aria-label={building ? islandRu.buildLeft(leftText) : islandRu.build}
-                title={building ? islandRu.buildLeft(leftText) : islandRu.build}
+                aria-label={
+                  failure ? islandRu.buildFailed : building ? islandRu.buildLeft(leftText) : islandRu.build
+                }
+                title={
+                  failure ? islandRu.buildFailed : building ? islandRu.buildLeft(leftText) : islandRu.build
+                }
                 data-testid="canvas-island-build"
-                onClick={() => toggle("build")}
+                data-failed={failure ? "" : undefined}
+                onClick={() => (failure ? toggle("chat") : toggle("build"))}
               >
-                <svg className={s.ring} viewBox="0 0 24 24" aria-hidden="true">
+                <svg
+                  className={s.ring}
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  data-failed={failure ? "" : undefined}
+                >
                   <circle className={s.ringTrack} cx="12" cy="12" r="8.5" />
                   <circle
                     className={s.ringFill}
@@ -1163,8 +1193,13 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
                     r="8.5"
                     pathLength="100"
                     strokeDasharray="100"
-                    strokeDashoffset={(100 - fraction * 100).toFixed(1)}
+                    strokeDashoffset={failure ? "0" : (100 - fraction * 100).toFixed(1)}
                   />
+                  {failure && (
+                    <text className={s.ringMark} x="12" y="15.5" textAnchor="middle">
+                      !
+                    </text>
+                  )}
                 </svg>
               </button>
             )}

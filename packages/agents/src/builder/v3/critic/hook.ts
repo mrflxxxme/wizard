@@ -7,7 +7,14 @@
 // a regression is rolled back edit by edit. The loop stops on «pass», when the score stops growing (a batch that made
 // it worse is rolled back), on the budget (≤ 40 ₽ and ctx.budgetRub, checked by the upper bound before each call),
 // on time or when nothing applies. The result is a layer of files for the harness; the critic never blocks a build.
-import { type CallType, createRegistry, type OrgPolicy, type Registry, type RouteContext } from "@wizard/llm";
+import {
+  type CallType,
+  createRegistry,
+  modelFamily,
+  type OrgPolicy,
+  type Registry,
+  type RouteContext,
+} from "@wizard/llm";
 import type { DesignSystemV3 } from "@wizard/ui-kit/v3/design";
 import { hash32, PATTERNS, type PatternMeta } from "@wizard/ui-kit/v3/patterns";
 import type { RunStepFn } from "../../../core/events.js";
@@ -20,6 +27,7 @@ import { type ScenarioVerify, verifySystem } from "../compose/scenario.js";
 import { readSite, type SiteModel, type SitePage } from "../compose/site.js";
 import { lintSitePage } from "../compose/skeleton.js";
 import type { V3BuildContext } from "../contract.js";
+import { pointEditIssues } from "../edit/point.js";
 import type { V3HookResult, V3StageHook } from "../harness/types.js";
 import { V3BudgetError } from "../harness/wallet.js";
 import { CRITIC_VIEWPORTS } from "./checks.js";
@@ -36,6 +44,7 @@ import { CRITIC_CALL_TYPE, type CritiqueHistory, critiqueMessages, critiqueTool 
 import {
   CHECK_RUBRIC,
   type CheckCode,
+  type CodePatch,
   type Critique,
   critiquePasses,
   critiqueScore,
@@ -47,9 +56,9 @@ import {
 } from "./rubric.js";
 import type { CriticInspection, CriticInspector, CriticShot, CriticShotRequest } from "./types.js";
 
-/** Caps of the critic (V3-13 acceptance: ≤ 3 cycles, ≤ 40 ₽). */
+/** Caps of the critic (V3-13: ≤ 40 ₽; V4-09: ≤ 2 cycles). */
 export const CRITIC_LIMITS = {
-  maxCycles: 3,
+  maxCycles: 2,
   budgetRub: 40,
   /** Wall clock of the stage, ms. */
   timeMs: 6 * 60_000,
@@ -84,6 +93,11 @@ export interface CriticOptions {
   orgPolicy?: OrgPolicy | null;
   routeCtx?: RouteContext;
   runStep?: RunStepFn;
+  /**
+   * V4-09: model families of the pages' author in this build (the platform reads them from the run's calls); the critic
+   * is never of one of them. Default: the family of the head of the page writer's route.
+   */
+  authorFamilies?: () => Promise<readonly string[]>;
 }
 
 /** One model cycle: the verdict on the state it saw and what its edits did. */
@@ -201,6 +215,47 @@ function merged(
   return out;
 }
 
+/** An edit of a cycle: a closed operation or a code edit (V4-09). */
+export type Change = { kind: "op"; op: EditOp } | { kind: "patch"; patch: CodePatch };
+
+export const describeChange = (ch: Change): string =>
+  ch.kind === "op" ? describeEdit(ch.op) : describePatch(ch.patch);
+
+/** Short Russian form of a code edit. */
+export function describePatch(p: CodePatch): string {
+  const what = p.replace.replace(/\s+/g, " ").trim().slice(0, 60);
+  return `${p.file}: правка кода «${what}»`;
+}
+
+/** Families of the head models of the page writer's route (the default author of the pages). */
+export function defaultAuthorFamilies(reg: Registry): string[] {
+  const chain = reg.routes.page_compose.chain;
+  const out = new Set<string>();
+  for (const id of [chain.T1?.[0], chain.T0?.[0]]) {
+    const m = id ? reg.models.find((x) => x.id === id) : undefined;
+    if (m) out.add(modelFamily(m));
+  }
+  return [...out].sort();
+}
+
+/** The generated layer with the code edits over it (a patch whose fragment is not there exactly once is skipped). */
+export function withCode(
+  layer: Map<string, string | null>,
+  base: ReadonlyMap<string, string>,
+  code: readonly CodePatch[] = [],
+): Map<string, string | null> {
+  if (!code.length) return layer;
+  const out = new Map(layer);
+  for (const p of code) {
+    const src = out.has(p.file) ? out.get(p.file) : base.get(p.file);
+    if (typeof src !== "string") continue;
+    const at = src.indexOf(p.find);
+    if (at < 0 || src.indexOf(p.find, at + 1) >= 0) continue;
+    out.set(p.file, src.slice(0, at) + p.replace + src.slice(at + p.find.length));
+  }
+  return out;
+}
+
 /** Short Russian form of an edit for the history and the notes. */
 export function describeEdit(op: EditOp): string {
   switch (op.op) {
@@ -270,7 +325,11 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
   const seed = `${ctx.design.seed}:${ctx.systemId}`;
 
   const layerOf = (st: CriticState) =>
-    siteFiles(st.site, facts.copy.site, st.design, ctx.files, signatures, library);
+    withCode(
+      siteFiles(st.site, facts.copy.site, st.design, ctx.files, signatures, library),
+      ctx.files,
+      st.code,
+    );
   const filesOf = (st: CriticState) => merged(ctx.files, layerOf(st));
   const timeLeft = () => now() - t0 < timeMs;
   const canInspect = () => report.inspections < maxInspections && timeLeft();
@@ -293,6 +352,41 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
     const page = st.site.pages.find((p) => p.route === route);
     return page ? lintErrors(lintSitePage(st.site, page, facts, library, signatures)).length : 0;
   };
+  /** A closed operation on the site model or a code edit of a file (V4-09). */
+  type Applied =
+    | { ok: true; state: CriticState; summary_ru: string; touched: "all" | string[] }
+    | { ok: false; reason_ru: string };
+  const applyChange = (st: CriticState, ch: Change): Applied => {
+    if (ch.kind === "op") {
+      const r = applyEdit(st, ch.op, env);
+      if (!r.ok) return r;
+      return {
+        ok: true,
+        state: r.state,
+        summary_ru: r.summary_ru,
+        touched: r.touched === "site" ? "all" : [r.route as string],
+      };
+    }
+    const p = ch.patch;
+    if (p.file.startsWith("ui/patterns/"))
+      return { ok: false, reason_ru: "библиотеку секций не правим — только страницы и фирменные секции" };
+    const before = filesOf(st).get(p.file);
+    if (before === undefined) return { ok: false, reason_ru: `файла ${p.file} нет` };
+    const at = before.indexOf(p.find);
+    if (at < 0 || before.indexOf(p.find, at + 1) >= 0)
+      return { ok: false, reason_ru: "фрагмент не найден в файле ровно один раз" };
+    const after = before.slice(0, at) + p.replace + before.slice(at + p.find.length);
+    const issues = pointEditIssues(p.file, before, after);
+    if (issues.length) return { ok: false, reason_ru: issues[0]?.message ?? "правка не прошла проверку" };
+    const pages = st.site.pages.filter((pg) => pg.file === p.file).map((pg) => pg.route);
+    return {
+      ok: true,
+      state: { ...st, code: [...(st.code ?? []), p] },
+      summary_ru: describePatch(p),
+      touched: pages.length ? pages : "all",
+    };
+  };
+
   /** Problems of the routes just inspected replace theirs; the rest stay. */
   const withRoutes = (
     all: readonly DeterministicProblem[],
@@ -467,11 +561,18 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
   const spent = () => round2((spentMilli / 1000) * rpc);
   const left = () => cap - spent();
   const lastCall: { model?: string; tier?: string } = {};
+  // V4-09: the critic is never of the pages' author's family.
+  const avoid = [
+    ...new Set([...defaultAuthorFamilies(registry), ...((await o.authorFamilies?.().catch(() => [])) ?? [])]),
+  ];
   const route: RouteFn = async (input) => {
     const ub = upperBoundCredits(input.callType as CallType, input.messages, input.tools ?? [], registry);
     const need = round2(ub * rpc);
     if (need > left()) throw new CriticBudgetStop(need);
-    const out = await ctx.route(input);
+    const out = await ctx.route({
+      ...input,
+      avoidFamilies: [...new Set([...(input.avoidFamilies ?? []), ...avoid])],
+    });
     spentMilli += out.creditsMilli;
     lastCall.model = out.model;
     lastCall.tier = out.tier;
@@ -519,6 +620,14 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
       found: problems,
       history,
       stubPhotos,
+      // V4-09: the code of the shown pages — the patches edit it.
+      code: new Map(
+        [...new Set(shots.map((x) => x.route))].flatMap((rt) => {
+          const file = state.site.pages.find((pg) => pg.route === rt)?.file;
+          const src = file ? filesOf(state).get(file) : undefined;
+          return file && src !== undefined ? [[file, src] as const] : [];
+        }),
+      ),
     });
     const need = round2(
       upperBoundCredits(CRITIC_CALL_TYPE, messages, [critiqueTool.definition], registry) * rpc,
@@ -565,11 +674,9 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
       ...(lastCall.model ? { model: lastCall.model, tier: lastCall.tier as string } : {}),
     };
     report.cycles.push(cycle);
+    // V4-09: the model's opinion never accepts or rolls back an edit — the deterministic checks did; a cycle that did
+    // not raise the score only stops the loop.
     if (prev && score < prev.score) {
-      // The last batch made the site worse in the model's eyes: back to the state before it.
-      state = prev.before;
-      problems = prev.problems;
-      report.rolledBack.push(...prev.batch);
       report.stop = "no_gain";
       break;
     }
@@ -581,34 +688,42 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
       report.stop = "pass";
       break;
     }
-    // A finding without an edit gets the one its catalog sign implies (V3-40); one edit per section, the most severe.
+    // A finding's code edit (V4-09) or closed edit; without either — the one its catalog sign implies (V3-40); one
+    // edit per section or fragment, the most severe first.
     const seen = new Set<string>();
     const edits = [...critique.findings]
       .sort((a, b) => SEV_ORDER(a.severity) - SEV_ORDER(b.severity))
-      .map((f) => f.edit ?? impliedEdit(f, state, library, seed))
-      .filter((op): op is EditOp => {
-        if (!op || seen.has(editKey(op))) return false;
-        seen.add(editKey(op));
+      .map((f): Change | null => {
+        if (f.patch) return { kind: "patch", patch: f.patch };
+        const op = f.edit ?? impliedEdit(f, state, library, seed);
+        return op ? { kind: "op", op } : null;
+      })
+      .filter((ch): ch is Change => {
+        if (!ch) return false;
+        const key = ch.kind === "op" ? editKey(ch.op) : `${ch.patch.file}\u0000${ch.patch.find}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
         return true;
       })
       .slice(0, maxEdits);
-    // Edits one by one on the model (cheap: slot schemas, copy rules, the linter of the page).
+    // Edits one by one on the model (cheap: slot schemas, copy rules, the linter of the page; a code edit — it parses,
+    // keeps the file's imports and data bindings, no raw colours or fonts).
     let cand = state;
-    const accepted: { op: EditOp; summary: string; touched: "all" | string[] }[] = [];
-    for (const op of edits) {
-      const r = applyEdit(cand, op, env);
+    const accepted: { change: Change; summary: string; touched: "all" | string[] }[] = [];
+    for (const change of edits) {
+      const r = applyChange(cand, change);
       if (!r.ok) {
-        cycle.rejected.push({ edit: describeEdit(op), reason_ru: r.reason_ru });
+        cycle.rejected.push({ edit: describeChange(change), reason_ru: r.reason_ru });
         continue;
       }
-      const touched = r.touched === "site" ? routes : [r.route as string];
+      const touched = r.touched === "all" ? routes : r.touched;
       const worse = touched.find((rt) => lintCount(r.state, rt) > lintCount(cand, rt));
       if (worse) {
-        cycle.rejected.push({ edit: describeEdit(op), reason_ru: `линтер страницы ${worse}` });
+        cycle.rejected.push({ edit: describeChange(change), reason_ru: `линтер страницы ${worse}` });
         continue;
       }
       cand = r.state;
-      accepted.push({ op, summary: r.summary_ru, touched: r.touched === "site" ? "all" : touched });
+      accepted.push({ change, summary: r.summary_ru, touched: r.touched });
     }
     if (accepted.length === 0) {
       history.push({ cycle: n, applied: [], rejected: cycle.rejected });
@@ -632,7 +747,7 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
     } else {
       let s2 = state;
       for (const x of accepted) {
-        const r = applyEdit(s2, x.op, env);
+        const r = applyChange(s2, x.change);
         if (!r.ok) continue;
         const t2 = await trial(r.state, x.touched, { g0: true, shots: false });
         if (t2.ok) {
@@ -641,7 +756,7 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
           problems = t2.problems;
           cycle.applied.push(x.summary);
         } else {
-          cycle.rejected.push({ edit: describeEdit(x.op), reason_ru: `откат: ${t2.reason}` });
+          cycle.rejected.push({ edit: describeChange(x.change), reason_ru: `откат: ${t2.reason}` });
           report.rolledBack.push(`${x.summary} (${t2.reason})`);
         }
       }
@@ -659,7 +774,9 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
   report.after = { penalty: problemPenalty(problems), problems: problemDigest(problems).length };
   report.left = problems;
   report.files =
-    state.site === site0 && state.design === ctx.design ? new Map() : changed(layerOf(state), ctx.files);
+    state.site === site0 && state.design === ctx.design && !state.code?.length
+      ? new Map()
+      : changed(layerOf(state), ctx.files);
   report.notes = criticNotes(report);
   if (state.design !== ctx.design) report.design = state.design;
   return report;

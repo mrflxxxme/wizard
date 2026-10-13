@@ -4,13 +4,18 @@
 // design_directions); the pick and the references become new brief versions (V3-02 store, author owner). Model calls
 // go through the platform router with the org policy (T1 only scrubbed, models.yaml) and the LLM cap; a missing model
 // or budget never blocks the step — the texts then come from the brief.
-import { randomUUID } from "node:crypto";
+// V4-17: a streamed proposal (POST with stream) runs in the background of the process; GET reports its stage and the
+// directions already built (their previews keyed by the job), so the canvas shows the first screen as soon as it is
+// ready instead of waiting for all three.
+import { randomBytes, randomUUID } from "node:crypto";
 import {
+  briefFacts,
   DIRECTIONS_BUDGET_RUB,
   type DirectionsModel,
   type DirectionsProposal,
   directionDesign,
   directionsNiche,
+  fallbackTexts,
   isDirectionsProposal,
   LOGO_HEAD,
   logoPrinciples,
@@ -20,8 +25,10 @@ import {
   type RefineResult,
   RUB_PER_CREDIT,
   RubWallet,
+  referenceHints,
   referenceLine,
   refineDirections,
+  type StoredDirection,
   screenshotPrinciples,
   tuningWords,
   WORDS_HEAD,
@@ -50,7 +57,7 @@ import { insertMessage, type NewMessage } from "../services/messages.js";
 import { loadBrief } from "../services/plans.js";
 import type { BlobStore } from "../storage/blobs.js";
 import { referenceImageColors } from "./images.js";
-import { PreviewBuilds, previewHtml } from "./previews.js";
+import { type BuiltPreview, type PreviewBase, PreviewBuilds, previewHtml } from "./previews.js";
 
 /** payload.type of the chat messages that carry a proposal. */
 export const DIRECTIONS_MESSAGE = "design_directions";
@@ -61,6 +68,10 @@ export const MAX_REFERENCES = 3;
 /** Fixture of the recorded answers in WIZARD_LLM_MODE=fixture (tools/fixtures/unit/<name>.jsonl). */
 export const DIRECTIONS_FIXTURE = "design-directions";
 const PAGE_CAPTURE_BYTES = 512 * 1024;
+/** V4-17: the whole streamed proposal (models, previews) ends by this deadline, ms. */
+export const STREAM_DEADLINE_MS = 6 * 60_000;
+/** A failed streamed proposal is reported this long (the next POST replaces it), ms. */
+export const FAILED_STREAM_TTL_MS = 10 * 60_000;
 
 export interface DirectionsDeps {
   db: Db;
@@ -114,6 +125,37 @@ export interface ProposalView {
   directions: DirectionView[];
 }
 
+/** V4-17 stages of a streamed proposal: the model designs, the model writes, the previews build; or it failed. */
+export type PendingStage = "design" | "texts" | "screens" | "failed";
+
+/** A streamed proposal still going on (GET /directions → pending). */
+export interface PendingView {
+  /** The job's id: the preview files of its directions are served under it. */
+  key: string;
+  briefVersion: number;
+  startedAt: string;
+  elapsedMs: number;
+  stage: PendingStage;
+  /** Directions already built, in the order they became ready. */
+  ready: DirectionView[];
+  total: number;
+  /** The skeleton of the first screen until one is ready: the brief's words and the brand colour (hex) if any. */
+  skeleton: { title: string; lead: string | null; action: string; accent: string | null };
+  /** Why it failed, in words (stage failed). */
+  error: string | null;
+}
+
+interface StreamJob {
+  key: string;
+  systemId: string;
+  briefVersion: number;
+  started: number;
+  stage: PendingStage;
+  ready: DirectionView[];
+  skeleton: PendingView["skeleton"];
+  error: string | null;
+}
+
 export interface SystemRef {
   id: string;
   org_id: string;
@@ -162,6 +204,7 @@ export class DirectionsService {
   readonly previews = new PreviewBuilds();
   #router: Router | undefined;
   readonly #hits = new Map<string, number[]>();
+  readonly #jobs = new Map<string, StreamJob>();
 
   constructor(readonly d: DirectionsDeps) {}
 
@@ -291,34 +334,103 @@ export class DirectionsService {
       fallback: p.fallback,
       references: p.references,
       picked: p.directions.find((d) => d.archetype === pinned)?.n ?? null,
-      directions: p.directions.map((d, i) => {
-        const ds = directionDesign(p, d).design;
-        const scheme = ds.palette[ds.palette.scheme];
-        return {
-          n: d.n,
-          archetype: d.archetype,
-          name: d.name,
-          why: d.why,
-          texts: d.texts,
-          textsSource: d.textsSource,
-          tuning: tuningWords(d.tuning),
-          header: d.header,
-          hero: d.hero,
-          fonts: { display: ds.fonts.display.family, text: ds.fonts.text.family },
-          palette: {
-            background: cssHex(scheme.bg),
-            foreground: cssHex(scheme.ink),
-            accent: cssHex(scheme.accent),
-          },
-          previewHtml: previewHtml(
-            id,
-            d.n,
-            `${d.n}. ${d.name}`,
-            built[i] as NonNullable<(typeof built)[number]>,
-          ),
-        };
-      }),
+      directions: p.directions.map((d, i) => directionView(id, p, d, built[i] as BuiltPreview)),
     };
+  }
+
+  /** The streamed proposal of a system still going on (or failed recently), null when there is none. */
+  pending(systemId: string, now = Date.now()): PendingView | null {
+    const j = this.#jobs.get(systemId);
+    if (!j) return null;
+    return {
+      key: j.key,
+      briefVersion: j.briefVersion,
+      startedAt: new Date(j.started).toISOString(),
+      elapsedMs: now - j.started,
+      stage: j.stage,
+      ready: [...j.ready],
+      total: 3,
+      skeleton: j.skeleton,
+      error: j.error,
+    };
+  }
+
+  /**
+   * V4-17: three directions from the current brief in the background — the answer is the pending view at once; each
+   * direction joins `ready` as soon as its preview is built, the stored proposal ends the job (GET shows it then).
+   * A job already going on for the system is returned as is.
+   */
+  async start(sys: SystemRef, opts: { reroll?: boolean } = {}): Promise<PendingView> {
+    const going = this.#jobs.get(sys.id);
+    // A job past its own deadline (and a minute more) is stuck: a new one replaces it.
+    if (going && going.stage !== "failed" && Date.now() - going.started < STREAM_DEADLINE_MS + 60_000)
+      return this.pending(sys.id) as PendingView;
+    const latest = await getLatestBrief(this.d.db, sys.id);
+    if (!latest)
+      throw invalid("Сначала нужен бриф системы: ответьте на вопросы интервью, затем выберем оформление");
+    const niche = directionsNiche(sys.name, await loadBrief(this.d.db, sys.id));
+    const first = fallbackTexts(briefFacts(latest.brief, sys.name, niche), 0);
+    const job: StreamJob = {
+      key: randomBytes(32).toString("hex"),
+      systemId: sys.id,
+      briefVersion: latest.version,
+      started: Date.now(),
+      stage: "design",
+      ready: [],
+      skeleton: {
+        title: first.title,
+        lead: first.lead ?? null,
+        action: first.action,
+        accent: referenceHints(latest.brief.design.references).brandColor ?? null,
+      },
+      error: null,
+    };
+    this.#jobs.set(sys.id, job);
+    void this.#stream(job, sys, latest, niche, opts.reroll === true);
+    return this.pending(sys.id) as PendingView;
+  }
+
+  async #stream(
+    job: StreamJob,
+    sys: SystemRef,
+    latest: BriefVersion,
+    niche: string,
+    reroll: boolean,
+  ): Promise<void> {
+    try {
+      const recent = reroll ? await this.#recentArchetypes(sys.id) : [];
+      const model = await this.#model(sys, new RubWallet(DIRECTIONS_BUDGET_RUB, RUB_PER_CREDIT));
+      const proposal = await proposeDirections(
+        { brief: latest.brief, name: sys.name, niche, seed: sys.id, recent },
+        {
+          ...model,
+          signal: AbortSignal.timeout(STREAM_DEADLINE_MS),
+          // The model's steps name the stage the canvas words («подбираю палитру», «пишу заголовок»).
+          runStep: (name, fn) => {
+            job.stage = name === "direction_texts" ? "texts" : "design";
+            return fn();
+          },
+        },
+      );
+      job.stage = "screens";
+      await Promise.all(proposal.directions.map((d) => this.#ready(job, proposal, d)));
+      await this.#announce(sys, proposal, latest.version);
+      if (this.#jobs.get(sys.id) === job) this.#jobs.delete(sys.id);
+    } catch (e) {
+      this.d.log?.("streamed directions failed", e);
+      job.stage = "failed";
+      job.error =
+        e instanceof ApiError ? e.message_ru : "Не получилось нарисовать экраны. Попробуйте ещё раз.";
+      setTimeout(() => {
+        if (this.#jobs.get(sys.id) === job) this.#jobs.delete(sys.id);
+      }, FAILED_STREAM_TTL_MS).unref();
+    }
+  }
+
+  /** A direction of a streamed proposal joins `ready` once its preview is built. */
+  async #ready(job: StreamJob, base: PreviewBase, d: StoredDirection): Promise<void> {
+    const built = await this.previews.build(job.key, base, d);
+    job.ready.push(directionView(job.key, base, d, built));
   }
 
   /** The latest proposal of the system (from its chat), null when there is none or its blob is gone. */
@@ -338,30 +450,41 @@ export class DirectionsService {
     const latest = await getLatestBrief(this.d.db, sys.id);
     if (!latest)
       throw invalid("Сначала нужен бриф системы: ответьте на вопросы интервью, затем выберем оформление");
-    let recent: string[] = [];
-    if (opts.reroll) {
-      const prev = await this.#latestId(sys.id);
-      const p = prev ? await this.load(prev, sys.id) : null;
-      recent = p ? p.directions.map((d) => d.archetype) : [];
-    }
+    const recent = opts.reroll ? await this.#recentArchetypes(sys.id) : [];
     const niche = directionsNiche(sys.name, await loadBrief(this.d.db, sys.id));
     const model = await this.#model(sys, new RubWallet(DIRECTIONS_BUDGET_RUB, RUB_PER_CREDIT));
     const proposal = await proposeDirections(
       { brief: latest.brief, name: sys.name, niche, seed: sys.id, recent },
       { ...model, ...(opts.signal ? { signal: opts.signal } : {}) },
     );
-    const { id, stored } = await this.#store(proposal, sys.id, latest.version);
-    const view = await this.view(id, stored, latest.brief);
+    const { id, stored } = await this.#announce(sys, proposal, latest.version);
+    return this.view(id, stored, latest.brief);
+  }
+
+  /** Stores a new proposal and announces it in the system chat. */
+  async #announce(
+    sys: SystemRef,
+    proposal: DirectionsProposal,
+    briefVersion: number,
+  ): Promise<{ id: string; stored: StoredProposal }> {
+    const r = await this.#store(proposal, sys.id, briefVersion);
     await this.#chat(sys.id, [
       {
         systemId: sys.id,
         role: "assistant",
         kind: "text",
         text: `Три направления оформления: ${proposal.directions.map((d) => `«${d.name}»`).join(", ")}. Выберите одно или напишите, что поменять.`,
-        payload: { type: DIRECTIONS_MESSAGE, proposalId: id, briefVersion: latest.version },
+        payload: { type: DIRECTIONS_MESSAGE, proposalId: r.id, briefVersion },
       },
     ]);
-    return view;
+    return r;
+  }
+
+  /** Archetypes of the latest proposal (a reroll avoids them). */
+  async #recentArchetypes(systemId: string): Promise<string[]> {
+    const prev = await this.#latestId(systemId);
+    const p = prev ? await this.load(prev, systemId) : null;
+    return p ? p.directions.map((d) => d.archetype) : [];
   }
 
   async #latestId(systemId: string): Promise<string | null> {
@@ -537,4 +660,28 @@ export class DirectionsService {
     }
     return { reference: line, brief: await this.#saveReference(sys, user, line, false), read };
   }
+}
+
+/** The view of one direction with its built preview (served under `id`: a proposal or a streamed job). */
+function directionView(id: string, p: PreviewBase, d: StoredDirection, built: BuiltPreview): DirectionView {
+  const ds = directionDesign(p, d).design;
+  const scheme = ds.palette[ds.palette.scheme];
+  return {
+    n: d.n,
+    archetype: d.archetype,
+    name: d.name,
+    why: d.why,
+    texts: d.texts,
+    textsSource: d.textsSource,
+    tuning: tuningWords(d.tuning),
+    header: d.header,
+    hero: d.hero,
+    fonts: { display: ds.fonts.display.family, text: ds.fonts.text.family },
+    palette: {
+      background: cssHex(scheme.bg),
+      foreground: cssHex(scheme.ink),
+      accent: cssHex(scheme.accent),
+    },
+    previewHtml: previewHtml(id, d.n, `${d.n}. ${d.name}`, built),
+  };
 }
