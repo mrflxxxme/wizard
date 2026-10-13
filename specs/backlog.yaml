@@ -2584,7 +2584,7 @@ tasks:
     estimate_days: 1
     status: in_progress
     claimed_by: session_01HWKT1m6cHQBBtUV7d9pQhf
-    owns: ["packages/gates/src/stubs/** (новый)", "packages/gates/src/index.ts (регистрация)"]
+    owns: ["packages/gates/src/stubs/** (новый)", "packages/gates/src/index.ts (регистрация)", "packages/gates/test/stubs*.ts", ".github/workflows/ci.yml (шаг e2e: браузерный тест)"]
     description: >
       Поток Б. Основатель видит сайты с заглушками; G0 ловит только заглушку страницы билдера. Детерминированная проверка
       (DOM в Chromium на 390 и 1440 и разбор TSX) находит мёртвые ссылки и кнопки, текст-заглушки, пустые и повторяющиеся
