@@ -1,5 +1,6 @@
-// D78: the owner's v3 path through the platform UI on the v3 stand (stand/v3.ts: WIZARD_BUILD_PIPELINE=v3, recorded
-// model answers of stand/v3-models.ts, no network, 0 ₽). Sign in by an e-mail code → a new system from a description →
+// D78: the owner's v3 path through the platform UI on the v3 stand (stand/v3.ts: WIZARD_BUILD_PIPELINE=v3; the build's
+// model calls answer from the records of real models, stand/v3-models.ts, V4-03 — no network, 0 ₽, a call without a
+// record fails the spec). Sign in by an e-mail code → a new system from a description →
 // the grill interview in the chat (the recommended button, «Решите за меня», an own answer) → the short brief and the
 // brief panel → three directions, pick one → «Собрать» → the live build on the canvas (stages, the scenario checklist)
 // → the preview of the site opens → «Система готова», the toast and the letter → an edit by words goes into the brief
@@ -9,8 +10,23 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
 import { PROMPTS } from "../../../agents/test/interview-v3/helpers.js";
-import { V3, V3_OUTBOX } from "../../stand/ports.js";
-import { V3_WISH, V3_WISH_AUDIENCE } from "../../stand/v3-models.js";
+import { V3, V3_OUTBOX, V3_RECORDS_LOG } from "../../stand/ports.js";
+import { V3_WISH, V3_WISH_AUDIENCE, type V3RecordUse } from "../../stand/v3-models.js";
+
+/** V4-03: a recording run (WIZARD_V3_RECORDS=record) waits for live models — the long waits grow tenfold. */
+const SLOW = process.env.WIZARD_V3_RECORDS === "record" ? 10 : 1;
+
+/** What the model calls of the stand took (stand/v3-models.ts): records, misses, new recordings. */
+function recordUses(): V3RecordUse[] {
+  try {
+    return readFileSync(V3_RECORDS_LOG, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as V3RecordUse);
+  } catch {
+    return [];
+  }
+}
 
 /** Letters of the v3 stand's OutboxMailer to `to`, oldest first. */
 function letters(to: string): { kind: string; to: string; subject: string; text: string }[] {
@@ -58,7 +74,7 @@ async function say(page: Page, text: string): Promise<void> {
 test("v3: интервью → бриф → три направления → «Собрать» → живая сборка → превью → «Система готова» → правка словами → данные оператора → публикация → сайт и кабинет", async ({
   page,
 }) => {
-  test.setTimeout(420_000);
+  test.setTimeout(420_000 * SLOW);
   const email = `owner-v3-${randomBytes(4).toString("hex")}@example.test`;
   await signIn(page, email);
 
@@ -104,7 +120,7 @@ test("v3: интервью → бриф → три направления → «
   await expect(drawer).toBeVisible();
   await drawer.getByTestId("directions-propose").click();
   for (const n of [1, 2, 3]) {
-    await expect(drawer.getByTestId(`direction-${n}`)).toBeVisible({ timeout: 60_000 });
+    await expect(drawer.getByTestId(`direction-${n}`)).toBeVisible({ timeout: 60_000 * SLOW });
     await expect(drawer.getByTestId(`direction-preview-${n}`)).toHaveAttribute("srcdoc", /<html/i);
   }
   const archetypes = new Set(
@@ -123,20 +139,20 @@ test("v3: интервью → бриф → три направления → «
   await expect(live).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("canvas-v3-live-title")).toBeVisible();
   const scenarios = page.getByTestId("canvas-v3-live-scenario");
-  await expect(scenarios.first()).toBeVisible({ timeout: 60_000 });
+  await expect(scenarios.first()).toBeVisible({ timeout: 60_000 * SLOW });
   expect(await scenarios.count()).toBeGreaterThanOrEqual(2);
   await page.getByTestId("canvas-v3-live-more").locator("summary").click();
   await expect(page.getByTestId("canvas-v3-live-stages").locator("li").first()).toBeVisible();
 
   // The preview of the site opens in the canvas once the skeleton passes G0.
   const frame = page.getByTestId("canvas-v3-live-frame");
-  await expect(frame).toBeVisible({ timeout: 120_000 });
+  await expect(frame).toBeVisible({ timeout: 120_000 * SLOW });
   await expect(page.frameLocator('[data-testid="canvas-v3-live-frame"]').locator("h1").first()).toBeVisible({
     timeout: 30_000,
   });
 
   // The end: «Система собрана», every scenario checked, «Система готова» in the chat, the toast and the letter.
-  await expect(live).toHaveAttribute("data-phase", "done", { timeout: 150_000 });
+  await expect(live).toHaveAttribute("data-phase", "done", { timeout: 150_000 * SLOW });
   await expect(page.getByTestId("canvas-v3-live-title")).toHaveText("Система собрана");
   const statuses = await scenarios.evaluateAll((els) => els.map((e) => e.getAttribute("data-status")));
   expect(
@@ -165,7 +181,7 @@ test("v3: интервью → бриф → три направления → «
   // of the first build (not paid twice), the second ready notice, the preview stays.
   await page.getByTestId("canvas-v3-approve").click();
   await expect
-    .poll(() => letters(email).filter((l) => l.kind === "notice").length, { timeout: 150_000 })
+    .poll(() => letters(email).filter((l) => l.kind === "notice").length, { timeout: 150_000 * SLOW })
     .toBe(2);
   await expect(page.getByTestId("canvas-v3-live-checkpoints")).toContainText("Взято из прошлой сборки", {
     timeout: 30_000,
@@ -198,7 +214,7 @@ test("v3: интервью → бриф → три направления → «
   await expect(submit).toBeEnabled();
   await submit.click();
   await expect(page.getByTestId("canvas-v3-publish-prod")).toContainText("Опубликована версия", {
-    timeout: 150_000,
+    timeout: 150_000 * SLOW,
   });
   await expect(page.getByTestId("canvas-v3-publish-result")).toContainText("Система опубликована");
   const site = (await page.getByTestId("canvas-v3-publish-site").getAttribute("href")) ?? "";
@@ -213,4 +229,15 @@ test("v3: интервью → бриф → три направления → «
   await expect(prod.locator("h1").first()).toBeVisible({ timeout: 30_000 });
   expect((await prod.goto(cabinet))?.status()).toBe(200);
   await prod.close();
+
+  // V4-03: the build's stages answered from the records of real models — no call missed its record (a miss would have
+  // sent its stage to the deterministic fallback silently), and the art director, the pages, the critic and the techreview took
+  // real answers.
+  const uses = recordUses();
+  expect(uses.filter((u) => u.outcome === "miss").map((u) => u.message)).toEqual([]);
+  const answered = new Set(
+    uses.filter((u) => u.outcome === "hit" || u.outcome === "recorded").map((u) => u.callType),
+  );
+  for (const callType of ["art_direction", "page_compose", "critic_visual", "techreview"])
+    expect([...answered]).toContain(callType);
 });
