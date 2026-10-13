@@ -16,6 +16,7 @@ import { Payments } from "./billing/payments.js";
 import { briefRoutes } from "./briefs/routes.js";
 import { sessionRoutes } from "./briefs/sessions.js";
 import { briefUploadRoutes } from "./briefs/upload.js";
+import { editRoutes } from "./builds-v3/edit/routes.js";
 import { reportRoutes, reportStorage } from "./builds-v3/report/index.js";
 import { buildV3Routes } from "./builds-v3/routes.js";
 import { type ByokService, byokRoutes, byokServiceOf, type TransitKms } from "./byok/index.js";
@@ -475,6 +476,16 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   api.route("/", capabilityRoutes({ ...abuse, ...(opts.now ? { now: opts.now } : {}) }));
   // V3-18: /admin «Системы и сбои» — every system with its last build and spend, failed runs with the error.
   api.route("/", adminSystemsRoutes(abuse));
+  // V4-15: instant edits of the draft — texts and photos by their source literal, no model.
+  api.route(
+    "/",
+    editRoutes({
+      db: deps.db,
+      pg: deps.pg,
+      blobs: deps.blobs,
+      ...(executors.onG0Passed ? { onG0Passed: executors.onG0Passed } : {}),
+    }),
+  );
   // V4-04: /admin/runs/:id/report — the report of a v3 build (screenshots, gates, scenarios with HTTP, critic, ₽, records).
   let reportFiles: ReturnType<typeof reportStorage> | undefined;
   api.route(

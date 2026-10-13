@@ -31,6 +31,8 @@ describe("writeArtifact", () => {
         r.manifest.entry.script.replace(/^/, "client/"),
         "manifest.json",
         "server/functions.mjs",
+        // V4-15: the page literals of a draft (served as /_wizard/source-map.json).
+        "source-map.json",
         "spec.json",
         "wz-map.json",
       ].sort(),
@@ -41,6 +43,7 @@ describe("writeArtifact", () => {
     expect(manifest.specHash).toBe(specHash(JSON.parse(readFileSync(join(w.dir, "spec.json"), "utf8"))));
     expect(readFileSync(join(w.dir, "server/functions.mjs"), "utf8")).toBe(r.serverFunctions);
     expect(JSON.parse(readFileSync(join(w.dir, "wz-map.json"), "utf8"))).toEqual(r.wzMap);
+    expect(JSON.parse(readFileSync(join(w.dir, "source-map.json"), "utf8"))).toEqual(r.sourceMap);
     expect(readdirSync(join(root, SYSTEM))).toEqual(["1"]); // no staging leftovers
   });
 
