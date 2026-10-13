@@ -2,7 +2,9 @@
 export {
   createDirectionsApi,
   type DirectionsApi,
+  type DirectionsPendingView,
   type DirectionsProposalView,
+  type DirectionsState,
   type DirectionView,
 } from "./api.js";
 export { DIRECTIONS_UPLOAD_MAX, DirectionsCard, type DirectionsCardProps } from "./DirectionsCard.js";

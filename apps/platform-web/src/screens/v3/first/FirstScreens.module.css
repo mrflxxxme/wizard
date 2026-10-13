@@ -2,7 +2,8 @@
    bar with its name, the arrows and «Собрать в этом стиле» floats top-left over it; tokens --p-*. */
 
 .root,
-.wait {
+.wait,
+.sketch {
   position: fixed;
   inset: 0;
   z-index: 1;
@@ -150,31 +151,139 @@
   font-size: 15px;
 }
 
-.skel {
-  display: flex;
-  gap: 10px;
-  margin-top: 8px;
+@keyframes pulse {
+  50% {
+    opacity: 0.45;
+  }
 }
 
-.skel i {
-  width: 96px;
-  height: 64px;
-  border-radius: var(--p-r-md);
+/* ——— V4-17: the skeleton of the first screen while it is drawn (the brief's words, the brand colour) ——— */
+.sketch {
+  --first-accent: var(--p-ink);
+  overflow: hidden;
+}
+
+.sketchPage {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100%;
+  padding: 20px clamp(16px, 5vw, 72px);
+  background: var(--p-surface, #fff);
+}
+
+.sketchNav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 20px;
+}
+
+.sketchNav > i {
+  display: block;
+  width: 120px;
+  height: 18px;
+  border-radius: var(--p-r-pill);
   background: var(--p-skel, var(--p-sunken));
   animation: pulse 1.6s ease-in-out infinite;
 }
 
-.skel i:nth-child(2) {
-  animation-delay: 0.2s;
+.sketchNav span {
+  display: flex;
+  gap: 18px;
 }
 
-.skel i:nth-child(3) {
-  animation-delay: 0.4s;
+.sketchNav span i {
+  display: block;
+  width: 64px;
+  height: 12px;
+  border-radius: var(--p-r-pill);
+  background: var(--p-skel, var(--p-sunken));
+  animation: pulse 1.6s ease-in-out infinite;
 }
 
-@keyframes pulse {
-  50% {
-    opacity: 0.45;
+.sketchHero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: clamp(20px, 4vw, 56px);
+  align-items: center;
+  padding-bottom: 120px;
+}
+
+.sketchText {
+  display: grid;
+  justify-items: start;
+  gap: 18px;
+}
+
+.sketchTitle {
+  margin: 0;
+  font-family: var(--p-f-serif);
+  font-size: clamp(32px, 5vw, 64px);
+  line-height: 1.08;
+  color: var(--p-ink);
+  opacity: 0.86;
+}
+
+.sketchLead {
+  margin: 0;
+  max-width: 44ch;
+  font-size: clamp(16px, 1.4vw, 19px);
+  color: var(--p-ink-2);
+}
+
+.sketchButton {
+  display: inline-flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 0 22px;
+  border-radius: var(--p-r-pill);
+  background: var(--first-accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.sketchPhoto {
+  height: min(56vh, 520px);
+  border-radius: var(--p-r-xl);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--first-accent) 22%, var(--p-sunken)),
+    var(--p-skel, var(--p-sunken))
+  );
+  animation: pulse 2.2s ease-in-out infinite;
+}
+
+.status {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--p-ink-2);
+}
+
+.dots i[data-wait] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--p-line-2, var(--p-line));
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.arrow:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+@media (max-width: 720px) {
+  .sketchHero {
+    grid-template-columns: 1fr;
+    align-content: start;
+    padding-top: 12px;
+  }
+
+  .sketchPhoto {
+    height: 32vh;
+    order: -1;
+  }
+
+  .sketchNav span {
+    display: none;
   }
 }
 
@@ -207,7 +316,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .skel i {
+  .sketchNav > i,
+  .sketchNav span i,
+  .sketchPhoto,
+  .dots i[data-wait] {
     animation: none;
   }
 }
