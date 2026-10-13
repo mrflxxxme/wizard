@@ -50,7 +50,13 @@ import { type BuildHost, type BuildParams, RunFailure } from "../runs/types.js";
 import { withKeyWindow } from "../secrets-v3/agent.js";
 import { loadBrief } from "../services/plans.js";
 import { type DurableRead, pgCheckpointStore, recentArchetypes } from "./checkpoints.js";
-import { type CriticDemoRows, criticLibraryPhotos, draftDemoRows, platformCritic } from "./critic.js";
+import {
+  type CriticDemoRows,
+  criticInspector,
+  criticLibraryPhotos,
+  draftDemoRows,
+  platformCritic,
+} from "./critic.js";
 import { liveStats, withLiveProgress } from "./progress.js";
 import { platformTechreview } from "./techreview.js";
 import { templateGateHooks } from "./template-gate.js";
@@ -370,8 +376,6 @@ export async function buildByBrief(
     files?: FileStorage | null;
   },
 ): Promise<{ status: "succeeded"; summary_ru: string }> {
-  // V3-12: the page composer on the pattern library (skeleton without a model; scenarios through host.route).
-  const composer = o.composer ?? createPageComposer();
   const systemId = host.run.systemId;
   const provider = o.browser ?? null;
   // V3-18: reads that steer the stages are durable (BuildHost.once): a replay after a worker restart takes the same path.
@@ -392,6 +396,22 @@ export async function buildByBrief(
     });
     return demo;
   };
+  // V3-12 / V4-06: the page composer (skeleton without a model; pages as code through host.route); the judge of the
+  // home page's two first screens sees them in the process Chromium (the critic's inspector).
+  const composer =
+    o.composer ??
+    createPageComposer(
+      provider && withBrowser
+        ? {
+            inspect: criticInspector({
+              browser: provider,
+              ...(o.files ? { photo: criticLibraryPhotos(o.files) } : {}),
+              data: demoRows,
+              log: criticLog(host.run.id, systemId),
+            }),
+          }
+        : {},
+    );
   const v3: V3Host = {
     route: host.route,
     runStep: host.runStep,

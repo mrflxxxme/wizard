@@ -196,7 +196,7 @@ export function pageCodeIssues(
         );
   });
   const first = v.sections[0];
-  if (!first || first.kind !== "code" || first.id !== "hero")
+  if (first?.kind !== "code" || first.id !== "hero")
     out.push(
       code(0, "HERO_FIRST", "Первая секция — первый экран кодом: kind code, id hero, с единственным h1"),
     );
