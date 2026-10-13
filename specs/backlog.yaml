@@ -4294,8 +4294,8 @@ tasks:
     owner: platform
     parallel_group: v4-a
     estimate_days: 1.5
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: session_01HWKT1m6cHQBBtUV7d9pQhf
     owns: ["packages/build/src/stock/**", "tools/stock/** (новый)", ".github/workflows/stock-library.yml (новый)"]
     acceptance:
       - "CI наполняет хранилище в РФ фото Pexels и Pixabay по нишам с атрибуцией; эмбеддинги (SigLIP, Apache-2.0) считаются при наполнении"
