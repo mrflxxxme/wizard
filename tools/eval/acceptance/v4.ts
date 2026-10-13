@@ -123,8 +123,12 @@ export function renderSummary(rows: readonly Row[], meta: { runUrl: string; shot
       for (const s of r.report.stages) out.push(`| ${s.stage} | ${s.status} | ${round(s.rub, 2)} | ${round(s.minutes)} |`);
       out.push("");
     }
-    const stubs = (r.report?.gates ?? []).flatMap((g) => g.failed.filter((f) => /^S0[1-4]/.test(f.id)));
-    out.push(`Заглушки S01–S04: ${stubs.length ? stubs.map((f) => `${f.id} ${f.message}`).join("; ") : "не найдены или проверка ещё не подключена (V4-18)"}.`);
+    // V4-18: the stubs the checks still see after the critic (its problems left) and any gate that failed on them.
+    const stubs = [
+      ...(r.report?.critic?.left ?? []).filter((p) => /^S0[1-4]$/.test(p.code)).map((p) => `${p.code} ${p.where}: ${p.message}`),
+      ...(r.report?.gates ?? []).flatMap((g) => g.failed.filter((f) => /^S0[1-4]/.test(f.id)).map((f) => `${f.id} ${f.message}`)),
+    ];
+    out.push(`Заглушки S01–S04: ${stubs.length ? stubs.slice(0, 8).join("; ") : "не найдены"}.`);
     if (r.report?.techreview) out.push(`Техревью: ${r.report.techreview.status ?? "—"}, блокеров ${r.report.techreview.blockers.length}.`);
     if (r.report?.gaps.length) out.push(`Пробелы отчёта: ${r.report.gaps.join("; ")}.`);
     out.push("");
