@@ -23,6 +23,9 @@ import {
   type Radius,
 } from "./api.js";
 import s from "./EditPanel.module.css";
+import { swapPhotoValue } from "./photos/api.js";
+import { PhotoPicker } from "./photos/PhotoPicker.js";
+import { photosRu } from "./photos/ru.js";
 import { editRu as T } from "./ru.js";
 
 /** POST /edit/literals: a text is at most this long (V4-15 VALIDATION). */
@@ -166,10 +169,6 @@ export function EditPanel(p: EditPanelProps): ReactNode {
   }, [api, p.systemId, tab, design, styleUnavailable]);
 
   const byRef = useMemo(() => new Map((lits?.list ?? []).map((l) => [l.ref, l])), [lits]);
-  const photos = useMemo(
-    () => [...new Set((lits?.list ?? []).filter((l) => l.kind === "image").map((l) => l.value))],
-    [lits],
-  );
 
   function failure(e: unknown) {
     if (e instanceof ApiError && e.code === "VERSION_CONFLICT") {
@@ -179,6 +178,23 @@ export function EditPanel(p: EditPanelProps): ReactNode {
     }
     if (e instanceof ApiError && e.code === "SYSTEM_LOCKED") return setError(T.locked);
     setError(errText(e));
+  }
+
+  /** V4-16: a photo of the slot — the instant edit of its literal (no model); the frame swaps to the new revision. */
+  async function savePhoto(ref: string, value: string, id: string) {
+    if (!lits) return;
+    setError(null);
+    setNote(null);
+    try {
+      const r = await api.saveLiterals(p.systemId, lits.revision, [
+        { ref, value: swapPhotoValue(value, id) },
+      ]);
+      setNote(photosRu.applied((r.ms / 1000).toFixed(1)));
+      p.onSaved(r.previewRevision);
+      await loadLiterals().catch(() => {});
+    } catch (e) {
+      failure(e);
+    }
   }
 
   async function saveText() {
@@ -326,22 +342,16 @@ export function EditPanel(p: EditPanelProps): ReactNode {
                 if (!l) return null;
                 if (l.kind === "image")
                   return (
-                    <label key={ref} className={s.field}>
+                    <div key={ref} className={s.field}>
                       <span className={s.label}>{T.text.photo}</span>
-                      <select
-                        className={s.select}
-                        value={draft[ref] ?? l.value}
-                        data-testid="edit-photo"
-                        onChange={(e) => setDraft((d) => ({ ...d, [ref]: e.target.value }))}
-                      >
-                        {photos.map((src, i) => (
-                          <option key={src} value={src}>
-                            {`${T.text.photo} ${i + 1}${src === l.value ? " — сейчас" : ""}`}
-                          </option>
-                        ))}
-                      </select>
-                      <span className={s.hint}>{T.text.photoHint}</span>
-                    </label>
+                      <PhotoPicker
+                        systemId={p.systemId}
+                        slotRef={ref}
+                        currentId={/[0-9a-f-]{36}/.exec(l.value)?.[0] ?? null}
+                        disabled={disabled}
+                        onPick={(id) => savePhoto(ref, l.value, id)}
+                      />
+                    </div>
                   );
                 return (
                   <label key={ref} className={s.field}>
@@ -357,15 +367,17 @@ export function EditPanel(p: EditPanelProps): ReactNode {
                   </label>
                 );
               })}
-              <ActionButton
-                variant="primary"
-                testId="edit-text-save"
-                busy={busy === "text"}
-                disabled={disabled || busy !== null}
-                onClick={() => void saveText()}
-              >
-                {busy === "text" ? T.text.saving : T.text.save}
-              </ActionButton>
+              {selected.refs.some((ref) => byRef.get(ref)?.kind !== "image") && (
+                <ActionButton
+                  variant="primary"
+                  testId="edit-text-save"
+                  busy={busy === "text"}
+                  disabled={disabled || busy !== null}
+                  onClick={() => void saveText()}
+                >
+                  {busy === "text" ? T.text.saving : T.text.save}
+                </ActionButton>
+              )}
             </div>
           )}
         </section>
