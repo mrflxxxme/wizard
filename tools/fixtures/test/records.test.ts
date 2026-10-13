@@ -264,17 +264,7 @@ describe("stage probe (V4-03)", () => {
     60_000,
   );
 
-  // The fast lane of CI runs e2e on main only: a prompt edit that outdates the e2e v3 records fails here, on the PR
-  // (this file imports the stages, so `vitest --changed` picks it up with any edit of their prompt sources).
-  test("the e2e v3 records are of the current prompt sources", () => {
-    const versions = new PromptVersions();
-    const stale = RecordBook.named("e2e-v3", root)
-      .all()
-      .filter((l) => l.promptVersion.split(".")[0] !== versions.sources(l.callType))
-      .map((l) => `${l.callType}@${l.promptVersion}`);
-    expect(stale, "записи e2e v3 устарели: запустите stage-probe с e2e_v3 (или запушьте правку в claude/**, task/**)").toEqual([]);
-  });
-
+  // The freshness of the e2e v3 records (by stage, V4-19): tools/fixtures/test/e2e-v3-records.test.ts.
   test("a changed prompt source of an e2e callType asks for a new e2e recording", () => {
     const manifest = { critic_visual: ["packages/agents/src/builder/v3/critic/prompt.ts"], interview_v3: ["x.ts"] };
     expect(e2eFor(["packages/agents/src/builder/v3/critic/prompt.ts"], manifest)).toBe(true);
