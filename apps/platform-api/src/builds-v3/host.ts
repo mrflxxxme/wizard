@@ -31,6 +31,8 @@ import type { AppSpec } from "@wizard/appspec";
 import {
   type GateReport,
   type GoalScenarioInput,
+  type KnownContacts,
+  knownContacts,
   LIBRARY_PHOTO_HINT,
   SEED_HINT_MAX_VALUES,
   type SeedHint,
@@ -56,13 +58,16 @@ import { loadBrief } from "../services/plans.js";
 import { type DurableRead, pgCheckpointStore, recentArchetypes } from "./checkpoints.js";
 import {
   type CriticDemoRows,
+  type CriticInspectorOptions,
   criticInspector,
   criticLibraryPhotos,
   draftDemoRows,
   platformCritic,
 } from "./critic.js";
 import { liveStats, withLiveProgress } from "./progress.js";
+import { checkPromises, type PromiseCheck, scenarioPromises, siteViews } from "./promises.js";
 import { isFounderBuild, startBuildReport } from "./report/index.js";
+import { draftFiles } from "./report/shots.js";
 import { platformTechreview } from "./techreview.js";
 import { templateGateHooks } from "./template-gate.js";
 
@@ -302,6 +307,7 @@ export async function checkScenario(
   provider: GoalBrowserProvider | null,
   withBrowser: boolean,
   input: ScenarioCheckInput,
+  promises?: (input: ScenarioCheckInput) => Promise<PromiseCheck>,
 ): Promise<ScenarioCheckResult> {
   const r0 = await gateWithRetry(() => host.runGates("G0"));
   const g0 = failedBlockers(r0);
@@ -317,7 +323,44 @@ export async function checkScenario(
   const e1 = erroredBlockers(r1);
   if (e1.length)
     return { ok: false, problems: e1.map((c) => c.message_ru), browser: withBrowser, unavailable: true };
+  // V4-21: what the scenario promises the visitor sees is on the site and shows it.
+  // Not kept: the system works, so the layer stays (the build tries one repair; the rest goes to the requests).
+  const kept = promises ? await promises(input) : null;
+  if (kept?.problems.length) return { ok: true, problems: [], browser: withBrowser, unkept: kept.problems };
   return { ok: true, problems: [], browser: withBrowser };
+}
+
+/**
+ * V4-21: the promises of a scenario on the committed draft — by the site model, and with the browser by what its
+ * sections show (the draft's demo rows and the library's photos, as the critic sees them).
+ */
+export function scenarioPromiseCheck(
+  host: BuildHost,
+  browser: GoalBrowserProvider | null,
+  o: {
+    contacts: () => Promise<KnownContacts>;
+    inspector?: Omit<CriticInspectorOptions, "browser" | "probe">;
+  },
+): (input: ScenarioCheckInput) => Promise<PromiseCheck> {
+  return async (input) => {
+    if (!scenarioPromises(input.scenario).length) return { promises: [], problems: [], browser: false };
+    const files = await draftFiles(host.store);
+    const contacts = await o.contacts();
+    const views = browser
+      ? await siteViews(
+          browser,
+          {
+            scenario: input.scenario,
+            spec: (await host.store.getSpec()).spec,
+            files,
+            contacts,
+            ...(host.signal ? { signal: host.signal } : {}),
+          },
+          o.inspector,
+        ).catch(() => null)
+      : null;
+    return checkPromises(input.scenario, files, views, contacts);
+  };
 }
 
 /** V4-09: model families that wrote the pages of run `runId` (its successful page_compose calls). */
@@ -424,6 +467,14 @@ export async function buildByBrief(
     signal: host.signal,
     ...(o.log ? { log: o.log } : {}),
   });
+  // V4-21: the contacts the owner gave (brief and first words) — a contacts promise is kept by one of them.
+  const promiseCheck = scenarioPromiseCheck(host, withBrowser ? provider : null, {
+    contacts: async () => {
+      const v = await getLatestBrief(o.db, systemId);
+      return knownContacts([JSON.stringify(v?.brief ?? {}), JSON.stringify(request ?? "")]);
+    },
+    inspector: { ...(o.files ? { photo: criticLibraryPhotos(o.files) } : {}), data: demoRows },
+  });
   // V3-12 / V4-06: the page composer (skeleton without a model; pages as code through host.route); the judge of the
   // home page's two first screens sees them in the process Chromium (the critic's inspector).
   const composer =
@@ -476,7 +527,7 @@ export async function buildByBrief(
     },
     checkScenario: (input) =>
       report.scenario(input.scenario.id, () =>
-        checkScenario(host, report.provider(provider), withBrowser, input),
+        checkScenario(host, report.provider(provider), withBrowser, input, promiseCheck),
       ),
     goalBrowser: withBrowser,
     // V3-13: the visual critic in the process Chromium by default — with the platform's composer (its site model).

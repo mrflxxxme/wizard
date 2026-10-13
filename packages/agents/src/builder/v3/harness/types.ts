@@ -98,6 +98,11 @@ export interface ScenarioCheckResult {
    * scenario's failure: it is kept, not rolled back, and the final gates check it.
    */
   unavailable?: boolean;
+  /**
+   * V4-21: the gates passed (ok) but these promises of the scenario's «видит …» steps are not shown (Russian, with what
+   * to add): the layer stays, the build tries one repair and the rest goes to «Запросы на развитие».
+   */
+  unkept?: string[];
 }
 
 /** What a stage hook (critic V3-13, template_gate V3-14, techreview V3-15) returns. */
@@ -297,6 +302,8 @@ export interface V3ScenarioState {
   reason?: string;
   costRub: number;
   reused?: boolean;
+  /** V4-21: a passed scenario whose promises are not all shown (they go to «Запросы на развитие»). */
+  unkept?: string[];
 }
 
 export type V3Outcome =

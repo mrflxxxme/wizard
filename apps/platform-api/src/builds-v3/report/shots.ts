@@ -12,7 +12,7 @@ export interface SiteShot {
 }
 
 /** Every file of the draft's working tree (the build's last state). */
-async function draftFiles(store: BuildStore): Promise<Map<string, string>> {
+export async function draftFiles(store: BuildStore): Promise<Map<string, string>> {
   const files = new Map<string, string>();
   for (const path of await store.listFiles()) {
     const src = await store.readFile(path);
