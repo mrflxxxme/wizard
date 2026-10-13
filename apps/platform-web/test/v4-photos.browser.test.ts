@@ -210,7 +210,7 @@ describe.skipIf(!hasChromium)("photos of a system on the canvas (chromium)", () 
       await expect
         .poll(() => frame.getByTestId("draft-photo").getAttribute("src"), { timeout: 10_000 })
         .toBe(`/_wizard/photos/${ids[3]}/1600`);
-      await expect.poll(() => page.getByTestId("edit-note").textContent()).toBe("Фото заменено за 0.4 с");
+      await expect.poll(() => page.getByTestId("edit-note").textContent()).toBe("Фото заменено за 0,4 с");
 
       // «Загрузить своё»: the file goes up, lands in the slot at once and is offered first.
       await page.getByTestId("photo-upload-file").setInputFiles({
