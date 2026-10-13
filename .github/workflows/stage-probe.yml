@@ -1,0 +1,146 @@
+# V4-03 (D79 (10), docs/plans/2026-10-11-v4.md §5.2): the live probe of one stage of the build. The stage's current
+# prompt code runs on its 2–3 saved inputs (tools/fixtures/probe/inputs/<stage>/*.json) with a live model; every answer
+# becomes a record (tools/fixtures/records/probe/<stage>.jsonl) that CI replays — the job commits the records back to
+# the branch (never to main: there they stay an artifact). 5–15 ₽ a stage, the cap of each stage stops it (≤ 30 ₽).
+# Starts: by hand (workflow_dispatch: stages, inputs, a model forced at the head of the stage's routes) and on a push to
+# claude/** or task/** that changed a stage's prompt sources (tools/fixtures/records/prompts.json) or saved inputs.
+# A push by this job's token starts no workflow: pull the records commit, then push your next commit for CI.
+name: stage-probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: "Этапы через запятую: interview_v3, brief_extract, art_direction, direction_texts, page_compose, techreview, raw"
+        type: string
+        required: true
+      inputs:
+        description: "Имена сохранённых входов через запятую (пусто — все входы этапа)"
+        type: string
+        default: ""
+      model:
+        description: "Модели (id из models.yaml) во главу маршрутов этапа, через запятую — проба новой модели (пусто — по маршруту)"
+        type: string
+        default: ""
+      cap_rub:
+        description: "Потолок пробы каждого этапа, ₽ (не больше 30)"
+        type: string
+        default: "15"
+      commit:
+        description: "Закоммитить записи в ветку запуска (кроме main)"
+        type: boolean
+        default: true
+  push:
+    branches: ["claude/**", "task/**"]
+    paths:
+      - "packages/agents/src/**"
+      - "tools/fixtures/probe/inputs/**"
+      - "tools/fixtures/records/prompts.json"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stage-probe-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      # No secrets in the environment of dependency installation.
+      - run: pnpm install --frozen-lockfile
+
+      - name: Stages to probe
+        id: stages
+        env:
+          EVENT: ${{ github.event_name }}
+          STAGE: ${{ inputs.stage }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = workflow_dispatch ]; then
+            stages="$STAGE"
+          else
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = 0000000000000000000000000000000000000000 ]; then
+              BEFORE=$(git merge-base origin/main HEAD)
+            fi
+            git diff --name-only "$BEFORE" HEAD > "$RUNNER_TEMP/changed.txt"
+            stages=$(node tools/fixtures/probe.mjs --stages-for="$RUNNER_TEMP/changed.txt")
+          fi
+          echo "stages=$stages" >> "$GITHUB_OUTPUT"
+          if [ -z "$stages" ]; then
+            echo "Промпты этапов не менялись — проба не нужна." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Live probe
+        id: probe
+        if: steps.stages.outputs.stages != ''
+        env:
+          STAGES: ${{ steps.stages.outputs.stages }}
+          INPUTS: ${{ inputs.inputs }}
+          MODEL: ${{ inputs.model }}
+          CAP: ${{ inputs.cap_rub || '15' }}
+          WIZARD_LLM_MODE: live
+          CLOUDRU_API_KEY: ${{ secrets.CLOUDRU_API_KEY }}
+          CLOUDRU_BASE_URL: ${{ vars.CLOUDRU_BASE_URL }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          ZAI_BASE_URL: ${{ vars.ZAI_BASE_URL }}
+          YANDEX_API_KEY: ${{ secrets.YANDEX_API_KEY }}
+          YANDEX_FOLDER_ID: ${{ secrets.YANDEX_FOLDER_ID }}
+          YANDEX_BASE_URL: ${{ vars.YANDEX_BASE_URL }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_BASE_URL: ${{ vars.DEEPSEEK_BASE_URL }}
+          MOONSHOT_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          MOONSHOT_BASE_URL: https://api.moonshot.ai/v1
+          MIMO_API_KEY: ${{ secrets.MIMO_SECOND_API_KEY }}
+        run: |
+          set +e
+          node tools/fixtures/probe.mjs --stage="$STAGES" ${INPUTS:+--inputs=$INPUTS} ${MODEL:+--model=$MODEL} --cap-rub="$CAP"
+          code=$?
+          set -e
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          [ "$code" -le 1 ] || exit "$code"
+
+      - uses: actions/upload-artifact@v4
+        if: steps.stages.outputs.stages != ''
+        with:
+          name: stage-probe-records-${{ github.run_id }}
+          path: tools/fixtures/records/probe/
+          if-no-files-found: ignore
+
+      - name: Commit the records to the branch
+        if: steps.stages.outputs.stages != '' && github.ref != 'refs/heads/main' && (github.event_name == 'push' || inputs.commit)
+        env:
+          STAGES: ${{ steps.stages.outputs.stages }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git add tools/fixtures/records/probe
+          if git diff --cached --quiet; then
+            echo "Новых записей нет." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -m "V4-03: записи пробы этапов ${STAGES}" -m "Прогон ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          for i in 1 2 3; do
+            git pull -q --rebase origin "$BRANCH" && git push -q origin "HEAD:$BRANCH" && break
+            sleep $((i * 5))
+          done
+          echo "Записи закоммичены в $BRANCH: $(git rev-parse --short HEAD)." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verdict
+        if: steps.stages.outputs.stages != '' && steps.probe.outputs.code != '0'
+        run: |
+          echo "::error::Проба этапа: модель не ответила на всех входах или этап ушёл в запасной путь (отчёт — в сводке прогона)"
+          exit 1

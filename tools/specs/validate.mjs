@@ -220,8 +220,10 @@ export function runChecks(root) {
   if (!Array.isArray(milestones)) E("specs/milestones.yaml: нет списка milestones");
   else milestones.forEach((m, i) => { if (msOrder.has(m.id)) E(`milestones: дубликат id ${m.id}`); msOrder.set(m.id, i); });
 
-  // 3. Backlog graph
-  const tasks = docs["specs/backlog.yaml"]?.tasks;
+  // 3. Backlog graph (with specs/backlog-archive.yaml — done tasks of finished milestones, V4-02)
+  const archived = docs["specs/backlog-archive.yaml"]?.tasks;
+  const live = docs["specs/backlog.yaml"]?.tasks;
+  const tasks = Array.isArray(live) ? [...live, ...(Array.isArray(archived) ? archived : [])] : live;
   const missingSpecs = new Map(); // path -> [taskIds]
   if (!Array.isArray(tasks)) E("specs/backlog.yaml: нет списка tasks");
   else {
