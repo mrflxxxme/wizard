@@ -243,7 +243,7 @@ describe("stage probe (V4-03)", () => {
 
   // CI replays the probes' records: the stage uses the recorded answer, no fallback; an edited prompt needs a new probe
   // (the stage-probe workflow records it on the push of the edit).
-  test.each(["interview_v3", "brief_extract", "art_direction", "direction_texts", "page_compose"])(
+  test.each(["interview_v3", "brief_extract", "art_direction", "direction_texts", "page_compose", "point_edit"])(
     "the recorded probe of %s replays without a miss and without the fallback",
     async (stage) => {
       const book = RecordBook.named(`probe/${stage}`, root);

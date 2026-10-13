@@ -8,7 +8,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { briefNiche } from "@wizard/agents/builder";
 import { systemBriefSchema } from "@wizard/appspec";
-import { createRouter, type Router, type RouterOptions } from "@wizard/llm";
+import { fileKey } from "@wizard/build";
+import {
+  createRouter,
+  type RouteInput,
+  type RouteOutput,
+  type Router,
+  type RouterOptions,
+} from "@wizard/llm";
 import { closeExecutors } from "@wizard/runtime";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import {
@@ -30,6 +37,41 @@ let api: TestApi;
 let outboxDir: string;
 let fixtureDir: string;
 let systemId: string;
+/** The scripted answer of the point edit's model call (submit_file); null — the model fails. */
+let pointAnswer: { content: string; summary: string } | null = null;
+const pointCalls: RouteInput[] = [];
+
+/** The fixture build's router; the point edit's call (tool submit_file) answers pointAnswer. */
+function testRouter(opts: RouterOptions): Router {
+  const fx = createRouter({
+    ...opts,
+    mode: "fixture",
+    fixture: { suite: "demo", name: "v3/clinic", dir: fixtureDir },
+    env: {},
+  });
+  return {
+    ...fx,
+    async route(input: RouteInput): Promise<RouteOutput> {
+      if (!input.tools?.some((t) => t.name === "submit_file")) return fx.route(input);
+      pointCalls.push(input);
+      if (!pointAnswer) throw new Error("model unavailable");
+      return {
+        tier: "T1",
+        model: "glm-5.3",
+        result: {
+          toolCalls: [{ id: "c1", name: "submit_file", args: pointAnswer }],
+          finishReason: "tool-calls",
+        },
+        usage: { inputTokens: 3000, cachedTokens: 0, outputTokens: 1500 },
+        creditsCharged: 0.2,
+        creditsMilli: 200,
+        routeReason: "default_T1",
+        scrubbed: false,
+        ruFallback: false,
+      };
+    },
+  };
+}
 
 function smallBrief() {
   const b = clinicBrief();
@@ -52,13 +94,7 @@ beforeAll(async () => {
   );
   api = await startApi(tdb.url, {
     config: { unsafeLocalExec: true },
-    createRouter: (opts: RouterOptions): Router =>
-      createRouter({
-        ...opts,
-        mode: "fixture",
-        fixture: { suite: "demo", name: "v3/clinic", dir: fixtureDir },
-        env: {},
-      }),
+    createRouter: testRouter,
     executors: ({ pg, config }) =>
       createAgentExecutors({
         pg,
@@ -219,4 +255,88 @@ describe("V4-15: instant edits without a model", () => {
     });
     expect(bad.status).toBe(400);
   }, 60_000);
+
+  test("«Укажи и измени» of a v3 system: only the clicked element's file changes, G0 and G1 after it, ≤ 60 s", async () => {
+    const sys = await api.deps.db
+      .selectFrom("platform.systems")
+      .select(["draft_revision"])
+      .where("id", "=", systemId)
+      .executeTakeFirstOrThrow();
+    const literals = (await api.req("GET", `/systems/${systemId}/edit/literals`)).body.literals as Literal[];
+    const home = literals.find((l) => l.route === "/" && l.kind === "text") as Literal;
+    const file = home.file;
+    const manifestOf = async (version: number) => {
+      const rev = await api.deps.db
+        .selectFrom("platform.revisions")
+        .select("files_manifest_sha")
+        .where("system_id", "=", systemId)
+        .where("version", "=", version)
+        .executeTakeFirstOrThrow();
+      return JSON.parse((await api.deps.blobs.get(rev.files_manifest_sha)).toString("utf8")) as Record<
+        string,
+        string
+      >;
+    };
+    const before = await manifestOf(sys.draft_revision);
+    const source = (await api.deps.blobs.get(before[file] as string)).toString("utf8");
+    pointAnswer = {
+      content: source.replace(home.value, "Запишитесь онлайн за минуту"),
+      summary: "Заголовок стал короче и про запись онлайн",
+    };
+    const t0 = Date.now();
+    const m = await api.req("POST", `/systems/${systemId}/messages`, {
+      body: {
+        text: "Сделай заголовок короче, про онлайн-запись",
+        target: { wzId: `${fileKey(file)}:0`, componentName: "HeroSplit", file, line: 1, route: "/" },
+      },
+    });
+    expect(m.status, JSON.stringify(m.body)).toBe(202);
+    const done = await waitRun(api, m.body.run.id, ["succeeded", "failed"], 60_000);
+    expect(done.status, JSON.stringify(done)).toBe("succeeded");
+    expect(Date.now() - t0).toBeLessThanOrEqual(60_000);
+    expect(pointCalls).toHaveLength(1);
+    expect(JSON.stringify(pointCalls[0]?.messages)).toContain("про онлайн-запись");
+    const after = await api.deps.db
+      .selectFrom("platform.systems")
+      .select(["draft_revision", "preview_revision"])
+      .where("id", "=", systemId)
+      .executeTakeFirstOrThrow();
+    const changed = await manifestOf(after.draft_revision);
+    const diff = Object.keys({ ...before, ...changed }).filter((p) => before[p] !== changed[p]);
+    expect(diff).toEqual([file]);
+    expect(after.preview_revision).toBe(after.draft_revision);
+    const gates = await api.deps.db
+      .selectFrom("platform.gate_reports")
+      .select(["level", "passed"])
+      .where("run_id", "=", m.body.run.id)
+      .execute();
+    expect(gates.map((g) => `${g.level}:${g.passed}`).sort()).toEqual(["G0:true", "G1:true"]);
+  }, 120_000);
+
+  test("a point edit whose answer breaks the file is refused: the draft stays, the run fails with the reason", async () => {
+    const sys = await api.deps.db
+      .selectFrom("platform.systems")
+      .select(["draft_revision"])
+      .where("id", "=", systemId)
+      .executeTakeFirstOrThrow();
+    const literals = (await api.req("GET", `/systems/${systemId}/edit/literals`)).body.literals as Literal[];
+    const file = (literals.find((l) => l.route === "/") as Literal).file;
+    pointAnswer = { content: "export default function Broken( {", summary: "сломано" };
+    pointCalls.length = 0;
+    const m = await api.req("POST", `/systems/${systemId}/messages`, {
+      body: {
+        text: "Сломай",
+        target: { wzId: `${fileKey(file)}:0`, componentName: "HeroSplit", file, line: 1, route: "/" },
+      },
+    });
+    expect(m.status).toBe(202);
+    const done = await waitRun(api, m.body.run.id, ["succeeded", "failed"], 60_000);
+    expect(done.status).toBe("failed");
+    const after = await api.deps.db
+      .selectFrom("platform.systems")
+      .select(["draft_revision"])
+      .where("id", "=", systemId)
+      .executeTakeFirstOrThrow();
+    expect(after.draft_revision).toBe(sys.draft_revision);
+  }, 120_000);
 });
