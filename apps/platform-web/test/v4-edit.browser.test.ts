@@ -175,7 +175,7 @@ describe.skipIf(!hasChromium)("edits in three layers on the canvas (chromium)", 
       await page.getByTestId("edit-panel").waitFor();
       await page.getByTestId("edit-text-pick").click();
       // On a phone the panel steps aside while picking and comes back with the pick.
-      if (vp.width < 600) await page.getByTestId("canvas-panel-edit").waitFor({ state: "hidden" });
+      await page.getByTestId("canvas-panel-edit").waitFor({ state: "hidden" });
       await frame.getByTestId("draft-head").click();
       const field = page.getByTestId("edit-text-field");
       await expect.poll(() => field.inputValue()).toBe("Стоматология «Улыбка»");
@@ -206,7 +206,7 @@ describe.skipIf(!hasChromium)("edits in three layers on the canvas (chromium)", 
       // 3. «Укажи и измени»: pick the block, a wish in words → POST /messages with its target.
       await page.getByTestId("edit-tab-point").click();
       await page.getByTestId("edit-point-pick").click();
-      if (vp.width < 600) await page.getByTestId("canvas-panel-edit").waitFor({ state: "hidden" });
+      await page.getByTestId("canvas-panel-edit").waitFor({ state: "hidden" });
       await frame.locator("#block p").click();
       await page.getByTestId("edit-point-target").waitFor();
       expect(await page.getByTestId("edit-point-target").textContent()).toBe("Блок «Hero»");
