@@ -12,6 +12,9 @@ export const WZ_ID_RE = /^[0-9a-f]{8}:[0-9]+$/;
 /** api.yaml#postMessage.target.file: a page or component of the system UI, never functions/** (L3-16). */
 export const UI_FILE_RE = /^ui\/(?!.*\.\.)[A-Za-z0-9_/.-]+\.tsx$/;
 
+/** V4-15: a source literal of the draft (`<fileKey 8 hex>:<ordinal>`). */
+export const LITERAL_REF_RE = /^[0-9a-f]{8}:\d{1,7}$/;
+
 export const envelopeSchema = z.object({
   wz: z.literal(1),
   type: z.string().max(64),
@@ -36,6 +39,13 @@ export const fromPreviewSchemas = {
     rect: z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() }),
   }),
   "select-cancelled": z.object({}),
+  /** V4-15 edit-mode: the texts or photo under the click, by their source refs (never their values). */
+  "literal-selected": z.object({
+    refs: z.array(z.string().regex(LITERAL_REF_RE)).min(1).max(20),
+    kind: z.enum(["text", "image"]),
+    route: ROUTE.optional(),
+    rect: z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() }),
+  }),
   error: z.object({ message: z.string().max(300) }),
   "theme-applied": z.object({}).optional(),
 } as const;
@@ -49,8 +59,10 @@ export type ToPreview =
   | { type: "set-role"; payload: { role: string; url: string } }
   | {
       type: "apply-theme-tokens";
-      payload: { tokens: Record<string, string>; mode: "light" | "dark" | "auto" };
+      payload: { tokens: Record<string, string>; mode?: "light" | "dark" | "auto" };
     }
+  | { type: "edit-mode"; payload: { enabled: boolean } }
+  | { type: "highlight-literal"; payload: { refs: string[] | null } }
   | { type: "navigate"; payload: { route: string } }
   | { type: "select-mode"; payload: { enabled: boolean } }
   | { type: "highlight"; payload: { wzId: string | null } };

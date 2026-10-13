@@ -1,0 +1,145 @@
+/* The «Правка» panel of the canvas v4 (V4-12): tabs, the fields of a picked text or photo, the style sliders and
+   «Укажи и измени». Tokens --p-*. */
+
+.root {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--p-r-pill);
+  background: var(--p-sunken);
+}
+
+.tab {
+  flex: 1 1 0;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--p-r-pill);
+  background: transparent;
+  color: var(--p-ink-2);
+  font: 500 13.5px / 1.2 var(--p-f-ui);
+  cursor: pointer;
+}
+
+.tab[aria-selected="true"] {
+  background: var(--p-surface);
+  color: var(--p-ink);
+  box-shadow: var(--p-sh-1);
+}
+
+.section,
+.fields {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+
+.fields {
+  width: 100%;
+  justify-items: stretch;
+}
+
+.field {
+  display: grid;
+  gap: 4px;
+}
+
+.label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--p-ink-2);
+  padding: 0;
+}
+
+.textarea,
+.select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--p-line);
+  border-radius: var(--p-r-md);
+  background: var(--p-surface);
+  color: var(--p-ink);
+  font: 400 14.5px / 1.45 var(--p-f-ui);
+  resize: vertical;
+}
+
+.select {
+  min-height: 44px;
+}
+
+.textarea:focus-visible,
+.select:focus-visible,
+.tab:focus-visible,
+.segBtn:focus-visible {
+  outline: 2px solid var(--p-tint-ring, var(--p-ink));
+  outline-offset: 2px;
+}
+
+.seg {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  width: 100%;
+}
+
+.segRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.segBtn {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--p-line);
+  border-radius: var(--p-r-pill);
+  background: var(--p-surface);
+  color: var(--p-ink);
+  font: 400 13.5px / 1.2 var(--p-f-ui);
+  cursor: pointer;
+}
+
+.segBtn[aria-pressed="true"] {
+  border-color: var(--p-graphite);
+  background: var(--p-graphite);
+  color: var(--p-graphite-ink);
+}
+
+.segBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.target {
+  margin: 0;
+  font-weight: 500;
+}
+
+.hint,
+.note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--p-ink-2);
+}
+
+.error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--p-bad);
+}

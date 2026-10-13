@@ -277,6 +277,10 @@
   animation: slideIn var(--p-t-base) var(--p-ease);
 }
 
+.panel[hidden] {
+  display: none;
+}
+
 @keyframes slideIn {
   from {
     opacity: 0;
