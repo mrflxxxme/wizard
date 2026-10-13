@@ -67,7 +67,13 @@ const PHOTOS = ["top", "top-2", "top-3"].map((slot, i) => ({
 }));
 
 /** A build context of the fixture system; `photos: false` — the owner has no photos. */
-export function composeContext(o: { photos?: boolean; systemId?: string } = {}): V3BuildContext {
+/**
+ * The clinic site's build context. `contact` — the operator's phone (a probe passes the stand-in of the record redaction,
+ * «+7 900 000-00-00», so a recorded answer that quotes it still matches the facts on replay).
+ */
+export function composeContext(
+  o: { photos?: boolean; systemId?: string; contact?: string } = {},
+): V3BuildContext {
   const plan = mvp01Plan();
   const r = compilePlan(
     { ...plan, design: { ...plan.design, ...(o.photos === false ? {} : { photos: PHOTOS }) } },
@@ -80,7 +86,7 @@ export function composeContext(o: { photos?: boolean; systemId?: string } = {}):
     compliance: {
       ...r.spec.compliance,
       operatorName: "ООО «Белая линия»",
-      operatorContact: "+7 843 200-40-50",
+      operatorContact: o.contact ?? "+7 843 200-40-50",
       operatorAddress: "Казань, ул. Баумана, 15",
     },
   };

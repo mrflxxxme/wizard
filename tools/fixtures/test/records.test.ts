@@ -107,6 +107,12 @@ describe("records (V4-03)", () => {
     expect(redact(s)).toBe("secret://crm_token, цена 12 500 ₽, 1760000000000 мс, api_key: <secret>");
   });
 
+  test("redact keeps ids: a photo UUID is not a card number, a card still is", () => {
+    const url = "/_wizard/photos/00000002-0000-4000-8000-000000000002/1600";
+    expect(redact(url)).toBe(url);
+    expect(redact("карта 4111 1111 1111 1111.")).toBe("карта 0000 0000 0000 0000.");
+  });
+
   test("replay answers by scope and ordinal; a missing record fails loudly and is kept", async () => {
     const p = project();
     const book = new RecordBook(join(p.root, "e2e.jsonl"));
