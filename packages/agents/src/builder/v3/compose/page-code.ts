@@ -160,6 +160,9 @@ const code = (i: number, c: string, message: string, path = `sections.${i}`): To
   message,
 });
 
+/** The least body sections of the home page (rehearsal 13.10.2026: a home of a hero and two lists is thin). */
+export const HOME_MIN_SECTIONS = 5;
+
 interface PageCheckCtx {
   site: SiteModel;
   page: SitePage;
@@ -199,6 +202,12 @@ export function pageShapeIssues(
           ),
         );
   });
+  if (ctx.page.route === "/" && v.sections.length < HOME_MIN_SECTIONS)
+    out.push({
+      path: "sections",
+      code: "THIN_PAGE",
+      message: `На главной ${v.sections.length} секций тела, нужно не меньше ${HOME_MIN_SECTIONS}: добавь секции под обещания сценария (компоненты SDK или код по фактам)`,
+    });
   const first = v.sections[0];
   if (first?.kind !== "code" || first.id !== "hero")
     out.push(
@@ -282,6 +291,8 @@ const PAGE_RULES = [
   "Тело страницы — список секций по порядку: kind code — секция, которую ты пишешь кодом; kind keep — обязательный компонент SDK, который остаётся как есть.",
   "Все компоненты SDK из списка ниже обязаны остаться (kind keep с их id): форма заявки, запись, корзина, вход и данные системы работают только через них. В props компонента можно переписать тексты по его схеме; привязку к данным не трогай.",
   "Первая секция — первый экран кодом (kind code, id hero) с единственным h1. Шапку и подвал не пиши — их добавит система.",
+  `Главная — полная страница: ${HOME_MIN_SECTIONS}–8 секций тела. Каждое обещание сценария из «Что показать» — своя секция: компонент SDK, если он есть в списке, иначе секция кодом по фактам (как проходит запись, контакты и как добраться, почему мы, вопросы и ответы).`,
+  "Факта нет (имён врачей, отзывов, адреса) — секция всё равно нужна, но без выдумки: что посетитель здесь получит и действие (записаться, позвонить); никаких имён, чисел и цитат, которых нет в фактах.",
   "Секция кодом: id — латиница через дефис, title — что она показывает (по-русски), source — TSX, props — тексты и фото, которые секция получит ровно в таком виде.",
   "seo.title — до 70 знаков, seo.description — 50–160 знаков, по фактам страницы.",
   `Отвечай только вызовом ${PAGE_CODE_TOOL}. Если инструмент вернул ошибки — исправь именно их и вызови снова со всей страницей.`,
@@ -380,6 +391,7 @@ export function pageCodeMessages(o: {
         `## Факты\n${factsBlock(o.facts, o.site)}`,
         `## Дизайн-система\n${designBlock(o.design)}`,
         `## Сценарий\n${scenarioText(o.scenario)}`,
+        `## Что показать\n${o.scenario.then.map((t) => `- ${t}`).join("\n")}`,
         `## Страница ${o.page.route} «${o.page.title}»\nСейчас: ${now.join(", ")}.`,
         kept.length
           ? `## Обязательные компоненты SDK (kind keep)\n${kept.join("\n")}`
