@@ -291,7 +291,10 @@ export const MODELS: ModelDef[] = [
   ),
   m("deepseek-v4.1-flash", "deepseek", "deepseek-flash", "T1", "external", 1000000, 34.77, 0.7, 139.08),
   m("deepseek-v4-pro-0813", "deepseek", "deepseek-v4-pro", "T1", "external", 1000000, 152.99, 5.1, 458.96),
-  m("mimo-v2.6-pro", "xiaomi", "mimo-v2.6-pro", "T1", "external", 256000, 50.42, 0.42, 100.83),
+  {
+    ...m("mimo-v2.6-pro", "xiaomi", "mimo-v2.6-pro", "T1", "external", 256000, 50.42, 0.42, 100.83),
+    thinking: "off",
+  },
   m("mimo-v2.6-flash", "xiaomi", "mimo-v2.6-flash", "T1", "external", 256000, 16.23, 1.62, 32.45),
 ];
 
