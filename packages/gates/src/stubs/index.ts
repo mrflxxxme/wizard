@@ -5,6 +5,7 @@
 export { STUB_CHECKS_SCRIPT, type StubPageOptions, type StubPageResult } from "./page.js";
 /** Codes S01–S04, their rubric (label, severity), the shared rules and the contacts the owner gave. */
 export {
+  CONTENT_HEADING_RE,
   deadLink,
   type KnownContacts,
   knownContacts,

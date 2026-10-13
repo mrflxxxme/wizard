@@ -38,6 +38,11 @@ export interface V3BuildContext {
    * recent site the template check found too close when the owner pinned the style (the style stays, the layout moves).
    */
   avoidPatterns?: readonly string[];
+  /**
+   * V4-21: the scenario composed again — what the browser check of its first page found not shown (the promises of its
+   * «видит …» steps, in Russian): the page composer fixes them.
+   */
+  repair?: readonly string[];
   signal?: AbortSignal;
 }
 
