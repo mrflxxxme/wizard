@@ -1,0 +1,62 @@
+# Mirror of the third-party base images into GHCR (V4-02 follow-up). Hosted runners hit 429 on anonymous pulls —
+# first Docker Hub (2026-10), now ECR Public («toomanyrequests: Data limit exceeded», 13.10.2026: a red main and a
+# failed image build). CI services, the sandbox probe and the image builds pull from
+# ghcr.io/<owner>/mirror/<path> with GITHUB_TOKEN instead; this job refreshes the copies (linux/amd64 only — runners
+# and the pilot nodes are amd64). Source: ECR Public mirror of the official images, Docker Hub as the fallback.
+name: mirror-images
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 3 * * 1"
+  push:
+    branches: [main, "claude/**", "task/**"]
+    paths: [".github/workflows/mirror-images.yml"]
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: mirror-images
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      # <path on ECR Public and on the mirror>=<path on Docker Hub>:<tag> — the layout of images.mjs mirrorRef.
+      IMAGES: >-
+        docker/library/postgres=library/postgres:16
+        docker/library/postgres=library/postgres:16.13-bookworm
+        docker/library/busybox=library/busybox:1.36.1
+        docker/library/alpine=library/alpine:3.22
+        docker/library/node=library/node:22.22-bookworm-slim
+        docker/library/debian=library/debian:bookworm-slim
+        nginx/nginx-unprivileged=nginxinc/nginx-unprivileged:1.29-alpine
+    steps:
+      - name: Copy into GHCR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          failed=0
+          for img in $IMAGES; do
+            mpath="${img%%=*}"; rest="${img#*=}"; hub="${rest%%:*}"; tag="${rest#*:}"
+            dest="ghcr.io/$owner/mirror/$mpath:$tag"
+            ok=0
+            for src in "public.ecr.aws/$mpath:$tag" "docker.io/$hub:$tag"; do
+              for attempt in 1 2 3; do
+                if docker pull --platform linux/amd64 "$src" >/dev/null; then ok=1; break; fi
+                sleep $((attempt * 20))
+              done
+              [ "$ok" = 1 ] && break
+            done
+            if [ "$ok" != 1 ]; then echo "::warning title=mirror::$mpath:$tag — источник недоступен (429?), копия в GHCR не обновлена"; failed=1; continue; fi
+            docker tag "$src" "$dest"
+            docker push "$dest" >/dev/null
+            echo "mirror: $src → $dest"
+          done
+          exit "$failed"

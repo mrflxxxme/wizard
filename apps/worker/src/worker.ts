@@ -36,6 +36,7 @@ import {
   RUN_WORKFLOW,
   RunEngine,
   type RunExecutors,
+  reportStorage,
   runModuleFactoryCron,
   runRetentionCron,
   SecretStore,
@@ -44,6 +45,7 @@ import {
   sweepExpiredImports,
 } from "@wizard/platform-api";
 import { dbosDurable } from "./durable.js";
+import { fileBuildIssues, githubIssuesFromEnv } from "./report/issues.js";
 import { StepStore } from "./step-store.js";
 
 /** Recovery picks up pending workflows of the same application version (kept stable across code edits). */
@@ -60,6 +62,8 @@ export const RETENTION_CRON = "wizard.retention_cron";
 export const MODULE_FACTORY_CRON = "wizard.module_factory";
 /** M2-09: founder alert «run failed rate > 20% за 1 ч» (deploy.yaml#cloud.observability.alerts), every 10 min. */
 export const OPS_CHECKS = "wizard.ops_checks";
+/** V4-04: issues of failed founder builds (apps/worker/src/report/issues.ts). */
+export const BUILD_ISSUES = "wizard.build_issues";
 /** execution.M1.dbos_data: dbos.* of terminal workflows older than this are deleted daily. */
 export const DBOS_RETENTION_DAYS = 30;
 /** workflows.yaml#execution.M1.queues.runs default. */
@@ -266,6 +270,23 @@ async function launch(o: WorkerOptions): Promise<Worker> {
     { name: RETENTION_CRON },
   );
   const opsChecks = (now = new Date()) => checkRunFailureRate(handle.db, alert, now);
+  const github = githubIssuesFromEnv();
+  if (!github) logger.info("build_issues_off", { reason: "WIZARD_GITHUB_ISSUES_TOKEN/REPO not set" });
+  const buildIssues = () =>
+    fileBuildIssues({
+      pg: handle.pg,
+      files: reportStorage(config),
+      platformOrigin: config.platformOrigin,
+      founderEmail: config.founderEmail,
+      github,
+      log: (msg, fields) => logger.info(msg, fields as Record<string, string | number>),
+    });
+  const buildIssuesCron = DBOS.registerWorkflow(
+    async (_at: Date, _ctx: unknown): Promise<void> => {
+      await DBOS.runStep(async () => void (await buildIssues()), { name: "build_issues" });
+    },
+    { name: BUILD_ISSUES },
+  );
   const opsChecksCron = DBOS.registerWorkflow(
     async (_at: Date, _ctx: unknown): Promise<void> => {
       await DBOS.runStep(async () => void (await opsChecks()), { name: "ops_checks" });
@@ -318,6 +339,7 @@ async function launch(o: WorkerOptions): Promise<Worker> {
       { scheduleName: BILLING_CRON, workflowFn: billingCron, schedule: "13 * * * *" },
       { scheduleName: IMPORTS_TTL, workflowFn: importsTtl, schedule: "23 * * * *" },
       { scheduleName: OPS_CHECKS, workflowFn: opsChecksCron, schedule: "*/10 * * * *" },
+      { scheduleName: BUILD_ISSUES, workflowFn: buildIssuesCron, schedule: "4-59/10 * * * *" },
       {
         scheduleName: RETENTION_CRON,
         workflowFn: retentionCron,

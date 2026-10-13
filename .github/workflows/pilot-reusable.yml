@@ -244,6 +244,17 @@ jobs:
       YANDEX_API_KEY: ${{ secrets.YANDEX_API_KEY }}
       YANDEX_FOLDER_ID: ${{ secrets.YANDEX_FOLDER_ID || vars.YANDEX_FOLDER_ID }}
       YANDEX_BASE_URL: ${{ vars.YANDEX_BASE_URL }}
+      # V4-05 (D79 (5)): Kimi, DeepSeek and MiMo for the build stages; the working MiMo key is MIMO_SECOND_API_KEY
+      # (V4-13 probe: MIMO_API_KEY answers 401).
+      KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+      MOONSHOT_BASE_URL: ${{ vars.MOONSHOT_BASE_URL }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      DEEPSEEK_BASE_URL: ${{ vars.DEEPSEEK_BASE_URL }}
+      MIMO_API_KEY: ${{ secrets.MIMO_SECOND_API_KEY || secrets.MIMO_API_KEY }}
+      MIMO_BASE_URL: ${{ vars.MIMO_BASE_URL }}
+      # V4-04: failed founder builds become issues of this repository (empty token — off).
+      WIZARD_GITHUB_ISSUES_TOKEN: ${{ secrets.WIZARD_GITHUB_ISSUES_TOKEN }}
+      WIZARD_GITHUB_ISSUES_REPO: ${{ vars.WIZARD_GITHUB_ISSUES_REPO || github.repository }}
       WIZARD_BUILD_DEFAULT_TIER: ${{ vars.WIZARD_BUILD_DEFAULT_TIER }}
       # D75: the platform's daily model cap, ₽ (empty — the default 700); raised only by the founder.
       WIZARD_LLM_DAILY_CAP_RUB: ${{ inputs.llm_daily_cap_rub || vars.WIZARD_LLM_DAILY_CAP_RUB }}
