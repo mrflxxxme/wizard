@@ -35,8 +35,18 @@ describe.skipIf(!ON)("V4-06 live stage probe: the page as code", () => {
       for (const scenario of [BRIEF.scenarios[0], BRIEF.scenarios[1]] as BriefScenario[]) {
         const sink = new MemoryUsageSink();
         const router = createRouter({ mode: "live", registry, sink });
-        const route = (i: RouteInput) =>
-          router.route({ ...i, orgPolicy: { ruOnly: false, t1Restricted: false }, ctx: { orgId: "probe" } });
+        const repairs: string[] = [];
+        const route = (i: RouteInput) => {
+          // The repair rounds of callTool: why the answer was refused (the last user message of the call).
+          const last = i.messages.at(-1);
+          if (i.messages.length > 2 && last?.role === "user" && typeof last.content === "string")
+            repairs.push(`${i.callType}: ${last.content.slice(0, 600)}`);
+          return router.route({
+            ...i,
+            orgPolicy: { ruOnly: false, t1Restricted: false },
+            ctx: { orgId: "probe" },
+          });
+        };
         const ctx: V3BuildContext = { ...base, files: apply(base.files, skeleton), route, budgetRub: 150 };
         const t0 = Date.now();
         const g0: string[] = [];
@@ -67,6 +77,7 @@ describe.skipIf(!ON)("V4-06 live stage probe: the page as code", () => {
             .join(" "),
           notes: r.notes,
           g0,
+          repairs,
           heroChars: files.get(changed.find((f) => f.endsWith("-hero.tsx")) ?? "")?.length ?? 0,
         });
         console.log(`stage_probe_page=${JSON.stringify(records.at(-1))}`);
