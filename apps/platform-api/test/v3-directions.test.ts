@@ -293,7 +293,10 @@ describe("three directions after the brief", () => {
     const r = await api.req("POST", `/systems/${bare.id}/directions`);
     expect(r.status).toBe(400);
     expect(r.body.message_ru).toMatch(/бриф/);
-    expect((await api.req("GET", `/systems/${bare.id}/directions`)).body).toEqual({ proposal: null });
+    expect((await api.req("GET", `/systems/${bare.id}/directions`)).body).toEqual({
+      proposal: null,
+      pending: null,
+    });
   });
 });
 

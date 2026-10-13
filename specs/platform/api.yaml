@@ -1084,15 +1084,16 @@ paths:
       x-roles: [viewer]
       summary: 'V3-09 (D77 (7), agents/builder-v3.md): последний набор трёх направлений системы с живыми первыми экранами (previewHtml — документ для <iframe srcdoc sandbox="allow-scripts">) и выбранным направлением брифа; null — направлений ещё не предлагали'
       responses:
-        '200': {description: Набор или null, content: {application/json: {schema: {type: object, required: [proposal], properties: {proposal: {oneOf: [{type: 'null'}, {$ref: '#/components/schemas/DesignDirections'}]}}}}}}
+        '200': {description: 'Набор или null; pending (V4-17) — набор, который ещё рисуется (или не получился недавно), иначе null', content: {application/json: {schema: {type: object, required: [proposal, pending], properties: {proposal: {oneOf: [{type: 'null'}, {$ref: '#/components/schemas/DesignDirections'}]}, pending: {oneOf: [{type: 'null'}, {$ref: '#/components/schemas/DesignDirectionsPending'}]}}}}}}
         '404': {$ref: '#/components/responses/Error'}
     post:
       operationId: proposeDesignDirections
       x-milestone: V3
       x-roles: [editor]
       summary: 'V3-09: три первых экрана в разных архетипах по актуальному брифу — архетипы, токены, паттерны шапки и первого экрана считает код (V3-07, V3-08), тексты клиента пишет один вызов art_direction (T1 только после scrub) или код из брифа; ≤ 40 ₽ и ≤ 2 мин; превью собираются buildSystem параллельно. reroll — другие архетипы. Набор хранится блобом (id = sha256) и появляется в чате (payload.type design_directions)'
-      requestBody: {required: false, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {reroll: {type: boolean}}}}}}
+      requestBody: {required: false, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {reroll: {type: boolean}, stream: {type: boolean, description: 'V4-17: рисовать в фоне — ответ 202 сразу, направления приходят через GET по мере готовности'}}}}}}
       responses:
+        '202': {description: 'V4-17 (stream): набор рисуется в фоне; уже идущий набор системы возвращается как есть', content: {application/json: {schema: {type: object, required: [pending], properties: {pending: {$ref: '#/components/schemas/DesignDirectionsPending'}}}}}}
         '201': {description: Набор направлений, content: {application/json: {schema: {type: object, required: [proposal], properties: {proposal: {$ref: '#/components/schemas/DesignDirections'}}}}}}
         '400': {description: 'VALIDATION_FAILED — брифа ещё нет', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '403': {$ref: '#/components/responses/Error'}
@@ -2139,22 +2140,38 @@ components:
           type: array
           minItems: 3
           maxItems: 3
-          items:
-            type: object
-            required: [n, archetype, name, why, texts, textsSource, tuning, header, hero, fonts, palette, previewHtml]
-            properties:
-              n: {type: integer, minimum: 1, maximum: 3}
-              archetype: {type: string}
-              name: {type: string}
-              why: {type: string}
-              texts: {type: object, required: [title, action], properties: {title: {type: string}, lead: {type: string}, action: {type: string}}}
-              textsSource: {enum: [model, brief]}
-              tuning: {type: array, items: {type: string}, description: пожелания владельца словами}
-              header: {type: string}
-              hero: {type: string}
-              fonts: {type: object, required: [display, text], properties: {display: {type: string}, text: {type: string}}}
-              palette: {type: object, required: [background, foreground, accent], properties: {background: {type: string}, foreground: {type: string}, accent: {type: string}}}
-              previewHtml: {type: string, description: 'документ для <iframe srcdoc sandbox="allow-scripts">; файлы — /direction-previews/*'}
+          items: {$ref: '#/components/schemas/DesignDirection'}
+    DesignDirection:
+      description: 'V3-09: одно направление с живым первым экраном'
+      type: object
+      required: [n, archetype, name, why, texts, textsSource, tuning, header, hero, fonts, palette, previewHtml]
+      properties:
+        n: {type: integer, minimum: 1, maximum: 3}
+        archetype: {type: string}
+        name: {type: string}
+        why: {type: string}
+        texts: {type: object, required: [title, action], properties: {title: {type: string}, lead: {type: string}, action: {type: string}}}
+        textsSource: {enum: [model, brief]}
+        tuning: {type: array, items: {type: string}, description: пожелания владельца словами}
+        header: {type: string}
+        hero: {type: string}
+        fonts: {type: object, required: [display, text], properties: {display: {type: string}, text: {type: string}}}
+        palette: {type: object, required: [background, foreground, accent], properties: {background: {type: string}, foreground: {type: string}, accent: {type: string}}}
+        previewHtml: {type: string, description: 'документ для <iframe srcdoc sandbox="allow-scripts">; файлы — /direction-previews/*'}
+    DesignDirectionsPending:
+      type: object
+      description: 'V4-17: набор, который ещё рисуется в фоне (POST с stream): стадия, готовые направления (в порядке готовности, превью — под key), скелет первого экрана по брифу'
+      required: [key, briefVersion, startedAt, elapsedMs, stage, ready, total, skeleton, error]
+      properties:
+        key: {type: string, pattern: '^[0-9a-f]{64}$', description: ключ превью готовых направлений до сохранения набора}
+        briefVersion: {type: integer, minimum: 1}
+        startedAt: {type: string, format: date-time}
+        elapsedMs: {type: integer, minimum: 0}
+        stage: {enum: [design, texts, screens, failed], description: 'модель подбирает стиль, модель пишет тексты, собираются экраны, не получилось'}
+        ready: {type: array, maxItems: 3, items: {$ref: '#/components/schemas/DesignDirection'}}
+        total: {type: integer, const: 3}
+        skeleton: {type: object, required: [title, lead, action, accent], properties: {title: {type: string}, lead: {type: [string, 'null']}, action: {type: string}, accent: {type: [string, 'null'], description: фирменный цвет логотипа (hex)}}}
+        error: {type: [string, 'null'], description: почему не получилось (stage failed)}
     RepoRef: {oneOf: [{type: 'null'}, {type: object, required: [oid, revision], properties: {oid: {type: string, pattern: '^[0-9a-f]{40}$'}, revision: {type: [integer, 'null'], description: 'null — коммит версии брифа'}}}], description: 'V3-30: ссылка репозитория системы'}
     RepoCommit:
       type: object

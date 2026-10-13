@@ -16,7 +16,7 @@ import { REFERENCE_MAX_BYTES } from "./images.js";
 import type { DirectionsService, SystemRef } from "./service.js";
 
 const proposalId = z.string().regex(/^[0-9a-f]{64}$/, "неизвестный набор направлений");
-const proposeBody = z.strictObject({ reroll: z.boolean().optional() });
+const proposeBody = z.strictObject({ reroll: z.boolean().optional(), stream: z.boolean().optional() });
 const refineBody = z.strictObject({ proposalId, text: z.string().trim().min(1).max(500) });
 const pickBody = z.union([
   z.strictObject({ proposalId, n: z.number().int().min(1).max(3) }),
@@ -40,13 +40,16 @@ export function directionRoutes(svc: DirectionsService): Hono<AppEnv> {
     return s;
   }
 
-  // The latest proposal with its live previews (null before the first one).
+  // The latest proposal with its live previews (null before the first one) and a streamed one still going on.
   r.get("/systems/:id/directions", async (c) => {
     const s = await loadSystem(c.get("user"), c.req.param("id"), "viewer");
-    return c.json({ proposal: await svc.latest(s) });
+    const pending = svc.pending(s.id);
+    // The job ends by storing its proposal: read it after the job's state, never a finished job without it.
+    return c.json({ proposal: await svc.latest(s), pending });
   });
 
-  // Three directions from the current brief (one model call for the texts at most, ≤ 40 ₽).
+  // Three directions from the current brief (the step's wallet, ≤ 40 ₽); `stream` (V4-17): 202 at once, the
+  // directions arrive through GET as they are ready.
   r.post("/systems/:id/directions", async (c) => {
     const s = await loadSystem(c.get("user"), c.req.param("id"), "editor");
     svc.limit(s.id);
@@ -63,7 +66,11 @@ export function directionRoutes(svc: DirectionsService): Hono<AppEnv> {
       if (!parsed.success) throw invalid("Некорректные параметры запроса");
       body = parsed.data;
     }
-    const proposal = await svc.propose(s, { ...body, signal: c.req.raw.signal });
+    if (body.stream) return c.json({ pending: await svc.start(s, { reroll: body.reroll === true }) }, 202);
+    const proposal = await svc.propose(s, {
+      ...(body.reroll !== undefined ? { reroll: body.reroll } : {}),
+      signal: c.req.raw.signal,
+    });
     return c.json({ proposal }, 201);
   });
 

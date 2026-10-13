@@ -45,6 +45,10 @@ function fakeApi(first: DirectionsProposalView | null = null) {
   let current = first;
   const api: DirectionsApi = {
     get: async () => current,
+    state: async () => ({ proposal: current, pending: null }),
+    start: async () => {
+      throw new Error("not streamed in V3-09");
+    },
     propose: async (...a) => {
       calls.push(["propose", ...a]);
       current = proposal("a1");
