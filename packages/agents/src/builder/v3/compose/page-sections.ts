@@ -71,6 +71,59 @@ export function planAnswer(plan: PagePlan, sources: ReadonlyMap<string, string>)
 const MOTION_FROM = /from\s+["'](?:framer-motion|motion)["']/g;
 
 /**
+ * What a section written as code may take from @wizard/ui-kit/v3/headless: helpers of photos and text only. There are
+ * no UI components there (Accordion, Tabs, Button…): the section writes its own markup; data goes through the SDK
+ * components the plan keeps.
+ */
+export const SECTION_HEADLESS = [
+  "srcSetOf",
+  "IMAGE_WIDTHS",
+  "fitWords",
+  "useFitWords",
+  "richInline",
+  "richPlain",
+  "safeHref",
+] as const;
+const HEADLESS_IMPORT = /import\s*(type\s+)?\{([^}]*)\}\s*from\s*["']@wizard\/ui-kit\/v3\/headless["'];?\n?/;
+
+/** Names a section imports from headless that it may not (not in SECTION_HEADLESS). */
+export function unknownHeadless(source: string): string[] {
+  const m = HEADLESS_IMPORT.exec(source);
+  if (!m || m[1]) return [];
+  const allowed = new Set<string>(SECTION_HEADLESS);
+  return (m[2] as string)
+    .split(",")
+    .map(
+      (x) =>
+        x
+          .trim()
+          .split(/\s+as\s+/)[0]
+          ?.trim() ?? "",
+    )
+    .filter((x) => x && !allowed.has(x));
+}
+
+/** An import the section may not take is dropped with the blocks that use it (<X …/> and <X …>…</X>). */
+function withoutUnknownHeadless(source: string): string {
+  const bad = unknownHeadless(source);
+  if (!bad.length) return source;
+  let s = source.replace(HEADLESS_IMPORT, (_all, type: string | undefined, names: string) => {
+    const keep = names
+      .split(",")
+      .map((x) => x.trim())
+      .filter((x) => x && !bad.includes(x.split(/\s+as\s+/)[0]?.trim() ?? ""));
+    return keep.length
+      ? `import ${type ?? ""}{ ${keep.join(", ")} } from "@wizard/ui-kit/v3/headless";\n`
+      : "";
+  });
+  for (const name of bad) {
+    s = s.replace(new RegExp(`<${name}\\b[^>]*?/>`, "g"), "");
+    s = s.replace(new RegExp(`<${name}\\b[^>]*>[\\s\\S]*?</${name}>`, "g"), "");
+  }
+  return s;
+}
+
+/**
  * Deterministic fixes of the slips models make most (code, never a model call): framer-motion → motion/react,
  * class → className, a named default export, `motion.x` → `m.x` inside LazyMotion. Returns the source unchanged when
  * nothing applies.
@@ -89,7 +142,7 @@ export function autofixSection(source: string): string {
   }
   if (/\bLazyMotion\b/.test(s)) s = s.replace(/<(\/?)motion\./g, "<$1m.");
   else if (/<m\./.test(s)) s = withLazyMotion(s);
-  return s;
+  return withoutUnknownHeadless(s);
 }
 
 /**
@@ -139,6 +192,12 @@ export function sectionIssues(source: string, o: { id: string; hero: boolean }):
     code: i.code.toUpperCase().replace(/-/g, "_"),
     message: `${i.message_ru} (строка ${i.line}): ${i.evidence}`,
   }));
+  for (const name of unknownHeadless(source))
+    out.push({
+      path: "source",
+      code: "UNKNOWN_IMPORT",
+      message: `В @wizard/ui-kit/v3/headless нет «${name}» для секции; можно только ${SECTION_HEADLESS.join(", ")} — разметку пиши сама`,
+    });
   const h1 = /<(?:m\.)?h1\b/.test(source);
   if (o.hero && !h1)
     out.push({ path: "source", code: "NO_H1", message: "В первом экране нужен единственный h1" });
@@ -255,6 +314,7 @@ export function sectionMessages(o: {
         CODE_RULES.map((r) => `- ${r}`).join("\n"),
         `- ${hero ? "Это первый экран: в нём единственный h1 страницы." : "Это не первый экран: заголовок — h2, подзаголовки — h3; h1 не используй."}`,
         "- Все тексты и фото — только из props (ровно эти ключи); своих текстов в коде нет.",
+        `- Из @wizard/ui-kit/v3/headless — только ${SECTION_HEADLESS.join(", ")}; готовых UI-компонентов (Accordion, Tabs, Button, Card…) там нет, разметку пиши сама.`,
         `- Отвечай только вызовом ${SECTION_CODE_TOOL} с полным TSX секции. Если инструмент вернул ошибки — исправь именно их.`,
         ...(example
           ? [

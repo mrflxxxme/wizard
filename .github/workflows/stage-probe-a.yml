@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       probes:
-        description: "Пробы через запятую: llm (модели маршрута v4), art (арт-директор V4-07), page (страница кодом V4-06)"
+        description: "Пробы через запятую: llm (модели маршрута v4), art (арт-директор V4-07), page (страница кодом V4-06), quality (качество главной по моделям: снимки и критик)"
         type: string
         default: "page"
       sections:
@@ -42,6 +42,9 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The critic and quality probes open the site in Chromium (real screenshots at 390/1440).
+      - if: contains(inputs.probes, 'critic') || contains(inputs.probes, 'quality')
+        run: pnpm --filter @wizard/e2e exec playwright install --with-deps chromium
       - name: Probe
         env:
           # Which probes run (each test skips unless named); a push runs the probe of the stage in work.

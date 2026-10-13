@@ -211,4 +211,20 @@ describe("V4-06 speed: the page by sections", () => {
     expect(form?.props.fields).toEqual(before?.props.fields);
     expect(form?.props.title).toBe("Запишитесь");
   });
+
+  test("an import headless does not have for a section is dropped with its block; the prompt lists what it has", () => {
+    const src = HERO_CODE.source
+      .replace(
+        "export default function",
+        'import { Accordion, srcSetOf } from "@wizard/ui-kit/v3/headless";\n\nexport default function',
+      )
+      .replace("</h1>", "</h1>\n          <Accordion items={[]} />");
+    expect(sectionIssues(src, { id: "hero", hero: true }).map((i) => i.code)).toContain("UNKNOWN_IMPORT");
+    const fixed = autofixSection(src);
+    expect(fixed).not.toContain("Accordion");
+    expect(fixed).toContain('import { srcSetOf } from "@wizard/ui-kit/v3/headless";');
+    expect(sectionIssues(fixed, { id: "hero", hero: true }).map((i) => i.code)).not.toContain(
+      "UNKNOWN_IMPORT",
+    );
+  });
 });
