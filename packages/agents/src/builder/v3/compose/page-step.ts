@@ -5,7 +5,7 @@
 // authors picks one by the 390 and 1440 screenshots (critic_visual); without a browser or a judge the first candidate
 // stays. A page that never passes keeps its previous version.
 import type { BriefScenario } from "@wizard/appspec";
-import { type LlmMessage, modelFamilyOf, type Registry, type RouteInput } from "@wizard/llm";
+import { type CallType, type LlmMessage, modelFamilyOf, type Registry, type RouteInput } from "@wizard/llm";
 import type { PatternMeta } from "@wizard/ui-kit/v3/patterns";
 import { z } from "zod";
 import { type CallBase, callTool, type RouteFn } from "../../../core/loop.js";
@@ -22,8 +22,18 @@ import {
   designBlock,
   type PageCodeAnswer,
   pageCodeRequest,
+  pageLintIssues,
+  scenarioText,
   TASTE_RULES,
 } from "./page-code.js";
+import {
+  type PagePlan,
+  type PlanCodeItem,
+  pagePlanRequest,
+  planAnswer,
+  SECTION_CODE_TOOL,
+  sectionRequest,
+} from "./page-sections.js";
 import { type SiteModel, type SitePage, withSitePages } from "./site.js";
 import { lintSitePage } from "./skeleton.js";
 
@@ -58,6 +68,10 @@ export interface PageStepInput {
   firstScreen: boolean;
   /** V4-21: what the browser check found not shown — the page is written again to show it (V3BuildContext.repair). */
   repair?: readonly string[];
+  /** The callType of the page call (default page_compose; page_edit for a caller that edits). */
+  callType?: CallType;
+  /** V4-06 speed: the page by sections — a plan call, then one call per code section at once (pageSections). */
+  sections?: boolean;
 }
 
 export interface PageStepResult {
@@ -140,7 +154,7 @@ export async function pageCode(
       r = await callTool({
         ...base,
         route: author.route,
-        callType: PAGE_CALL_TYPES.page,
+        callType: s.callType ?? PAGE_CALL_TYPES.page,
         stepName: `page_code:${s.page.route}`,
         messages,
         tool: req.tool,
@@ -173,6 +187,148 @@ export async function pageCode(
     ];
   }
   s.notes.push(`Код страницы ${s.page.route} не собрался (G0) — страница осталась прежней.`);
+  return null;
+}
+
+/** Checks of the assembled page by sections: the first and two rounds of rewriting the failing sections. */
+const SECTION_ROUNDS = 3;
+
+/** Section ids named by problems of the page lint (path sections.<i>…) or of G0 (the section file in the text). */
+function failingSections(
+  plan: PagePlan,
+  page: SitePage,
+  issues: readonly { path?: string; message: string }[],
+): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  const add = (id: string, m: string) => out.set(id, [...(out.get(id) ?? []), m]);
+  for (const i of issues) {
+    const at = /^sections\.(\d+)/.exec(i.path ?? "");
+    const byPath = at ? plan.sections[Number(at[1])] : undefined;
+    if (byPath?.kind === "code") {
+      add(byPath.id, i.message);
+      continue;
+    }
+    const byFile = plan.sections.find(
+      (s) => s.kind === "code" && i.message.includes(codeSectionFile(page, s.id)),
+    );
+    if (byFile) add(byFile.id, i.message);
+  }
+  return out;
+}
+
+/**
+ * The page step by sections (V4-06 speed): a short plan call (sections, ideas, props, SDK components, SEO), every
+ * code section by its own call at once, the page assembled by code; the page lint and G0 send only the failing
+ * sections back (up to two rounds). Null — the page stays as it was; "stop" — the scenario stops.
+ */
+export async function pageSections(
+  ctx: V3BuildContext,
+  base: Omit<CallBase, "callType"> & { maxRepairs?: number },
+  s: PageStepInput,
+): Promise<PageStepResult | null | "stop"> {
+  const callType = s.callType ?? PAGE_CALL_TYPES.page;
+  const planReq = pagePlanRequest({
+    facts: s.facts,
+    site: s.site,
+    page: s.page,
+    scenarioText: scenarioText(s.scenario),
+    design: ctx.design,
+    library: s.library,
+  });
+  const author = tracking(base.route);
+  let plan: PagePlan;
+  try {
+    const r = await callTool({
+      ...base,
+      route: author.route,
+      callType,
+      stepName: `page_plan:${s.page.route}`,
+      messages: planReq.messages,
+      tool: planReq.tool,
+    });
+    if (!r.ok) {
+      s.notes.push(`План страницы ${s.page.route} не прошёл проверки — страница осталась прежней.`);
+      return null;
+    }
+    plan = r.value as PagePlan;
+  } catch (e) {
+    return s.stop(e) ? "stop" : null;
+  }
+  const items = plan.sections.filter((x): x is PlanCodeItem => x.kind === "code");
+  const sources = new Map<string, string>();
+  let stopped: unknown = null;
+  const write = async (item: PlanCodeItem, problems?: readonly string[]): Promise<void> => {
+    const req = sectionRequest({
+      plan,
+      item,
+      page: s.page,
+      design: ctx.design,
+      library: s.library,
+      archetype: s.site.archetype,
+    });
+    const messages: LlmMessage[] = problems?.length
+      ? [
+          ...req.messages,
+          ...(sources.has(item.id)
+            ? [
+                {
+                  role: "user" as const,
+                  content: `Прошлый вариант секции:\n\`\`\`tsx\n${sources.get(item.id)}\n\`\`\`\nОн не прошёл проверки страницы:\n${problems.slice(0, 6).join("\n")}\nИсправь именно это и вызови ${SECTION_CODE_TOOL} снова.`,
+                },
+              ]
+            : []),
+        ]
+      : req.messages;
+    try {
+      const r = await callTool({
+        ...base,
+        route: author.route,
+        callType,
+        stepName: `page_section:${s.page.route}#${item.id}${problems ? ":fix" : ""}`,
+        messages,
+        tool: req.tool,
+      });
+      if (r.ok) sources.set(item.id, r.value.source);
+    } catch (e) {
+      stopped ??= e;
+    }
+  };
+  await Promise.all(items.map((it) => write(it)));
+  if (stopped) return s.stop(stopped) ? "stop" : null;
+  if (items.some((it) => !sources.has(it.id))) {
+    s.notes.push(`Секции страницы ${s.page.route} не прошли проверки — страница осталась прежней.`);
+    return null;
+  }
+  const check = { site: s.site, page: s.page, facts: s.facts, library: s.library, signatures: s.signatures };
+  for (let round = 0; round < SECTION_ROUNDS; round++) {
+    const answer = planAnswer(plan, sources);
+    const lint = pageLintIssues(answer, check);
+    let problems = lint.map((i) => ({ path: i.path, message: i.message }));
+    let applied = applyPageCode(s.page, answer, s.library);
+    if (!problems.length) {
+      const sys = systemWith(ctx, s, applied.page, new Map([...s.signatures, ...applied.sources]));
+      const g0 = await s.verify(sys.spec, sys.files, [...applied.sources.keys(), applied.page.file]);
+      if (g0.ok) {
+        s.notes.push(
+          `Страница ${s.page.route} «${s.page.title}» написана по секциям под сценарий «${s.scenario.id}» и прошла проверки.`,
+        );
+        const model = author.model();
+        const result = {
+          page: model ? { ...applied.page, author: model } : applied.page,
+          sources: applied.sources,
+        };
+        return s.firstScreen ? firstScreen(ctx, base, s, result, model) : result;
+      }
+      problems = g0.problems.map((m) => ({ path: "", message: m }));
+    }
+    if (round === SECTION_ROUNDS - 1) break;
+    const failing = failingSections(plan, s.page, problems);
+    if (!failing.size) break;
+    await Promise.all(items.filter((it) => failing.has(it.id)).map((it) => write(it, failing.get(it.id))));
+    if (stopped) return s.stop(stopped) ? "stop" : null;
+    applied = applyPageCode(s.page, planAnswer(plan, sources), s.library);
+  }
+  s.notes.push(`Код страницы ${s.page.route} не прошёл проверки — страница осталась прежней.`);
   return null;
 }
 
