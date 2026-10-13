@@ -462,6 +462,13 @@
   padding: 8px 10px;
 }
 
+.failLink {
+  color: var(--p-ink);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .failTitle {
   margin: 0;
   font-weight: 500;

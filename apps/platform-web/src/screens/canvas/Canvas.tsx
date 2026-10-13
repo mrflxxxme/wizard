@@ -47,6 +47,7 @@ import { v3Ru } from "../v3/ru.js";
 import { StyleDrawer, spentLine, V3BuildCard } from "../v3/V3Build.js";
 import { buildProgress, remainingText } from "./buildProgress.js";
 import s from "./Canvas.module.css";
+import { errorWords, failureAction, failureText, isBillingError } from "./failure.js";
 import { islandRu, stageRu } from "./ru.js";
 
 export interface CanvasProps {
@@ -153,6 +154,8 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The code of the request's error: a money one gets «Пополнить баланс» next to its words.
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [live, setLive] = useState("");
   const [news, setNews] = useState<{ id: number; text: string } | null>(null);
@@ -327,10 +330,12 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
   const turnFailure =
     failedEvent && runKind !== "build" && !publishing
       ? {
-          text:
-            typeof failedEvent.payload.message_ru === "string" && failedEvent.payload.message_ru
-              ? failedEvent.payload.message_ru
-              : canvas.chat.turnFailed,
+          // The server's words of a chat turn when they are words (the build's reasons speak of a build).
+          text: failureText(
+            "",
+            typeof failedEvent.payload.message_ru === "string" ? failedEvent.payload.message_ru : null,
+            canvas.chat.turnFailed,
+          ),
           retry: failedEvent.payload.retryable !== false ? retryTurn.current : null,
         }
       : null;
@@ -347,13 +352,18 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
   async function act<T>(name: string, fn: () => Promise<T>): Promise<T | null> {
     setBusy(name);
     setError(null);
+    setErrorCode(null);
     try {
       return await fn();
     } catch (e) {
       if (e instanceof ApiError && e.code === "PLAN_REVISION_STALE") {
         setNotice(canvas.plan.stale);
         await loadPlan();
-      } else setError(errText(e));
+      } else {
+        const code = e instanceof ApiError ? e.code : null;
+        setErrorCode(code);
+        setError(errorWords(code, errText(e)));
+      }
       return null;
     } finally {
       setBusy(null);
@@ -582,12 +592,11 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
     );
   } else if (failure) {
     attention = `fail:${failure.code}`;
+    const action = failureAction(failure.code);
     dock = (
-      <div className={s.fail} role="alert" data-testid="canvas-failure">
+      <div className={s.fail} role="alert" data-testid="canvas-failure" data-action={action ?? "none"}>
         <p className={s.failTitle}>{canvas.failed.title}</p>
-        <p className={s.failText}>
-          {canvas.failed.reasons[failure.code] ?? (failure.message || canvas.failed.generic)}
-        </p>
+        <p className={s.failText}>{failureText(failure.code, failure.message, canvas.failed.generic)}</p>
         <details className={s.more} data-testid="canvas-failure-more">
           <summary>{canvas.failed.more}</summary>
           <dl>
@@ -607,16 +616,22 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
             )}
           </dl>
         </details>
-        {failure.code !== "PLAN_INVALID" && (
+        {(action === "retry" || action === "fix") && (
           <ActionButton
             variant="primary"
             size="sm"
             testId="canvas-retry"
+            busy={busy === "fix"}
             disabled={busy !== null || runActive}
             onClick={() => void retry()}
           >
-            {canvas.failed.retry}
+            {action === "fix" ? canvas.failed.fix : canvas.failed.retry}
           </ActionButton>
+        )}
+        {action === "billing" && (
+          <AppLink to="/billing" className={s.failLink} testId="canvas-topup">
+            {canvas.failed.topUp}
+          </AppLink>
         )}
       </div>
     );
@@ -934,6 +949,14 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
             {error && (
               <p className={s.error} role="alert" data-testid="canvas-error">
                 {error}
+                {isBillingError(errorCode) && (
+                  <>
+                    {" "}
+                    <AppLink to="/billing" className={s.failLink} testId="canvas-error-topup">
+                      {canvas.failed.topUp}
+                    </AppLink>
+                  </>
+                )}
               </p>
             )}
             {upload.progress}
