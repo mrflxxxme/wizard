@@ -1,0 +1,27 @@
+# Provider key probe (V4-05/V4-13, D79 (5)): one cheap request per key; the table goes to the job summary.
+# Never prints keys. Runs on manual dispatch and on pushes that change the probe itself.
+name: provider-probe
+on:
+  workflow_dispatch:
+  push:
+    branches: ["claude/**", "task/**"]
+    paths: ["tools/llm-probe/**", ".github/workflows/provider-probe.yml"]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Probe
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          MIMO_API_KEY: ${{ secrets.MIMO_API_KEY }}
+          MIMO_SECOND_API_KEY: ${{ secrets.MIMO_SECOND_API_KEY }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+        run: node tools/llm-probe/probe.mjs

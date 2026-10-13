@@ -4144,8 +4144,8 @@ tasks:
     owner: agents
     parallel_group: v4-0
     estimate_days: 0.25
-    status: todo
-    claimed_by: null
+    status: done
+    claimed_by: session_015adinbmmrh3oNVhb14KhGK
     owns: ["packages/agents/src/builder/v3/compose/codegen.ts", "packages/ui-kit/src/v3/design/css.ts", "их тесты"]
     acceptance:
       - "Публичный сайт светлого направления остаётся светлым при prefers-color-scheme: dark (браузерный тест); тёмное направление — тёмным при светлой теме ОС"

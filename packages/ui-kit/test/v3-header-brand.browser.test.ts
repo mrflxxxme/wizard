@@ -118,7 +118,7 @@ const CANDIDATES = tailwindCandidates(
 
 /** The stylesheet of a system with these headers: Tailwind over ui/design.css (as codegen writes it), base CSS layered. */
 async function systemCss(ds: DesignSystemV3): Promise<string> {
-  const design = designSystemCss(ds, { fonts: true }).replaceAll(":root[data-scheme=auto]", ":root");
+  const design = designSystemCss(ds, { fonts: true, autoScheme: false });
   const tw = await compileTailwind(design, CANDIDATES);
   if (!tw.ok) throw new Error(tw.error);
   return layeredCss(tw.css, BASE_CSS);
