@@ -69,7 +69,7 @@ describe("plan v4 §3: every role on its model with a reserve", () => {
     ["interview_v3", "glm-5.3", "kimi-k2.6"],
     ["brief_extract", "glm-5.3", "kimi-k2.6"],
     ["art_direction", "glm-5.3", "kimi-k3"],
-    ["page_compose", "kimi-k3", "glm-5.3"],
+    ["page_compose", "glm-5.3", "kimi-k3"],
     ["page_edit", "deepseek-v4.1-flash", "mimo-v2.6-flash"],
     ["critic_visual", "glm-5v-turbo", "kimi-k2.6"],
     // MiMo with reasoning off heads the techreview, DeepSeek V4-Pro is its reserve (stage probe 13.10.2026).
@@ -101,7 +101,7 @@ describe("plan v4 §3: every role on its model with a reserve", () => {
     expect(isBuildCallType("repo_code")).toBe(false);
   });
 
-  test("live: page code goes to Kimi K3 with temperature 1, the second candidate (avoid kimi) to GLM-5.3", async () => {
+  test("live: page code goes to GLM-5.3, the second candidate (avoid its family) to Kimi K3 with temperature 1", async () => {
     const { router } = mk();
     const a = await router.route({
       callType: "page_compose",
@@ -116,7 +116,7 @@ describe("plan v4 §3: every role on its model with a reserve", () => {
       orgPolicy: OPEN,
       ctx,
     });
-    expect([a.model, b.model]).toEqual(["kimi-k3", "glm-5.3"]);
+    expect([a.model, b.model]).toEqual(["glm-5.3", "kimi-k3"]);
     const kimi = stub.requests.find((r) => r.provider === "moonshot");
     expect(kimi?.body.temperature).toBe(1);
     expect(kimi?.headers.authorization).toBe("Bearer test-kimi");
