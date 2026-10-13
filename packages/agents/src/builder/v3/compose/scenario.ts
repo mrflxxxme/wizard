@@ -24,7 +24,7 @@ import { siteFiles } from "./codegen.js";
 import { siteRules } from "./content.js";
 import { siteFacts } from "./facts.js";
 import { lintErrors } from "./lint.js";
-import { pageCode } from "./page-step.js";
+import { pageCode, pageSections } from "./page-step.js";
 import { pagePlans, readSite, type SiteModel, type SitePage } from "./site.js";
 import { type ComposeLibrary, composeSite, lintSitePage } from "./skeleton.js";
 
@@ -55,6 +55,8 @@ export interface ComposeScenarioOptions extends ComposeLibrary {
   inspect?: CriticInspector;
   /** false — no rival first screen and no judge (default: on the home page). */
   firstScreen?: boolean;
+  /** V4-06 speed: pages by sections (a plan call, then the code sections at once); default — one call per page. */
+  sections?: boolean;
 }
 
 /** G0-IMP-01, G0-SEC-01, G0-TS-01 and G0-BUILD-01 of the system (no database): the checks free code must pass. */
@@ -174,35 +176,48 @@ export async function composeScenario(
       if (s.file && src !== undefined) signatures.set(s.file, src);
     }
   const targets = scenarioPages(site, scenario, ctx);
-  const stop = (e: unknown): boolean => {
-    if (ctx.signal?.aborted) throw e;
-    if (e instanceof BudgetStop) {
-      notes.push(`Бюджет шага исчерпан (нужно ≈ ${e.needRub} ₽): оставил тексты из брифа.`);
+  const stopper =
+    (out: string[]) =>
+    (e: unknown): boolean => {
+      if (ctx.signal?.aborted) throw e;
+      if (e instanceof BudgetStop) {
+        out.push(`Бюджет шага исчерпан (нужно ≈ ${e.needRub} ₽): оставил тексты из брифа.`);
+        return true;
+      }
+      out.push(
+        `Модель не ответила (${e instanceof Error ? e.message.slice(0, 120) : String(e)}): оставил каркас страницы.`,
+      );
       return true;
-    }
-    notes.push(
-      `Модель не ответила (${e instanceof Error ? e.message.slice(0, 120) : String(e)}): оставил каркас страницы.`,
-    );
-    return true;
-  };
+    };
 
-  for (const target of targets) {
-    const page = site.pages.find((p) => p.route === target.route) as SitePage;
-    const done = await pageCode(ctx, base, {
-      site,
-      page,
-      scenario,
-      facts,
-      library,
-      verify,
-      signatures,
-      notes,
-      stop,
-      registry,
-      ...(opts.inspect ? { inspect: opts.inspect } : {}),
-      firstScreen: opts.firstScreen !== false && page.route === "/",
-      ...(ctx.repair?.length ? { repair: ctx.repair } : {}),
-    });
+  // V4-06 speed: the pages of a scenario are written at once (each sees the site as the scenario found it); the home
+  // page keeps its two first screens; every page goes by page_compose (GLM-5.3 heads it: fast enough by sections).
+  const runs = await Promise.all(
+    targets.map(async (target) => {
+      const page = site.pages.find((p) => p.route === target.route) as SitePage;
+      const own: string[] = [];
+      const step = opts.sections ? pageSections : pageCode;
+      const done = await step(ctx, base, {
+        site,
+        page,
+        scenario,
+        facts,
+        library,
+        verify,
+        signatures,
+        notes: own,
+        stop: stopper(own),
+        registry,
+        ...(opts.inspect ? { inspect: opts.inspect } : {}),
+        firstScreen: opts.firstScreen !== false && page.route === "/",
+        callType: COMPOSE_CALL_TYPES.page,
+        ...(ctx.repair?.length ? { repair: ctx.repair } : {}),
+      });
+      return { done, own };
+    }),
+  );
+  for (const { done, own } of runs) {
+    notes.push(...own);
     if (done === "stop") break;
     if (!done) continue;
     for (const [f, src] of done.sources) signatures.set(f, src);

@@ -16,7 +16,8 @@
     "packages/agents/src/builder/v3/compose/copy.ts",
     "packages/agents/src/builder/v3/prompts/page-compose",
     "packages/agents/src/builder/v3/edit",
-    "packages/agents/src/builder/v3/compose/page-code.ts"
+    "packages/agents/src/builder/v3/compose/page-code.ts",
+    "packages/agents/src/builder/v3/compose/page-sections.ts"
   ],
   "signature_section": [
     "packages/agents/src/builder/v3/compose/scenario.ts",
