@@ -2561,7 +2561,7 @@ tasks:
     owner: frontend
     parallel_group: v4-c
     estimate_days: 1
-    status: in_progress
+    status: done
     claimed_by: session_01X8jgGUBZgh2j9RwccJpmf6
     owns: ["apps/platform-api/src/directions/**", "apps/platform-web/src/screens/v3/first/**", "apps/platform-web/src/v3/directions/api.ts"]
     description: >

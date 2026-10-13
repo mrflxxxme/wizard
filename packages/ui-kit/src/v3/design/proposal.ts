@@ -4,7 +4,7 @@
 // designFromProposal turns an accepted proposal into a DesignSystemV3 (the same tokens, CSS and lint as the archetypes);
 // pickDistinct takes the most different directions of a verbalized-sampling answer.
 import { accentInk } from "../../tokens/accent.js";
-import { contrast, hexToOklch } from "../../tokens/color.js";
+import { contrast, hexToOklch, oklchToHex } from "../../tokens/color.js";
 import { FONT_CATALOG, fontEntry } from "../../tokens/fonts.js";
 import {
   ARCHETYPE_IDS,
@@ -20,7 +20,13 @@ import {
   type TypeScaleId,
 } from "./archetypes.js";
 import { designDistance } from "./diversity.js";
-import { cyrillicFace, DISPLAY_ONLY_FONTS, FORBIDDEN_FONTS, NOT_DISPLAY_FONTS } from "./fonts.js";
+import {
+  cyrillicFace,
+  DISPLAY_ONLY_FONTS,
+  FORBIDDEN_FONTS,
+  NEEDS_REASON_FONTS,
+  NOT_DISPLAY_FONTS,
+} from "./fonts.js";
 import { designLint } from "./lint.js";
 import {
   buildPalette,
@@ -209,6 +215,77 @@ export function proposalIssues(
     if (i.severity === "error")
       out.push({ path: i.where, code: i.code, message: `${i.message}${i.scheme ? ` (${i.scheme})` : ""}` });
   return out;
+}
+
+/**
+ * V4-17: deterministic fixes of a proposal before its check — what code can mend without changing the idea: a face
+ * outside the catalog → the catalog's nearest of the same kind (serif or sans); the scheme to match the page; a cream
+ * page → a clean one of the same hue; the text and the accent stepped to AA on the page; «AI violet» turned away from
+ * violet; the client's brand colour as the accent. What it cannot mend (texts, lint of the system) stays for the
+ * model's repair. `fixed` names what was changed (paths).
+ */
+export function autofixProposal(
+  p: DesignProposal,
+  o: { brandColor?: string } = {},
+): { proposal: DesignProposal; fixed: string[] } {
+  const fixed: string[] = [];
+  const fonts = proposalFonts();
+  const nearest = (family: string, list: readonly string[]) => {
+    const kind = fontEntry(family)?.category;
+    return (
+      list.find((f) => !NEEDS_REASON_FONTS.has(f) && fontEntry(f)?.category === kind) ??
+      list.find((f) => !NEEDS_REASON_FONTS.has(f)) ??
+      (list[0] as string)
+    );
+  };
+  const f = { ...p.fonts };
+  if (!fonts.display.includes(f.display)) {
+    f.display = nearest(f.display, fonts.display);
+    fixed.push("fonts.display");
+  }
+  if (!fonts.text.includes(f.text)) {
+    f.text = nearest(f.text, fonts.text);
+    fixed.push("fonts.text");
+  }
+  const c = { ...p.colors };
+  if (![c.bg, c.ink, c.accent, ...(c.accent2 ? [c.accent2] : [])].every((v) => HEX.test(v)))
+    return { proposal: { ...p, fonts: f }, fixed };
+  let scheme = p.scheme;
+  const page = hue(c.bg);
+  if ((scheme === "light") !== page.l >= 0.6) {
+    scheme = page.l >= 0.6 ? "light" : "dark";
+    fixed.push("scheme");
+  }
+  if (scheme === "light" && isCream(c.bg)) {
+    // The same hue, almost no chroma: a clean light page.
+    c.bg = quantize(oklchToHex({ l: Math.max(0.97, page.l), c: Math.min(0.003, page.c), h: page.h / DEG }));
+    fixed.push("colors.bg");
+  }
+  const brand = normalizeBrand(o.brandColor);
+  if (brand && c.accent.toUpperCase() !== brand && c.accent2?.toUpperCase() !== brand) {
+    c.accent = brand;
+    fixed.push("colors.accent");
+  }
+  for (const k of ["accent", "accent2"] as const) {
+    const v = c[k];
+    if (!v || (brand && v.toUpperCase() === brand)) continue;
+    const a = hue(v);
+    if (isAiViolet(a.h, a.c)) {
+      // Turned well out of 260–310° (the system derives its own shades of it): to blue below or to rose above.
+      const h = a.h - 260 < 310 - a.h ? 225 : 345;
+      c[k] = quantize(oklchToHex({ l: a.l, c: a.c, h: h / DEG }));
+      fixed.push(`colors.${k}`);
+    }
+  }
+  if (contrast(c.ink, c.bg) < AA_TEXT) {
+    c.ink = stepToContrast(c.ink, [c.bg], AA_TEXT, scheme);
+    fixed.push("colors.ink");
+  }
+  if (contrast(c.accent, c.bg) < AA_NON_TEXT && !(brand && c.accent.toUpperCase() === brand)) {
+    c.accent = stepToContrast(c.accent, [c.bg], AA_NON_TEXT, scheme);
+    fixed.push("colors.accent");
+  }
+  return { proposal: { ...p, scheme, colors: c, fonts: f }, fixed };
 }
 
 /** Palette rules of a proposal: the page's hue, chroma and lightness, the base archetype's bands and second colour. */
