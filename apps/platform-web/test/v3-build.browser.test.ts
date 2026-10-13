@@ -86,7 +86,11 @@ describe.skipIf(!hasChromium)("«Собрать» v3 and the style in chromium (
         );
 
         // «Собрать»: the version the owner saw; the build row with the stage and the money spent.
+        // V4-11: the build gives the whole window back to the system — the bar on top, the chat under its icon.
         await page.getByTestId("canvas-v3-approve").click();
+        await page.getByTestId("canvas-eta").waitFor();
+        expect(await page.getByTestId("canvas-sheet").count()).toBe(0);
+        await page.getByTestId("canvas-island-chat").click();
         await page.getByTestId("canvas-build-row").waitFor();
         expect(fake.approvals).toEqual([{ version: fake.latest()?.version }]);
         await expect

@@ -1,26 +1,12 @@
 /* The live v3 build on the canvas (V3-17): 390 px first — the panel, then the growing system; two columns from 1024 px.
    Tokens of @wizard/ui-kit/v2 (light and dark); motion: opacity and transform only, none under reduced motion. */
 .live {
-  max-width: 1180px;
-  margin: 0 auto;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 18px;
   align-items: start;
   color: var(--p-ink);
   font: 400 14.5px / 1.5 var(--p-f-ui);
-}
-
-@media (min-width: 1024px) {
-  .live {
-    grid-template-columns: minmax(0, 380px) minmax(0, 1fr);
-    gap: 26px;
-  }
-
-  .frameWrap {
-    position: sticky;
-    top: calc(env(safe-area-inset-top, 0px) + 88px);
-  }
 }
 
 .panel {
@@ -342,146 +328,6 @@
   overflow-wrap: anywhere;
 }
 
-/* ——— the growing system ——— */
-.frameWrap {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
-  outline: none;
-  scroll-margin-top: calc(env(safe-area-inset-top, 0px) + 84px);
-}
-
-.frame {
-  overflow: hidden;
-  border-radius: var(--p-r-xl);
-  background: var(--p-surface);
-  box-shadow: var(--p-sh-2);
-}
-
-.addr {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 40px;
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--p-line);
-  font-size: 12.5px;
-  color: var(--p-ink-2);
-}
-
-.dots {
-  display: flex;
-  flex: none;
-  gap: 6px;
-}
-
-.dots i {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--p-sunken-2);
-}
-
-.host {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.rev {
-  flex: none;
-  font-variant-numeric: tabular-nums;
-}
-
-.open {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  min-height: 32px;
-  color: var(--p-ink);
-  font-weight: 500;
-}
-
-.iframe {
-  display: block;
-  width: 100%;
-  height: min(70svh, 760px);
-  min-height: 420px;
-  border: 0;
-  background: var(--p-surface);
-}
-
-@media (min-width: 1024px) {
-  .iframe {
-    height: calc(100svh - 200px);
-    min-height: 520px;
-  }
-}
-
-.pending {
-  display: grid;
-  gap: 16px;
-  padding: 18px 16px 22px;
-}
-
-.skel {
-  display: grid;
-  gap: 10px;
-}
-
-.skHero,
-.skLine,
-.skCards i {
-  display: block;
-  border-radius: var(--p-r-sm);
-  background: var(--p-skel);
-  animation: breathe 2.4s var(--p-ease) infinite;
-}
-
-.skHero {
-  height: 120px;
-}
-
-.skLine {
-  height: 12px;
-  width: 70%;
-}
-
-.skLine + .skLine {
-  width: 48%;
-}
-
-.skCards {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.skCards i {
-  height: 64px;
-}
-
-@keyframes breathe {
-  50% {
-    opacity: 0.55;
-  }
-}
-
-.pendingText {
-  margin: 0;
-  font-size: 13.5px;
-  color: var(--p-ink-2);
-}
-
-.caption {
-  margin: 0;
-  padding: 0 4px;
-  font-size: 12.5px;
-  color: var(--p-ink-2);
-}
-
 /* ——— the chat dock after the build ——— */
 .ready {
   display: grid;
@@ -599,9 +445,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .m_running,
-  .skHero,
-  .skLine,
-  .skCards i,
   .toast {
     animation: none;
   }

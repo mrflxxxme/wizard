@@ -4310,7 +4310,7 @@ tasks:
     owner: frontend
     parallel_group: v4-a
     estimate_days: 2
-    status: in_progress
+    status: done
     claimed_by: session_01X8jgGUBZgh2j9RwccJpmf6
     owns: ["apps/platform-web/src/screens/canvas/**", "apps/platform-web/src/screens/workspace/**", "apps/platform-web/src/screens/v3/build/**", "apps/platform-web/src/preview/**"]
     acceptance:
