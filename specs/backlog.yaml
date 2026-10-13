@@ -2596,6 +2596,26 @@ tasks:
       - "Критик V4-09 получает находки как детерминированные проблемы: правка, поднявшая их штраф, отклоняется"
 
   # ---------------- M4: запуск ----------------
+  - id: V4-19
+    title: "Записи e2e v3 по этапам и частичная перезапись record-stale"
+    milestone: V4
+    deps: [V4-03]
+    specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4"]
+    owner: platform
+    parallel_group: v4-g
+    estimate_days: 1
+    status: done
+    claimed_by: session_01FAiGcdwk6WNp3eioRKs2Fc
+    owns: ["packages/e2e/stand/v3-models.ts", "packages/e2e/stand/v3-records.ts (новый)", "packages/e2e/specs/v3/owner.spec.ts", "tools/fixtures/records/e2e-v3/** (новый)", "tools/fixtures/records/split-e2e-v3.mjs (новый)", "tools/fixtures/records/README.md", "tools/fixtures/test/e2e-v3-records.test.ts", "tools/fixtures/test/records.test.ts", ".github/workflows/stage-probe.yml"]
+    description: >
+      Поток Г. Записи e2e v3 стали узким местом волны: один файл от полного прогона (~25 мин, ~60 ₽) устаревает от правки
+      любого этапа, и PR с правками разных этапов конфликтуют в нём. Записи — по файлу на этап; режим record-stale
+      перезаписывает вживую только устаревшие этапы (промпт изменился, модель не из маршрута, записи нет) и все этапы
+      после них по конвейеру — воспроизведение не сверяет вход, поэтому этапы ниже переписанного не должны остаться
+      ответами о другом сайте. stage-probe e2e_v3 по умолчанию в этом режиме, полный прогон — флаг e2e_full.
+    acceptance:
+      - "Записи e2e v3 лежат по этапам; тест актуальности по каждому этапу (версия промпта и модель из маршрута) и громкий провал воспроизведения без записи сохраняются"
+      - "record-stale: устарел techreview — вживую только он; устарел art_direction — он и все этапы после (тест на подменной модели)"
   - id: M4-01
     title: "Лендинг под финальным именем, самостоятельная регистрация, нагрузочный тест 200 одновременных прогонов"
     milestone: M4
