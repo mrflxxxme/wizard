@@ -31,6 +31,26 @@ export interface DirectionsProposalView {
   directions: DirectionView[];
 }
 
+/** V4-17: a proposal still being drawn (POST with stream; GET reports it until the stored proposal replaces it). */
+export interface DirectionsPendingView {
+  /** The key the previews of its ready directions are served under. */
+  key: string;
+  briefVersion: number;
+  startedAt: string;
+  elapsedMs: number;
+  stage: "design" | "texts" | "screens" | "failed";
+  /** Directions already built, in the order they became ready. */
+  ready: DirectionView[];
+  total: number;
+  skeleton: { title: string; lead: string | null; action: string; accent: string | null };
+  error: string | null;
+}
+
+export interface DirectionsState {
+  proposal: DirectionsProposalView | null;
+  pending: DirectionsPendingView | null;
+}
+
 export interface RefineAnswer {
   proposal: DirectionsProposalView;
   kind: "tuned" | "pick" | "unknown";
@@ -45,6 +65,10 @@ export interface ReferenceAnswer {
 
 export interface DirectionsApi {
   get(systemId: string): Promise<DirectionsProposalView | null>;
+  /** V4-17: the latest proposal and the one still being drawn. */
+  state(systemId: string): Promise<DirectionsState>;
+  /** V4-17: start drawing in the background (a job already going on is returned). */
+  start(systemId: string, reroll?: boolean): Promise<DirectionsPendingView>;
   propose(systemId: string, reroll?: boolean): Promise<DirectionsProposalView>;
   refine(systemId: string, proposalId: string, text: string): Promise<RefineAnswer>;
   /** n — «Выбрать»; null — «Решите за меня». */
@@ -104,6 +128,18 @@ export function createDirectionsApi(o: DirectionsApiOptions = {}): DirectionsApi
   const sys = (id: string) => `/systems/${encodeURIComponent(id)}/directions`;
   return {
     get: async (id) => (await call<{ proposal: DirectionsProposalView | null }>("GET", sys(id))).proposal,
+    state: async (id) => {
+      const r = await call<Partial<DirectionsState>>("GET", sys(id));
+      return { proposal: r.proposal ?? null, pending: r.pending ?? null };
+    },
+    start: async (id, reroll) =>
+      (
+        await call<{ pending: DirectionsPendingView }>(
+          "POST",
+          sys(id),
+          reroll ? { reroll: true, stream: true } : { stream: true },
+        )
+      ).pending,
     propose: async (id, reroll) =>
       (await call<{ proposal: DirectionsProposalView }>("POST", sys(id), reroll ? { reroll: true } : {}))
         .proposal,

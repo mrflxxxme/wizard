@@ -741,6 +741,8 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
       return;
     }
     if (stage !== "card") return;
+    // V4-17: a screen picked while the others are still drawn waits for the stored proposal (it carries the pick).
+    if (first.pending && !first.error) return;
     const proposalId = first.proposal?.id;
     if (!proposalId) return setStyleBuild(null);
     styleStep.current = true;
@@ -760,7 +762,7 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
         setStyleBuild(null);
       }
     })();
-  }, [styleBuild, stage, runActive, turnFailure]);
+  }, [styleBuild, stage, runActive, turnFailure, first.pending === null, first.proposal?.id]);
   // The chat opens by itself when it asks something new of the owner.
   const seenAttention = useRef<string | null>(null);
   useEffect(() => {

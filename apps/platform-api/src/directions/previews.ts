@@ -23,6 +23,9 @@ export const PREVIEW_PATHS: PreviewPaths = {
 /** Built previews kept in memory (three per proposal; refinements reuse unchanged directions by content). */
 export const PREVIEW_CACHE_SIZE = 90;
 
+/** What a preview needs of a proposal (a stored one, or a streamed one before it is stored). */
+export type PreviewBase = Pick<DirectionsProposal, "seed" | "niche" | "brandColor" | "name" | "nav">;
+
 export interface PreviewFile {
   body: Uint8Array;
   type: string;
@@ -118,7 +121,7 @@ export class PreviewBuilds {
   constructor(readonly size = PREVIEW_CACHE_SIZE) {}
 
   /** The build of direction `d` of proposal `id` (built once per distinct input). */
-  build(id: string, p: DirectionsProposal, d: StoredDirection): Promise<BuiltPreview> {
+  build(id: string, p: PreviewBase, d: StoredDirection): Promise<BuiltPreview> {
     const design = directionDesign(p, d).design;
     const system = directionPreview(
       { n: d.n, header: d.header, hero: d.hero, design },

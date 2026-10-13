@@ -14,6 +14,15 @@ export const firstRu = {
   loading: (sec: number) =>
     sec < 5 ? "Беру то, что вы рассказали, и подбираю стиль." : `Уже ${sec} с — обычно до полутора минут.`,
   waiting: "Экраны появятся, как только я пойму, чем вы занимаетесь.",
+  /** V4-17: what is being drawn right now. */
+  stage: {
+    design: "Подбираю палитру и шрифты…",
+    texts: "Пишу заголовок и кнопку…",
+    screens: "Собираю первый экран…",
+  },
+  seconds: (sec: number) => (sec < 3 ? "" : `${sec} с`),
+  readyMore: (ready: number, total: number) =>
+    ready >= total ? "Все варианты готовы." : `Готово ${ready} из ${total}, дорисовываю остальные…`,
   failedTitle: "Экраны не получились",
   failed: "Не получилось нарисовать экраны. Попробуйте ещё раз.",
   retry: "Попробовать ещё раз",
