@@ -75,7 +75,13 @@ export interface BuildReport {
   stages: ReportStage[];
   scenarios: ReportScenario[];
   gates: ReportGate[];
-  critic: { scores: number[]; stop: string | null; note: string | null } | null;
+  critic: {
+    scores: number[];
+    stop: string | null;
+    note: string | null;
+    /** Problems of the deterministic checks left after the critic (code, page and section, what is wrong). */
+    left?: { code: string; where: string; message: string }[];
+  } | null;
   techreview: { status: string | null; blockers: string[]; notes: string[] } | null;
   calls: ReportCall[];
   shots: ReportShot[];

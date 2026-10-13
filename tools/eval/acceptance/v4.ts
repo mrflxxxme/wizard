@@ -12,11 +12,16 @@ import { createAgentExecutors } from "../../../apps/platform-api/src/agents/exec
 import { chromiumProvider } from "../../../apps/platform-api/src/agents/goal-browser.ts";
 import { OutboxMailer } from "../../../apps/platform-api/src/auth/mailer.ts";
 import { platformCritic } from "../../../apps/platform-api/src/builds-v3/critic.ts";
-import { reportStorage } from "../../../apps/platform-api/src/builds-v3/report/index.ts";
 import { loadBuildReport } from "../../../apps/platform-api/src/builds-v3/report/store.ts";
 import type { BuildReport } from "../../../apps/platform-api/src/builds-v3/report/types.ts";
 import { buildPipelineOrgsOf } from "../../../apps/platform-api/src/config.ts";
 import { createTestDb, startApi, type TestApi } from "../../../apps/platform-api/test/helpers.ts";
+import {
+  createFileStorage,
+  type FileMeta,
+  type FileStorage,
+  type StoredFile,
+} from "../../../apps/runtime/src/files/storage.ts";
 import { closeExecutors } from "../../../apps/runtime/src/index.ts";
 import { createRegistry, createRouter } from "../../../packages/llm/src/index.ts";
 import { loadBriefs } from "../lib/briefs.mjs";
@@ -67,6 +72,34 @@ function bridge(api: TestApi) {
   };
 }
 
+/**
+ * The storage of the acceptance run: reads go to the job's own files first, then to the shared storage of prod (the
+ * photo library, its index and model); writes and deletes stay in the job's files — prod's bucket is only read.
+ */
+export class ReadThroughStorage implements FileStorage {
+  readonly kind = "fs" as const;
+  constructor(
+    private readonly local: FileStorage,
+    private readonly remote: FileStorage,
+  ) {}
+  put(key: string, data: Uint8Array, meta: FileMeta): Promise<void> {
+    return this.local.put(key, data, meta);
+  }
+  async head(key: string): Promise<FileMeta | null> {
+    return (await this.local.head(key)) ?? this.remote.head(key);
+  }
+  async get(key: string): Promise<StoredFile | null> {
+    return (await this.local.get(key)) ?? this.remote.get(key);
+  }
+  delete(key: string): Promise<void> {
+    return this.local.delete(key);
+  }
+  async list(prefix: string): Promise<string[]> {
+    const [a, b] = await Promise.all([this.local.list(prefix), this.remote.list(prefix).catch(() => [])]);
+    return [...new Set([...a, ...b])].sort();
+  }
+}
+
 interface Row {
   brief: string;
   status: string;
@@ -79,7 +112,21 @@ interface Row {
   report: BuildReport | null;
   shots: string[];
   error: string | null;
+  /** The gates as the owner saw them last (the driver): blockers, or only the owner's data still to give. */
+  gates: Record<string, { passed?: boolean; blockers?: unknown[]; ownerActions?: { id: string }[] }>;
 }
+
+/** Why the critic stopped, in words. */
+const STOP_RU: Record<string, string> = {
+  cycles: "2 круга",
+  no_edits: "правок нет",
+  no_gain: "без улучшения",
+  budget: "бюджет",
+  time: "время",
+  inspections: "лимит снимков",
+  model: "модель не ответила",
+  none: "—",
+};
 
 const round = (x: number, d = 1) => Math.round(x * 10 ** d) / 10 ** d;
 const mark = (ok: boolean | null) => (ok === null ? "—" : ok ? "✅" : "❌");
@@ -96,10 +143,22 @@ export function renderSummary(rows: readonly Row[], meta: { runUrl: string; shot
   ];
   for (const r of rows) {
     const rep = r.report;
-    const gates = rep?.gates.length
-      ? rep.gates.map((g) => `${g.level} ${g.passed ? "✅" : `❌ ${g.failed.map((f) => f.id).join(", ")}`}`).join("; ")
+    // The driver's last gates: a gate that waits only on the owner's own data (the operator of personal data) is not a
+    // failure of the build.
+    const gates = Object.entries(r.gates).length
+      ? Object.entries(r.gates)
+          .map(([level, g]) => {
+            if (g.passed) return `${level} ✅`;
+            if (!g.blockers?.length && g.ownerActions?.length) return `${level} ✅ (ждёт данных владельца)`;
+            return `${level} ❌ ${[...new Set((g.blockers ?? []).map((b) => String((b as { id?: string }).id ?? b)))].join(", ")}`;
+          })
+          .join("; ")
+      : rep?.gates.length
+        ? rep.gates.map((g) => `${g.level} ${g.passed ? "✅" : `❌ ${[...new Set(g.failed.map((f) => f.id))].join(", ")}`}`).join("; ")
+        : "—";
+    const critic = rep?.critic?.scores.length
+      ? `${rep.critic.scores.join(" → ")} (${STOP_RU[rep.critic.stop ?? "none"] ?? rep.critic.stop})`
       : "—";
-    const critic = rep?.critic?.scores.length ? `${rep.critic.scores.join(" → ")} (${rep.critic.stop ?? "—"})` : "—";
     const shots = r.shots.map((s) => `[${s.replace(/\.jpg$/, "")}](${meta.shotsBase}/${r.brief}/${s})`).join(" · ") || "—";
     out.push(
       `| ${r.brief} | ${r.status}${r.error ? `: ${r.error.slice(0, 80)}` : ""} | ${r.screensSec ?? "—"} ${mark(r.screensSec === null ? null : r.screensSec <= V4_TARGETS.screensSec)} | ${r.systemMin ?? "—"} ${mark(r.systemMin === null ? null : r.systemMin <= V4_TARGETS.systemMin)} | ${round(r.rub)} ${mark(r.rub <= V4_TARGETS.rub)} | ${critic} | ${gates} | ${shots} |`,
@@ -123,8 +182,12 @@ export function renderSummary(rows: readonly Row[], meta: { runUrl: string; shot
       for (const s of r.report.stages) out.push(`| ${s.stage} | ${s.status} | ${round(s.rub, 2)} | ${round(s.minutes)} |`);
       out.push("");
     }
-    const stubs = (r.report?.gates ?? []).flatMap((g) => g.failed.filter((f) => /^S0[1-4]/.test(f.id)));
-    out.push(`Заглушки S01–S04: ${stubs.length ? stubs.map((f) => `${f.id} ${f.message}`).join("; ") : "не найдены или проверка ещё не подключена (V4-18)"}.`);
+    // V4-18: the stubs the checks still see after the critic (its problems left) and any gate that failed on them.
+    const stubs = [
+      ...(r.report?.critic?.left ?? []).filter((p) => /^S0[1-4]$/.test(p.code)).map((p) => `${p.code} ${p.where}: ${p.message}`),
+      ...(r.report?.gates ?? []).flatMap((g) => g.failed.filter((f) => /^S0[1-4]/.test(f.id)).map((f) => `${f.id} ${f.message}`)),
+    ];
+    out.push(`Заглушки S01–S04: ${stubs.length ? stubs.slice(0, 8).join("; ") : "не найдены"}.`);
     if (r.report?.techreview) out.push(`Техревью: ${r.report.techreview.status ?? "—"}, блокеров ${r.report.techreview.blockers.length}.`);
     if (r.report?.gaps.length) out.push(`Пробелы отчёта: ${r.report.gaps.join("; ")}.`);
     out.push("");
@@ -135,6 +198,15 @@ export function renderSummary(rows: readonly Row[], meta: { runUrl: string; shot
 export async function runAcceptance(o: { out: string; capRub: number; briefs?: readonly string[] }): Promise<Row[]> {
   const out = resolve(o.out);
   const artifactsDir = join(out, ".work", "artifacts");
+  // The platform's own files (reports, uploads) go to <out>/.work/files (where report routes look for them); with
+  // WIZARD_FILES_STORAGE=s3 (the job's library of prod) the executors read the library through, never write there.
+  const filesDir = join(out, ".work", "files");
+  const local = createFileStorage({ WIZARD_FILES_STORAGE: "fs", WIZARD_FILES_DIR: filesDir }, { defaultDir: filesDir });
+  const files: FileStorage =
+    process.env.WIZARD_FILES_STORAGE === "s3"
+      ? new ReadThroughStorage(local, createFileStorage(process.env, { defaultDir: filesDir }))
+      : local;
+  delete process.env.WIZARD_FILES_STORAGE;
   mkdirSync(artifactsDir, { recursive: true });
   const runid = newRunId();
   const { email } = evalIdentity(runid, undefined, "V3");
@@ -168,6 +240,7 @@ export async function runAcceptance(o: { out: string; capRub: number; briefs?: r
           pg,
           config,
           research: null,
+          files,
           v3: {
             enabled: true,
             hooks: { critic: platformCritic(browser) },
@@ -217,7 +290,7 @@ export async function runAcceptance(o: { out: string; capRub: number; briefs?: r
       log: (s: string) => console.log(s),
       g2: "skip",
     });
-    const files = reportStorage({ artifactsDir });
+    // The report was written through `files` (the job's own part).
     const rows: Row[] = [];
     {
       for (const r of doc.results as Record<string, any>[]) {
@@ -259,6 +332,7 @@ export async function runAcceptance(o: { out: string; capRub: number; briefs?: r
           report,
           shots,
           error: r.error ?? null,
+          gates: (r.gates ?? {}) as Row["gates"],
         };
         writeFileSync(join(dir, "result.json"), `${JSON.stringify(r, null, 2)}\n`);
         if (report) writeFileSync(join(dir, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
