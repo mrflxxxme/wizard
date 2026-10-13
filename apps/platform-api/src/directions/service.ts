@@ -362,7 +362,9 @@ export class DirectionsService {
    */
   async start(sys: SystemRef, opts: { reroll?: boolean } = {}): Promise<PendingView> {
     const going = this.#jobs.get(sys.id);
-    if (going && going.stage !== "failed") return this.pending(sys.id) as PendingView;
+    // A job past its own deadline (and a minute more) is stuck: a new one replaces it.
+    if (going && going.stage !== "failed" && Date.now() - going.started < STREAM_DEADLINE_MS + 60_000)
+      return this.pending(sys.id) as PendingView;
     const latest = await getLatestBrief(this.d.db, sys.id);
     if (!latest)
       throw invalid("Сначала нужен бриф системы: ответьте на вопросы интервью, затем выберем оформление");

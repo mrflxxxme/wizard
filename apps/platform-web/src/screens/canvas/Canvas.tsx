@@ -1174,12 +1174,22 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
                 type="button"
                 className={s.ibtn}
                 aria-pressed={panel === "build"}
-                aria-label={building ? islandRu.buildLeft(leftText) : islandRu.build}
-                title={building ? islandRu.buildLeft(leftText) : islandRu.build}
+                aria-label={
+                  failure ? islandRu.buildFailed : building ? islandRu.buildLeft(leftText) : islandRu.build
+                }
+                title={
+                  failure ? islandRu.buildFailed : building ? islandRu.buildLeft(leftText) : islandRu.build
+                }
                 data-testid="canvas-island-build"
-                onClick={() => toggle("build")}
+                data-failed={failure ? "" : undefined}
+                onClick={() => (failure ? toggle("chat") : toggle("build"))}
               >
-                <svg className={s.ring} viewBox="0 0 24 24" aria-hidden="true">
+                <svg
+                  className={s.ring}
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  data-failed={failure ? "" : undefined}
+                >
                   <circle className={s.ringTrack} cx="12" cy="12" r="8.5" />
                   <circle
                     className={s.ringFill}
@@ -1188,8 +1198,13 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
                     r="8.5"
                     pathLength="100"
                     strokeDasharray="100"
-                    strokeDashoffset={(100 - fraction * 100).toFixed(1)}
+                    strokeDashoffset={failure ? "0" : (100 - fraction * 100).toFixed(1)}
                   />
+                  {failure && (
+                    <text className={s.ringMark} x="12" y="15.5" textAnchor="middle">
+                      !
+                    </text>
+                  )}
                 </svg>
               </button>
             )}

@@ -238,8 +238,9 @@ describe.skipIf(!hasChromium)("canvas v4: a failed build is explained in words",
       if (c.button) expect(await page.getByTestId("canvas-retry").textContent()).toContain(c.button);
       else expect(await page.getByTestId("canvas-retry").count()).toBe(0);
       expect(await page.getByTestId("canvas-topup").count()).toBe(c.action === "billing" ? 1 : 0);
-      // No endless spinner: the build indicator is gone.
+      // No endless spinner: the build indicator is gone, the island's ring says it failed.
       expect(await page.getByTestId("canvas-eta").count()).toBe(0);
+      expect(await page.getByTestId("canvas-island-build").getAttribute("data-failed")).toBe("");
       await shot(page, `390-failed-${c.code.toLowerCase()}`);
       h.mock.opts.canvasFailAfter = undefined;
       h.mock.opts.canvasFail = undefined;

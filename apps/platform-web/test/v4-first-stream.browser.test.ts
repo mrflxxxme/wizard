@@ -175,6 +175,50 @@ describe.skipIf(!hasChromium)("first screens as a stream (chromium)", () => {
     await expect.poll(() => screens.getAttribute("data-state"), { timeout: 5_000 }).toBe("ready");
     expect(await page.getByTestId("first-screens-frame").getAttribute("srcdoc")).toContain("<!-- job -->");
     expect(await page.getByTestId("first-screens-count").textContent()).toBe("Вариант 1 из 3");
+    // The model did not answer in time (the fake's proposal has the brief's texts): said in words.
+    expect(await page.getByTestId("first-screens-fallback").textContent()).toContain(
+      "тексты взяты из ваших ответов",
+    );
     await page.context().close();
   }, 60_000);
+
+  // V4-11: what goes wrong is said in words with «Попробовать ещё раз», never an endless spinner.
+  for (const c of [
+    { name: "the model failed", stage: "failed" as const, elapsedMs: 5_000, words: "Модель не ответила" },
+    { name: "too long", stage: "design" as const, elapsedMs: 9 * 60_000, words: "дольше обычного" },
+  ])
+    test(`${c.name}: words and a retry that starts again`, async () => {
+      const page = await h.page({
+        viewport: { width: 390, height: 844 },
+        colorScheme: "light",
+        reducedMotion: "reduce",
+      });
+      const fake = new StreamV3();
+      await serveV3(page, fake);
+      await page.route(new RegExp(`/api/v1/systems/${fake.systemId}/directions$`), (route) => {
+        const failing = {
+          ...fake.pending(),
+          stage: c.stage,
+          elapsedMs: c.elapsedMs,
+          error: c.stage === "failed" ? "Модель не ответила. Попробуйте ещё раз." : null,
+        };
+        if (route.request().method() !== "POST")
+          return json(route, 200, { proposal: null, pending: failing });
+        fake.starts++;
+        return json(route, 202, { pending: { ...failing, stage: "design", error: null } });
+      });
+      await page.getByTestId("start-prompt").fill("Стоматология в Казани, онлайн-запись к врачам");
+      await page.getByTestId("start-submit").click();
+      await page.waitForURL(new RegExp(`/s/${fake.systemId}$`));
+      await page.getByTestId("canvas-question").waitFor();
+      await page.getByTestId("canvas-panel-close").click();
+      const screens = page.getByTestId("first-screens");
+      await expect.poll(() => screens.getAttribute("data-state"), { timeout: 15_000 }).toBe("error");
+      expect(await screens.textContent()).toContain(c.words);
+      expect(await screens.textContent()).not.toMatch(/[A-Z]{2,}_[A-Z]/);
+      const starts = fake.starts;
+      await page.getByTestId("first-screens-retry").click();
+      await expect.poll(() => fake.starts, { timeout: 5_000 }).toBeGreaterThan(starts);
+      await page.context().close();
+    }, 60_000);
 });

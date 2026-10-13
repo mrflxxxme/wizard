@@ -209,6 +209,16 @@
   transition: stroke-dashoffset 0.8s var(--p-ease);
 }
 
+/* V4-11: a failed build is a closed red ring with «!», not a progress that stopped (no endless spinner). */
+.ring[data-failed] .ringFill {
+  stroke: var(--p-bad);
+}
+
+.ringMark {
+  fill: var(--p-bad);
+  font: 700 10px / 1 var(--p-f-ui);
+}
+
 .device {
   display: flex;
   gap: 2px;
