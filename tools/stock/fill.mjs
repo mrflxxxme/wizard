@@ -251,6 +251,23 @@ export function requestNiches(S, requests) {
     }));
 }
 
+/** The library by niche (catalog order, then requested niches): a summary line and a Markdown table. */
+export function statusText(S, manifest) {
+  const rows = manifest?.shards ?? [];
+  const by = new Map(rows.map((r) => [r.slug, r]));
+  const total = rows.reduce((s, r) => s + r.count, 0);
+  const full = S.CATALOG.filter((c) => (by.get(c.slug)?.count ?? 0) >= S.NICHE_TARGET).length;
+  const lines = [
+    `всего фото: ${total}; ниш каталога заполнено: ${full} из ${S.CATALOG.length}; запрошенных ниш: ${rows.filter((r) => r.slug.startsWith("req-")).length}`,
+    "",
+    "| Ниша | Фото |",
+    "|---|---|",
+    ...S.CATALOG.map((c) => `| ${c.name} | ${by.get(c.slug)?.count ?? 0} |`),
+    ...rows.filter((r) => r.slug.startsWith("req-")).map((r) => `| ${r.name} (запрос) | ${r.count} |`),
+  ];
+  return lines.join("\n");
+}
+
 /** The annotation of a run: counts only. */
 export function fillAnnotation(s) {
   const level = s.stopped === "failures" || (s.added === 0 && s.errors.length) ? "warning" : "notice";
@@ -345,8 +362,8 @@ export async function main(argv, { env = process.env, fetch: f = fetch, log = co
   const secrets = { ...keys, s3id: env.WIZARD_S3_ACCESS_KEY_ID, s3secret: env.WIZARD_S3_SECRET_ACCESS_KEY };
   const out = (line) => log(scrubKeys(line, secrets));
   const [action, ...rest] = argv;
-  if (!["model", "fill", "backfill"].includes(action)) {
-    out(annotation("error", TITLE, "действие: model | fill | backfill [--minutes=N] [--max-photos=N] [--niches=a,b]"));
+  if (!["model", "fill", "backfill", "status"].includes(action)) {
+    out(annotation("error", TITLE, "действие: model | fill | backfill | status [--minutes=N] [--max-photos=N] [--niches=a,b]"));
     return 2;
   }
   const minutes = argOf(rest, "minutes");
@@ -372,6 +389,18 @@ export async function main(argv, { env = process.env, fetch: f = fetch, log = co
   const storage = rt.createFileStorage(senv, { defaultDir: join(ROOT, ".data", "files") });
   const objects = S.storageObjects(storage, (name) => `${rt.PHOTO_LIBRARY_PREFIX}/${rt.libraryPhotoId(name)}`);
   const cache = join(env.RUNNER_TEMP || join(ROOT, ".data"), "siglip");
+
+  if (action === "status") {
+    const m = await S.readManifest(objects);
+    const text = statusText(S, m);
+    out(annotation("notice", TITLE, text.split("\n")[0]));
+    log(text);
+    if (env.GITHUB_STEP_SUMMARY) {
+      const { appendFileSync } = await import("node:fs");
+      appendFileSync(env.GITHUB_STEP_SUMMARY, `${text}\n`);
+    }
+    return 0;
+  }
 
   if (action === "model") {
     try {

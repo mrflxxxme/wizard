@@ -169,3 +169,21 @@ describe("helpers", () => {
     expect((await storageEnv({ ...env, WIZARD_S3_BUCKET: "given" }, { fetch: f([]) })).WIZARD_S3_BUCKET).toBe("given");
   });
 });
+
+test("statusText: the catalog in order with counts, then the requested niches", async () => {
+  const { statusText } = await import("../fill.mjs");
+  const text = statusText(S, {
+    version: 2,
+    model: S.SEMANTIC_MODEL,
+    shards: [
+      { slug: "dental", name: "стоматология", count: S.NICHE_TARGET, updatedAt: "x" },
+      { slug: "req-abc", name: "ремонт лодок", count: 40, updatedAt: "x" },
+    ],
+  });
+  expect(text.split("\n")[0]).toBe(
+    `всего фото: ${S.NICHE_TARGET + 40}; ниш каталога заполнено: 1 из ${S.CATALOG.length}; запрошенных ниш: 1`,
+  );
+  expect(text).toContain(`| стоматология | ${S.NICHE_TARGET} |`);
+  expect(text).toContain("| ремонт лодок (запрос) | 40 |");
+  expect(text).toContain("| клининг | 0 |");
+});
