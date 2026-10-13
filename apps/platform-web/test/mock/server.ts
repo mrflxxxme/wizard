@@ -63,6 +63,8 @@ export interface MockOptions {
   canvas?: CanvasFeed;
   /** B2-25: the canvas build fails after this stage (run_failed MODULE_BUG). */
   canvasFailAfter?: string | undefined;
+  /** V4-11: the code (and server words) of that failure; default MODULE_BUG. */
+  canvasFail?: { code: string; message_ru: string } | undefined;
 }
 
 interface SysState {
@@ -744,8 +746,10 @@ export class MockPlatform {
         await sleep(delay);
         sys.system.stage = "failed";
         this.#emit(st, "run_failed", {
-          code: "MODULE_BUG",
-          message_ru: "Модуль «Запись по слотам» собрал экран с ошибкой (ui/booking.tsx)",
+          ...(this.opts.canvasFail ?? {
+            code: "MODULE_BUG",
+            message_ru: "Модуль «Запись по слотам» собрал экран с ошибкой (ui/booking.tsx)",
+          }),
           retryable: true,
           lastGoodRevision: null,
         });
