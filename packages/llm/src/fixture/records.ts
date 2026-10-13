@@ -4,7 +4,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { LlmError } from "../errors.js";
+import { LlmError, type LlmErrorCode } from "../errors.js";
 import { findRepoRoot, schemaHash, stableStringify, withoutAttachmentBytes } from "../fixtures.js";
 import type { Registry } from "../registry.js";
 import type { Router } from "../router.js";
@@ -46,6 +46,8 @@ export interface RecordLine {
     avoidFamilies?: string[];
   };
   response: LlmResult;
+  /** The call failed (LlmError): replay throws the same error, so the stage takes the same path as the recorded run. */
+  error?: { code: string; message: string };
   usage: LlmUsage;
   costRub: number;
   latencyMs: number;
@@ -69,11 +71,30 @@ function filesUnder(path: string): string[] {
     .flatMap((f) => filesUnder(join(path, f)));
 }
 
-/** Hash of the tools offered: names and JSON schemas, order-free. */
+// Data a stage puts into its schema per input (the candidates of an enum, texts) — not the shape of the tool.
+const DATA_KEYS = new Set(["enum", "const", "description", "default", "examples", "title"]);
+
+/** The shape of a JSON schema: its data keys dropped (an enum of this run's candidates is not a new tool). */
+export function schemaShape(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(schemaShape);
+  if (schema === null || typeof schema !== "object") return schema;
+  return Object.fromEntries(
+    Object.entries(schema)
+      .filter(([k]) => !DATA_KEYS.has(k))
+      .map(([k, v]) => [
+        k,
+        k === "properties"
+          ? Object.fromEntries(Object.entries(v as object).map(([p, x]) => [p, schemaShape(x)]))
+          : schemaShape(v),
+      ]),
+  );
+}
+
+/** Hash of the tools offered: names and the shapes of their JSON schemas, order-free. */
 export function toolsHash(tools: readonly Pick<LlmTool, "name" | "parameters">[] = []): string {
   return sha(
     tools
-      .map((t) => `${t.name}:${schemaHash(t.parameters)}`)
+      .map((t) => `${t.name}:${schemaHash(schemaShape(t.parameters))}`)
       .sort()
       .join(","),
   ).slice(0, 8);
@@ -229,8 +250,8 @@ export class RecordBook {
   }
 }
 
-/** Order of first appearance of each system: the scope of a call. */
-class Scopes {
+/** Order of first appearance of each system: the scope of a call. One per recorded or replayed run (process). */
+export class RecordScopes {
   private readonly ids = new Map<string, number>();
   private readonly counts = new Map<string, number>();
 
@@ -262,13 +283,17 @@ export interface RecordingOptions {
   label?: () => string | undefined;
   /** Every record written (the probe's report). */
   onRecord?: (line: RecordLine) => void;
+  /** Refusals of the models are recorded too (default); a probe keeps answers only. */
+  recordErrors?: boolean;
+  /** Shared by the routers of one run (a platform makes a router per build): default — this router's own. */
+  scopes?: RecordScopes;
   now?: () => number;
 }
 
 /** A router that writes every successful call of `inner` (live) as a record. */
 export function recordingRouter(inner: Router, o: RecordingOptions): Router {
   const versions = o.versions ?? new PromptVersions();
-  const scopes = new Scopes();
+  const scopes = o.scopes ?? new RecordScopes();
   const now = o.now ?? Date.now;
   return {
     mode: inner.mode,
@@ -277,9 +302,46 @@ export function recordingRouter(inner: Router, o: RecordingOptions): Router {
     async route(input: RouteInput): Promise<RouteOutput> {
       const { scope, n } = scopes.next(input);
       const started = now();
-      const out = await inner.route(input);
       const promptVersion = versions.of(input);
       const label = o.label?.();
+      const request = () =>
+        redact({
+          messages: withoutAttachmentBytes(input.messages),
+          tools: recordTools(input.tools),
+          ...(input.toolChoice ? { toolChoice: input.toolChoice } : {}),
+          ...(input.avoidFamilies?.length ? { avoidFamilies: [...input.avoidFamilies] } : {}),
+        });
+      let out: RouteOutput;
+      try {
+        out = await inner.route(input);
+      } catch (e) {
+        // A refusal of the models is part of the run: replay repeats it (ABORTED is the caller's own cancel).
+        if (o.recordErrors !== false && e instanceof LlmError && e.code !== "ABORTED") {
+          const line: RecordLine = {
+            v: 2,
+            key: recordKey(input.callType, promptVersion, "error"),
+            callType: input.callType,
+            promptVersion,
+            model: "error",
+            tier: "T0",
+            source: o.source,
+            scope,
+            n,
+            ...(input.ctx.step ? { step: input.ctx.step } : {}),
+            ...(label ? { label } : {}),
+            request: request(),
+            response: { toolCalls: [], finishReason: "error" },
+            error: { code: e.code, message: e.message },
+            usage: { inputTokens: 0, cachedTokens: 0, outputTokens: 0 },
+            costRub: 0,
+            latencyMs: now() - started,
+            recordedAt: new Date(now()).toISOString(),
+          };
+          o.book.add(line);
+          o.onRecord?.(line);
+        }
+        throw e;
+      }
       const line: RecordLine = {
         v: 2,
         key: recordKey(input.callType, promptVersion, out.model),
@@ -292,12 +354,7 @@ export function recordingRouter(inner: Router, o: RecordingOptions): Router {
         n,
         ...(input.ctx.step ? { step: input.ctx.step } : {}),
         ...(label ? { label } : {}),
-        request: redact({
-          messages: withoutAttachmentBytes(input.messages),
-          tools: recordTools(input.tools),
-          ...(input.toolChoice ? { toolChoice: input.toolChoice } : {}),
-          ...(input.avoidFamilies?.length ? { avoidFamilies: [...input.avoidFamilies] } : {}),
-        }),
+        request: request(),
         response: redact(out.result),
         usage: out.usage,
         costRub: Math.round(out.creditsCharged * inner.registry.rubPerCredit * 1e4) / 1e4,
@@ -318,6 +375,12 @@ export interface ReplayOptions {
   versions?: PromptVersions;
   /** Called on each miss before the error is thrown (the stand logs it and fails the run). */
   onMiss?: (miss: RecordMiss) => void;
+  /** Called on each answered call (the stand counts what the run took from records). */
+  onHit?: (line: RecordLine) => void;
+  /** A call past the end of the recorded run (records of its version exist, not this many): it fails as unavailable. */
+  onBeyond?: (miss: RecordMiss) => void;
+  /** Shared by the routers of one run: default — this router's own. */
+  scopes?: RecordScopes;
 }
 
 export interface RecordMiss {
@@ -329,7 +392,7 @@ export interface RecordMiss {
 }
 
 export interface ReplayRouter extends Router {
-  /** Calls that found no record (each also threw FIXTURE_MISS). */
+  /** Calls that found no record of their prompt version (each also threw FIXTURE_MISS). */
   readonly misses: readonly RecordMiss[];
 }
 
@@ -341,7 +404,7 @@ export interface ReplayRouter extends Router {
  */
 export function replayRouter(o: ReplayOptions): ReplayRouter {
   const versions = o.versions ?? new PromptVersions();
-  const scopes = new Scopes();
+  const scopes = o.scopes ?? new RecordScopes();
   const misses: RecordMiss[] = [];
   return {
     mode: "fixture",
@@ -359,6 +422,16 @@ export function replayRouter(o: ReplayOptions): ReplayRouter {
         usable.find((l) => l.scope === scope && l.n === n) ??
         usable.find((l) => l.n === n) ??
         usable.find((l) => l.source === "probe");
+      if (!line && usable.length) {
+        // The recorded run made fewer calls (a live stage stopped on its time budget, which replay does not spend):
+        // the call fails as the models being unavailable — the stage stops here as well.
+        const message = `запись прогона закончилась: ${input.callType}@${promptVersion} — вызов ${n + 1}`;
+        o.onBeyond?.({ callType: input.callType, promptVersion, scope, n, message });
+        throw new LlmError("LLM_UNAVAILABLE", "Модели сейчас недоступны. Попробуйте позже.", {
+          callType: input.callType,
+          replay: message,
+        });
+      }
       if (!line) {
         const message = `нет записи для ${input.callType}@${promptVersion}`;
         const miss = { callType: input.callType, promptVersion, scope, n, message };
@@ -370,6 +443,9 @@ export function replayRouter(o: ReplayOptions): ReplayRouter {
           hint: "Перезапишите записи: воркфлоу stage-probe (docs: tools/fixtures/records/README.md).",
         });
       }
+      o.onHit?.(line);
+      if (line.error)
+        throw new LlmError(line.error.code as LlmErrorCode, line.error.message, { callType: input.callType });
       const model = o.registry.models.find((m) => m.id === line.model);
       const credits = model ? line.costRub / o.registry.rubPerCredit : 0;
       return {

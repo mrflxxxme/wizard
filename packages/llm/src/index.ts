@@ -59,6 +59,7 @@ export {
   type RecordingOptions,
   type RecordLine,
   type RecordMiss,
+  RecordScopes,
   type RecordSource,
   type RecordTool,
   type ReplayOptions,
@@ -67,6 +68,7 @@ export {
   recordKey,
   redact,
   replayRouter,
+  schemaShape,
   toolsHash,
 } from "./fixture/records.js";
 export {

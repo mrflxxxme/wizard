@@ -132,6 +132,7 @@ export async function runProbe(o: ProbeOptions): Promise<ProbeReport> {
     const recorder = recordingRouter(inner, {
       book,
       source: "probe",
+      recordErrors: false,
       label: () => (model ? `${label}@${model}` : label),
       onRecord: (l: RecordLine) => {
         spent += l.costRub;
@@ -252,6 +253,13 @@ export async function probeCli(argv: readonly string[]): Promise<number> {
     console.log(stagesFor(files, manifest).join(","));
     return 0;
   }
+  if (args["e2e-for"] !== undefined) {
+    // `--e2e-for=<file with changed paths>`: prints true when the e2e v3 run must be recorded anew.
+    const files = readFileSync(args["e2e-for"], "utf8").split("\n").filter(Boolean);
+    const manifest = JSON.parse(readFileSync(join(ROOT, "tools", "fixtures", "records", "prompts.json"), "utf8"));
+    console.log(String(e2eFor(files, manifest)));
+    return 0;
+  }
   const stages = list(args.stage);
   if (!stages.length) {
     console.error(`укажите --stage=<${Object.keys(STAGES).join("|")}>`);
@@ -268,6 +276,16 @@ export async function probeCli(argv: readonly string[]): Promise<number> {
     ok &&= report.ok;
   }
   return ok ? 0 : 1;
+}
+
+/** callTypes the recorded e2e v3 run answers from its records (packages/e2e/stand/v3-models.ts). */
+export const E2E_V3_CALL_TYPES = ["art_direction", "page_compose", "signature_section", "critic_visual", "techreview"];
+
+/** The e2e v3 records need a new recording: a changed file is a prompt source of one of its callTypes. */
+export function e2eFor(files: readonly string[], manifest: Record<string, readonly string[]>): boolean {
+  return files.some((f) =>
+    E2E_V3_CALL_TYPES.some((ct) => (manifest[ct] ?? []).some((p) => f === p || f.startsWith(`${p}/`))),
+  );
 }
 
 /**

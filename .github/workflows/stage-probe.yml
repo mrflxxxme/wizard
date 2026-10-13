@@ -4,6 +4,8 @@
 # the branch (never to main: there they stay an artifact). 5–15 ₽ a stage, the cap of each stage stops it (≤ 30 ₽).
 # Starts: by hand (workflow_dispatch: stages, inputs, a model forced at the head of the stage's routes) and on a push to
 # claude/** or task/** that changed a stage's prompt sources (tools/fixtures/records/prompts.json) or saved inputs.
+# e2e_v3 (by hand, and on a push that changed a prompt source of its callTypes): the Playwright spec of the v3 stand runs on live models (WIZARD_V3_RECORDS=record) and its build's
+# calls become tools/fixtures/records/e2e-v3.jsonl — what CI's e2e replays (packages/e2e/stand/v3-models.ts).
 # A push by this job's token starts no workflow: pull the records commit, then push your next commit for CI.
 name: stage-probe
 
@@ -11,9 +13,9 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: "Этапы через запятую: interview_v3, brief_extract, art_direction, direction_texts, page_compose, techreview, raw"
+        description: "Этапы через запятую: interview_v3, brief_extract, art_direction, direction_texts, page_compose, techreview, raw (пусто — только e2e)"
         type: string
-        required: true
+        default: ""
       inputs:
         description: "Имена сохранённых входов через запятую (пусто — все входы этапа)"
         type: string
@@ -30,6 +32,10 @@ on:
         description: "Закоммитить записи в ветку запуска (кроме main)"
         type: boolean
         default: true
+      e2e_v3:
+        description: "Перезаписать прогон e2e v3 на живых моделях (tools/fixtures/records/e2e-v3.jsonl, потолок 60 ₽, до часа)"
+        type: boolean
+        default: false
   push:
     branches: ["claude/**", "task/**"]
     paths:
@@ -48,6 +54,8 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      e2e: ${{ steps.stages.outputs.e2e }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -65,19 +73,24 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           STAGE: ${{ inputs.stage }}
+          E2E: ${{ inputs.e2e_v3 }}
           BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
+          e2e=false
           if [ "$EVENT" = workflow_dispatch ]; then
             stages="$STAGE"
+            e2e="$E2E"
           else
             if [ -z "$BEFORE" ] || [ "$BEFORE" = 0000000000000000000000000000000000000000 ]; then
               BEFORE=$(git merge-base origin/main HEAD)
             fi
             git diff --name-only "$BEFORE" HEAD > "$RUNNER_TEMP/changed.txt"
             stages=$(node tools/fixtures/probe.mjs --stages-for="$RUNNER_TEMP/changed.txt")
+            e2e=$(node tools/fixtures/probe.mjs --e2e-for="$RUNNER_TEMP/changed.txt")
           fi
           echo "stages=$stages" >> "$GITHUB_OUTPUT"
+          echo "e2e=$e2e" >> "$GITHUB_OUTPUT"
           if [ -z "$stages" ]; then
             echo "Промпты этапов не менялись — проба не нужна." >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -144,3 +157,83 @@ jobs:
         run: |
           echo "::error::Проба этапа: модель не ответила на всех входах или этап ушёл в запасной путь (отчёт — в сводке прогона)"
           exit 1
+
+  e2e-v3:
+    if: ${{ !cancelled() && needs.probe.outputs.e2e == 'true' }}
+    needs: probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: wizard
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: wizard
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U wizard" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      WIZARD_DB_URL: postgres://wizard@localhost:5433/wizard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      # No secrets in the environment of dependency installation.
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @wizard/e2e exec playwright install --with-deps chromium
+      - name: Record the e2e v3 run on live models
+        id: record
+        env:
+          WIZARD_V3_RECORDS: record
+          WIZARD_V3_RECORDS_CAP_RUB: "60"
+          CLOUDRU_API_KEY: ${{ secrets.CLOUDRU_API_KEY }}
+          CLOUDRU_BASE_URL: ${{ vars.CLOUDRU_BASE_URL }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          ZAI_BASE_URL: ${{ vars.ZAI_BASE_URL }}
+          YANDEX_API_KEY: ${{ secrets.YANDEX_API_KEY }}
+          YANDEX_FOLDER_ID: ${{ secrets.YANDEX_FOLDER_ID }}
+          YANDEX_BASE_URL: ${{ vars.YANDEX_BASE_URL }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_BASE_URL: ${{ vars.DEEPSEEK_BASE_URL }}
+          MOONSHOT_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          MOONSHOT_BASE_URL: https://api.moonshot.ai/v1
+          MIMO_API_KEY: ${{ secrets.MIMO_SECOND_API_KEY }}
+        run: pnpm --filter @wizard/e2e exec playwright test --project v3
+      - name: Calls of the run
+        if: always()
+        run: |
+          if [ -f .data/e2e-v3/records-used.jsonl ]; then
+            {
+              echo "### Запись e2e v3"
+              echo '```'
+              jq -r '[.callType, .outcome, (.model // ""), (.message // "")] | @tsv' .data/e2e-v3/records-used.jsonl | sort | uniq -c
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+      # Artifacts of a live run hold no report or screenshots — only the records (secrets and identifiers removed).
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-v3-records-${{ github.run_id }}
+          path: tools/fixtures/records/e2e-v3.jsonl
+          if-no-files-found: ignore
+      - name: Commit the records to the branch
+        if: success() && github.ref != 'refs/heads/main' && (github.event_name == 'push' || inputs.commit)
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git add tools/fixtures/records/e2e-v3.jsonl
+          if git diff --cached --quiet; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -m "V4-03: записи прогона e2e v3 на живых моделях" -m "Прогон ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          for i in 1 2 3; do
+            git pull -q --rebase origin "$BRANCH" && git push -q origin "HEAD:$BRANCH" && break
+            sleep $((i * 5))
+          done
+          echo "Записи e2e v3 закоммичены в $BRANCH: $(git rev-parse --short HEAD)." >> "$GITHUB_STEP_SUMMARY"
