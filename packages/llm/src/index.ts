@@ -49,6 +49,26 @@ export {
 } from "./byok/policy.js";
 export { BALANCE_BLOCK_MS, CircuitBreaker } from "./circuit.js";
 export { LlmError, type LlmErrorCode } from "./errors.js";
+/** V4-03 records of real model answers: recording and replaying routers, prompt versions, redaction. */
+export {
+  PROMPT_MANIFEST_PATH,
+  type PromptManifest,
+  PromptVersions,
+  RECORDS_DIR,
+  RecordBook,
+  type RecordingOptions,
+  type RecordLine,
+  type RecordMiss,
+  type RecordSource,
+  type RecordTool,
+  type ReplayOptions,
+  type ReplayRouter,
+  recordingRouter,
+  recordKey,
+  redact,
+  replayRouter,
+  toolsHash,
+} from "./fixture/records.js";
 export {
   briefHash,
   type CanonicalInput,

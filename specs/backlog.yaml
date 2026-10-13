@@ -4175,8 +4175,8 @@ tasks:
     owner: qa
     parallel_group: v4-a
     estimate_days: 1
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: session_01FAiGcdwk6WNp3eioRKs2Fc
     owns: ["packages/llm/src/fixture/**", "tools/fixtures/**", "packages/e2e/stand/**"]
     acceptance:
       - "Каждый живой вызов (сборка основателя, проба этапа) пишется с ключом «версия промпта + модель + схема инструментов»; секреты и сильные идентификаторы вычищены"
