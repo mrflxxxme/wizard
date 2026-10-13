@@ -185,20 +185,32 @@ export {
   type V2Stage,
 } from "./v2/types.js";
 export { StageBudgetError, StageWallet } from "./v2/wallet.js";
-/** V3-07 art director: three candidate directions by code; the model picks one via submit_art_direction, or fallback. */
+/**
+ * V4-07 art director: the model proposes ART_DIRECTION_K design directions (verbalized sampling), code checks them
+ * (proposalIssues) and keeps the three most different; without a model — three archetype candidates of code.
+ */
 export {
   ACCENT_USES,
   ART_DIRECTION_CALL_TYPE,
+  ART_DIRECTION_K,
+  ART_DIRECTION_TOOL,
+  ART_DIRECTIONS,
   type ArtDirection,
-  type ArtDirectionAnswer,
   type ArtDirectionCandidate,
   type ArtDirectionChoice,
   type ArtDirectorInput,
+  acceptedDirections,
   artDirectionCandidates,
-  artDirectionIssues,
-  artDirectionMessages,
-  artDirectionSchema,
+  type DesignDirectionAnswer,
+  type DesignDirectionsAnswer,
+  designDirectionsIssues,
+  designDirectionsMessages,
+  designDirectionsSchema,
+  designProposalSchema,
+  type ModelDirection,
+  proposeDesignDirections,
   runArtDirector,
+  toProposal,
 } from "./v3/art-director.js";
 /**
  * V3-12 page composer (builder-v3.md C6): createPageComposer() → PageComposer {skeleton — the public site from library

@@ -309,24 +309,31 @@ export function designFromProposal(
 
 /**
  * Verbalized sampling: of k proposed directions take `n` that differ most — the likeliest first, then each time the one
- * farthest (max of the min designDistance) from those taken; ties go to the less typical (lower probability).
+ * farthest (max of the min designDistance) from those taken; ties go to the less typical (lower probability). `key` —
+ * a property no two taken may share (the base archetype); fewer than `n` when the list runs out.
  */
-export function pickDistinct<T extends { design: DesignSystemV3; probability: number }>(list: readonly T[], n = 3): T[] {
-  if (list.length <= n) return [...list];
+export function pickDistinct<T extends { design: DesignSystemV3; probability: number }>(
+  list: readonly T[],
+  n = 3,
+  key?: (x: T) => string,
+): T[] {
   const sorted = [...list].sort((x, y) => y.probability - x.probability);
+  if (sorted.length === 0) return [];
   const taken: T[] = [sorted[0] as T];
   while (taken.length < n) {
     let best: T | undefined;
     let bestD = -1;
+    const keys = new Set(key ? taken.map(key) : []);
     for (const c of sorted) {
-      if (taken.includes(c)) continue;
+      if (taken.includes(c) || (key && keys.has(key(c)))) continue;
       const d = Math.min(...taken.map((t) => designDistance(t.design, c.design)));
       if (d > bestD + 1e-9 || (Math.abs(d - bestD) <= 1e-9 && best && c.probability < best.probability)) {
         best = c;
         bestD = d;
       }
     }
-    taken.push(best as T);
+    if (!best) break;
+    taken.push(best);
   }
   return taken;
 }

@@ -175,6 +175,11 @@ const designSchema = z.strictObject({
   pinned: z.boolean().optional(),
   /** 1–3 references of the owner (link, uploaded screenshot, words): principles without copying (GZ-03). */
   references: list(text(L.question), L.references),
+  /**
+   * V4-07: the design system of the direction the owner chose when the art director's model designed it (a
+   * DesignProposal of @wizard/ui-kit, checked there by proposalIssues before use); absent — the archetype by code.
+   */
+  system: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const systemBriefSchema = z

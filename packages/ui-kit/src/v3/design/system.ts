@@ -263,7 +263,11 @@ export const IMAGE_FILTERS: Record<ImageTreatment, string> = {
 };
 
 /** A font choice with its CSS stack. */
-export const font = (family: string, weight: number): FontChoice => ({ family, weight, stack: fontStack(family) });
+export const font = (family: string, weight: number): FontChoice => ({
+  family,
+  weight,
+  stack: fontStack(family),
+});
 
 /**
  * The client's design system: same input → same result (the seed picks the font pair, the accent hue when there is

@@ -75,19 +75,6 @@ export {
   pickArchetypes,
   systemClasses,
 } from "./pick.js";
-/** designSystemV3({archetype, brandColor?, seed, niche, voice}) → DesignSystemV3; designSystemTheme → AppSpec.theme. */
-export {
-  type DesignSystemInput,
-  type DesignSystemV3,
-  designSystemTheme,
-  designSystemV3,
-  type FontChoice,
-  fluid,
-  RADIUS_SETS,
-  SECTION_SPACE,
-  TYPE_STEPS,
-  type TypeStep,
-} from "./system.js";
 /**
  * V4-07: the model's design proposal — proposalIssues (AA contrast, OFL fonts with Cyrillic, banned defaults, brand colour,
  * designLint) → designFromProposal → DesignSystemV3; pickDistinct takes the most different of k verbalized directions.
@@ -108,3 +95,16 @@ export {
   proposalIssues,
   proposalPaletteRules,
 } from "./proposal.js";
+/** designSystemV3({archetype, brandColor?, seed, niche, voice}) → DesignSystemV3; designSystemTheme → AppSpec.theme. */
+export {
+  type DesignSystemInput,
+  type DesignSystemV3,
+  designSystemTheme,
+  designSystemV3,
+  type FontChoice,
+  fluid,
+  RADIUS_SETS,
+  SECTION_SPACE,
+  TYPE_STEPS,
+  type TypeStep,
+} from "./system.js";
