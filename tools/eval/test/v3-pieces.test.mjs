@@ -37,6 +37,26 @@ describe("the owner's answers to the grill interview", () => {
     answers: { scenarios: "время", data: "delegate", roles: { text: "Администратор и врачи" } },
     rest_after: 3,
   };
+  test("V4-24: «Где вас найти» and «Кого из специалистов» — the brief's own text, not «Добавлю потом»", () => {
+    const content = (text) => ({ ...q("content", ["Добавлю потом"]), text });
+    const b = {
+      answers: { place: { text: "Казань, ул. Баумана, 12; пн–пт 9:00–20:00" }, staff: { text: "Анна Смирнова — терапевт" } },
+    };
+    expect(v3Answer(content("Где вас найти: адрес, телефон и часы работы?"), b)).toEqual({
+      kind: "text",
+      text: "Казань, ул. Баумана, 12; пн–пт 9:00–20:00",
+    });
+    expect(v3Answer(content("Кого из специалистов показать на сайте: имя и специализация?"), b)).toEqual({
+      kind: "text",
+      text: "Анна Смирнова — терапевт",
+    });
+    // A brief without them: the recommended option, as before.
+    expect(v3Answer(content("Где вас найти: адрес, телефон и часы работы?"), {})).toEqual({
+      kind: "recommended",
+      optionId: "o1",
+    });
+  });
+
   test("a stem, «Решите за меня», an own text once per topic, the recommendation otherwise, «Дальше решай сам» after rest_after", () => {
     const st = { answered: 0, texts: new Set() };
     expect(v3Answer(q("scenarios"), brief, st)).toEqual({ kind: "option", optionId: "o2" });

@@ -433,11 +433,17 @@ describe.skipIf(!hasChromium)("V3-40 the critic sees the visitor's site", () => 
     // Karelia: a catalog of tours (service, active only), a blog (published articles only), leads (create only).
     const k = await briefSite("v3-04-karelia-tours", KARELIA_TOURS);
     const kSpec = withSitePages(k.spec, k.site);
-    const kRows = draftDemoRows(
-      kSpec,
-      "critic-karelia",
-      seedHintsFromBrief(kSpec, k.ctx.brief, evalRequest("v3-04-karelia-tours")),
-    );
+    // V4-23: the blog's demo articles only when titles are given (an owner's blog is never «Статья 1»).
+    const titles = {
+      entity: "article",
+      field: "title",
+      values: ["Как собраться в сплав", "Карелия зимой", "Маршрут выходного дня"],
+    };
+    const kRows = draftDemoRows(kSpec, "critic-karelia", [
+      ...seedHintsFromBrief(kSpec, k.ctx.brief, evalRequest("v3-04-karelia-tours")),
+      titles,
+    ]);
+    expect(draftDemoRows(kSpec, "critic-karelia", []).article).toBeUndefined();
     const tours = (kRows.service ?? []).map((r) => r.name as string);
     expect(tours).toEqual(["Сплавы", "Пешие маршруты", "Зимние поездки на снегоходах"]);
     const articles = kRows.article ?? [];
