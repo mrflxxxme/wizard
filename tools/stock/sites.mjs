@@ -137,7 +137,22 @@ export async function main(argv, { env = process.env, log = console.log } = {}) 
       for (const p of r.photos) await save(site.id, p.slot, p.file);
       const used = new Set(r.photos.map((p) => p.file));
       const names = [{ entity: site.entity, field: "name", values: site.rows }];
-      const check = C.pickerCardCheck({ picker: picker("photo_cards"), niche: site.niche, source });
+      // The model's answer of the card check, as it came (slot → candidate, text), for the report.
+      const cardPicker = picker("photo_cards");
+      const check = C.pickerCardCheck({
+        picker: async (input) => {
+          const a = await cardPicker(input);
+          const name = (i) => input.candidates[i]?.entry.file.slice(0, 8) ?? "?";
+          out(
+            `${site.id} photo_cards: кандидатов ${input.candidates.length}; ответ: ${
+              a ? a.map((x) => ("slot" in x ? `${x.slot}=${name(x.index)}` : `text=${name(x.text)}`)).join(", ") || "пусто" : "сбой"
+            }`,
+          );
+          return a;
+        },
+        niche: site.niche,
+        source,
+      });
       const hints = await C.semanticSeedHints(specOf(site), names, used, new Set(), source, { niche: site.niche, check });
       const cards = hints.find((h) => h.field === "photo")?.values ?? [];
       for (const [i, v] of cards.entries()) await save(site.id, `card-${i + 1} ${site.rows[i] ?? ""}`, v.split("/")[3]);
