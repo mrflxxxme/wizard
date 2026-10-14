@@ -72,8 +72,11 @@ describe("V4-24: a chat edit with a clear goal goes to «Укажи и изме�
     expect(chatGoal("Добавь блок с отзывами")).toBeNull();
     expect(chatGoal("Сделай отдельную страницу с ценами")).toBeNull();
     expect(chatGoal("Добавь новую секцию про врачей")).toBeNull();
+    expect(chatGoal("Убери блок с отзывами")).toBeNull();
+    expect(chatGoal("Удалите раздел вопросов")).toBeNull();
     // An addition inside a part that is there stays its edit.
     expect(chatGoal("Добавь в первый экран телефон")).toBe("hero");
+    expect(chatGoal("Убери из блока с отзывами фото")).toBe("testimonials");
   });
 
   test("the element of the section on the home page — the wzId of the build's wz-map", () => {

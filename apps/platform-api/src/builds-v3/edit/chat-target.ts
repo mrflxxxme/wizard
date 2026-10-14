@@ -53,13 +53,13 @@ const GOALS: readonly { goal: ChatGoal; words: RegExp; keys: readonly string[] }
 const EDIT_RE =
   /сдела|измен|поменя|замен|убер|убра|удали|добав|перепиш|короче|длиннее|крупн|мельч|ярч|светл|темн|тёмн|сократ|увелич|уменьш|передела|поправ|исправ|сдвин|выдел/i;
 
-/** A new block, section or page — a change of the site's structure (the interview and a rebuild), not an edit. */
+/** A new or removed block, section or page — a change of the site's structure (the interview and a rebuild), not an edit. */
 const NEW_PART_RE =
-  /(?:добав|созда|сдела|встав)\S*\s+(?:ещё\s+|еще\s+|отдельн\S*\s+)?(?:нов\S*\s+)?(?:блок|секци|раздел|страниц)/i;
+  /(?:добав|созда|сдела|встав|убер|убра|удали)\S*\s+(?:ещё\s+|еще\s+|отдельн\S*\s+)?(?:нов\S*\s+)?(?:блок|секци|раздел|страниц)/i;
 
 /**
  * The one part of the page the message names with a request to change it; null — none or more than one, or a new
- * block, section or page asked for.
+ * block, section or page asked for or one removed.
  */
 export function chatGoal(text: string): ChatGoal | null {
   if (!EDIT_RE.test(text) || NEW_PART_RE.test(text)) return null;
