@@ -79,6 +79,8 @@ export interface BuildReport {
     scores: number[];
     stop: string | null;
     note: string | null;
+    /** The main findings of the critic's last cycle in words («P1 · Услуга 1 без цены · /@390#services»). */
+    top?: string[];
     /** Problems of the deterministic checks left after the critic (code, page and section, what is wrong). */
     left?: { code: string; where: string; message: string }[];
   } | null;
