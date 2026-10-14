@@ -153,6 +153,8 @@ export interface SectionView {
   names: string[];
   /** Longer texts of its items (quotes, paragraphs). */
   texts: string[];
+  /** Quotes (blockquote, q) with text: what a review looks like in free code. */
+  quotes?: string[];
   /** Pictures that loaded (complete, with a size). */
   images: number;
 }
@@ -173,6 +175,7 @@ export const SECTION_PROBE_SCRIPT = `(() => {
       .filter(vis).map(txt).filter(Boolean).slice(0, 40),
     texts: [...el.querySelectorAll("blockquote, q, p, li")].filter(vis).map(txt)
       .filter((t) => t.length >= 30).slice(0, 40),
+    quotes: [...el.querySelectorAll("blockquote, q")].filter(vis).map(txt).filter((t) => t.length >= 20).slice(0, 20),
     images: [...el.querySelectorAll("img")].filter((i) => i.complete && i.naturalWidth > 0 && vis(i)).length,
   }));
 })()`;
@@ -191,8 +194,37 @@ const HOURS_RE =
   /\d{1,2}[:.]\d{2}\s*[-–—]\s*\d{1,2}[:.]\d{2}|ежедневно|круглосуточно|без выходных|(?:пн|пон|вт|ср|чт|пт|сб|вс)\b/iu;
 const EXPERIENCE_RE = /опыт|стаж|\d+\s*(?:год|года|лет)\b/iu;
 
-/** Whether a section as shown keeps a promise. */
-export function keeps(kind: PromiseKind, v: SectionView, contacts?: KnownContacts): boolean {
+/** «Анна Смирнова», «Игорь Ким — хирург»: a name and a surname, both capitalised (not «Выберите услугу»). */
+const PERSON_RE = /^\p{Lu}\p{Ll}+(?:-\p{Lu}\p{Ll}+)?\s+\p{Lu}\p{Ll}+(?:-\p{Lu}\p{Ll}+)?(?:\s|$|[,—–-])/u;
+const people = (v: SectionView) => realNames(v).filter((n) => PERSON_RE.test(n.trim()));
+
+/** Kinds a section written as code (signature) keeps only by a strong sign: people's names, quotes, a phone or address. */
+const STRICT_KINDS: ReadonlySet<PromiseKind> = new Set([
+  "staff",
+  "staff_photo",
+  "staff_experience",
+  "reviews",
+  "contacts",
+]);
+
+/**
+ * Whether a section as shown keeps a promise. `strict` — a section written as code (any heading or paragraph may look
+ * like a card): staff only by people's names, their photo and experience only next to them, reviews only by quotes.
+ */
+export function keeps(kind: PromiseKind, v: SectionView, contacts?: KnownContacts, strict = false): boolean {
+  if (strict)
+    switch (kind) {
+      case "staff":
+        return people(v).length > 0;
+      case "staff_photo":
+        return people(v).length > 0 && v.images > 0;
+      case "staff_experience":
+        return people(v).length > 0 && EXPERIENCE_RE.test(v.text);
+      case "reviews":
+        return (v.quotes ?? []).some((q) => placeholderOf(q) === null);
+      default:
+        break;
+    }
   switch (kind) {
     case "services":
       // Cards with names: at least one is not a stand-in; a section without item names keeps it by its text.
@@ -219,6 +251,9 @@ export function keeps(kind: PromiseKind, v: SectionView, contacts?: KnownContact
   }
 }
 
+/** Kinds the composer can keep from the facts: the repair round is for these only. */
+const REPAIRABLE: ReadonlySet<PromiseKind> = new Set(["services", "contacts", "schedule"]);
+
 /** A page opened in the browser: the sections it shows (by id); null — it did not open. */
 export type SiteViews = ReadonlyMap<string, readonly SectionView[]>;
 
@@ -226,6 +261,11 @@ export interface PromiseCheck {
   promises: ScenarioPromise[];
   /** Russian reasons of the promises not kept. */
   problems: string[];
+  /**
+   * Of `problems`, those the composer can keep from the facts (services, contacts, hours): the repair round gets only
+   * these; specialists without their facts, reviews and prices (D49: never invented) go to «Запросы на развитие».
+   */
+  repairable: string[];
   /** The browser looked at the sections (false — by the site model only). */
   browser: boolean;
 }
@@ -242,34 +282,42 @@ export function checkPromises(
 ): PromiseCheck {
   const promises = scenarioPromises(scenario);
   const problems: string[] = [];
-  if (!promises.length) return { promises, problems, browser: false };
+  const repairable: string[] = [];
+  if (!promises.length) return { promises, problems, repairable, browser: false };
   const sections = siteSections(files);
+  const miss = (p: ScenarioPromise, text: string) => {
+    const r = reason(p, text);
+    problems.push(r);
+    if (REPAIRABLE.has(p.kind)) repairable.push(r);
+  };
   for (const p of promises) {
     const types = SECTION_TYPES[p.kind];
-    // A signature section is free code: what it shows is known only in the browser, so it may keep any promise.
-    const candidates = sections.filter((s) => types.includes(s.type) || s.type === "signature");
+    // A signature section is free code: what it shows is known only in the browser. It may keep a promise there (by a
+    // strong sign for people, reviews and contacts); without the browser it keeps none of those.
+    const candidates = sections.filter(
+      (s) =>
+        types.includes(s.type) || (s.type === "signature" && (views !== null || !STRICT_KINDS.has(p.kind))),
+    );
     // The footer alone is no section of contacts or hours: it only keeps them by what it shows.
     const own = candidates.filter((s) => s.type !== "footer");
     if (!own.length && !(views && candidates.length)) {
-      problems.push(reason(p, `${MISSING_RU[p.kind]} — ${ADD_RU[p.kind]}`));
+      miss(p, `${MISSING_RU[p.kind]} — ${ADD_RU[p.kind]}`);
       continue;
     }
     if (!views) continue;
     const shown = candidates.flatMap((s) =>
       (views.get(s.route) ?? [])
         .filter((v) => v.id === s.id || v.id === s.type)
-        .map((view) => ({ route: s.route, view })),
+        .map((view) => ({ route: s.route, view, strict: s.type === "signature" })),
     );
     if (!shown.length) {
-      problems.push(reason(p, `${MISSING_RU[p.kind]} — ${ADD_RU[p.kind]}`));
+      miss(p, `${MISSING_RU[p.kind]} — ${ADD_RU[p.kind]}`);
       continue;
     }
-    if (!shown.some((x) => keeps(p.kind, x.view, contacts)))
-      problems.push(
-        reason(p, `${EMPTY_RU[p.kind]}${seen(shown, p.kind === "contacts" ? contacts : undefined)}`),
-      );
+    if (!shown.some((x) => keeps(p.kind, x.view, contacts, x.strict)))
+      miss(p, `${EMPTY_RU[p.kind]}${seen(shown, p.kind === "contacts" ? contacts : undefined)}`);
   }
-  return { promises, problems, browser: views !== null };
+  return { promises, problems, repairable, browser: views !== null };
 }
 
 /** Routes worth opening for the promises: the pages of their candidate sections (no entry pages with a parameter). */

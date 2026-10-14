@@ -433,7 +433,14 @@ export async function checkScenario(
   // V4-21: what the scenario promises the visitor sees is on the site and shows it.
   // Not kept: the system works, so the layer stays (the build tries one repair; the rest goes to the requests).
   const kept = promises ? await promises(input) : null;
-  if (kept?.problems.length) return { ok: true, problems: [], browser: withBrowser, unkept: kept.problems };
+  if (kept?.problems.length)
+    return {
+      ok: true,
+      problems: [],
+      browser: withBrowser,
+      unkept: kept.problems,
+      repairable: kept.repairable,
+    };
   return { ok: true, problems: [], browser: withBrowser };
 }
 
@@ -450,7 +457,8 @@ export function scenarioPromiseCheck(
   },
 ): (input: ScenarioCheckInput) => Promise<PromiseCheck> {
   return async (input) => {
-    if (!scenarioPromises(input.scenario).length) return { promises: [], problems: [], browser: false };
+    if (!scenarioPromises(input.scenario).length)
+      return { promises: [], problems: [], repairable: [], browser: false };
     const files = await draftFiles(host.store);
     const contacts = await o.contacts();
     const views = browser
