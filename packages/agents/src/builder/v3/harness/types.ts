@@ -108,6 +108,15 @@ export interface ScenarioCheckResult {
    * these (absent — all of `unkept`); the rest goes to «Запросы на развитие» without a model call.
    */
   repairable?: string[];
+  /** V4-04: how long each check took (ms): G0, G1 with the goal scenarios, the promises (V4-21). */
+  timing?: ScenarioCheckTiming;
+}
+
+/** V4-04: the durations of a scenario check (ms); a check that did not run is 0. */
+export interface ScenarioCheckTiming {
+  g0Ms: number;
+  g1Ms: number;
+  promisesMs: number;
 }
 
 /** What a stage hook (critic V3-13, template_gate V3-14, techreview V3-15) returns. */

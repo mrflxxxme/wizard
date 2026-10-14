@@ -273,6 +273,8 @@ describe("V4-21 checkScenario with promises", () => {
       ok: true,
       problems: [],
       browser: false,
+      // V4-04: the durations of the checks for the build report.
+      timing: { g0Ms: expect.any(Number), g1Ms: expect.any(Number), promisesMs: expect.any(Number) },
     });
     expect((await checkScenario(h, null, false, input(S1.then), check)).ok).toBe(true);
   });

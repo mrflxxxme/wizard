@@ -1039,6 +1039,8 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
       const allowance = Math.min(left, Math.max((2 * left) / Math.max(1, sameLeft), budgets.scenarioMin));
       const wallet = new V3Wallet(key, allowance, left, rpc);
       const started = now();
+      // V4-04: where the scenario's time goes (the build report's scenarios[].timing).
+      let composeMs = 0;
       await host.emit("step_started", {
         step: key,
         label_ru: `Сценарий ${k} из ${total}: ${next.title}`,
@@ -1047,6 +1049,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
       let r: V3ComposeResult;
       try {
         r = await host.runStep(`v3:${key}`, () => host.composer.scenario(ctxFor(wallet), next.scenario));
+        composeMs = Math.max(0, now() - started);
       } catch (e) {
         runMilli += wallet.spentMilli;
         calls += wallet.calls;
@@ -1083,7 +1086,12 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
               }),
             )
           : Promise.resolve({ ok: true, problems: [], browser: false });
+      const checkStarted = now();
       let check = await checkLayer(r, `v3:check:${next.id}`);
+      const checkMs = Math.max(0, now() - checkStarted);
+      const checkTiming = check.timing;
+      let repairMs = 0;
+      let repairCheckMs = 0;
       let composedRub = r.spentRub;
       // V4-21: the gates passed but promises of its «видит …» steps are not shown — one repair with the reasons, then
       // the better of the two layers (fewer promises not kept); never more than one round per scenario.
@@ -1094,6 +1102,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
       if (repair.length) {
         const first = { r, check };
         let again: V3ComposeResult | null = null;
+        const repairStarted = now();
         try {
           again = await host.runStep(`v3:${key}:repair`, () =>
             host.composer.scenario({ ...ctxFor(wallet), repair }, next.scenario),
@@ -1101,6 +1110,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
         } catch (e) {
           if (!(e instanceof V3BudgetError)) throw e;
         }
+        repairMs = Math.max(0, now() - repairStarted);
         // The repair is composed on the system with the first layer, so its files are only what it changed: it goes on
         // top of the first layer, never in its place (a repair that kept a page as it was must not bring the skeleton
         // back). A repair that changed nothing is not checked again.
@@ -1115,7 +1125,9 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
           };
           scenarioLayers.set(next.id, again.files);
           revision = await commit(`Сценарий: ${next.title} (исправление)`);
+          const secondStarted = now();
           const second = await checkLayer(again, `v3:check:${next.id}:repair`);
+          repairCheckMs = Math.max(0, now() - secondStarted);
           if (second.ok && !second.unavailable && (second.unkept?.length ?? 0) < unkept.length) {
             r = again;
             check = second;
@@ -1130,6 +1142,16 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
       runMilli += costMilli;
       calls += wallet.calls;
       const durationMs = Math.max(0, now() - started);
+      const timing = {
+        totalMs: durationMs,
+        composeMs,
+        checkMs,
+        g0Ms: checkTiming?.g0Ms ?? 0,
+        g1Ms: checkTiming?.g1Ms ?? 0,
+        promisesMs: checkTiming?.promisesMs ?? 0,
+        repairMs,
+        repairCheckMs,
+      };
       durations.push(durationMs);
       scenarioSec = Math.round(durations.reduce((s, x) => s + x, 0) / durations.length / 1000);
       scenariosLeft -= 1;
@@ -1148,7 +1170,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
         await save({
           key,
           fingerprint: fp,
-          data: { status: "unchecked", files: toEntries(r.files), pages: r.pages, notes: r.notes },
+          data: { status: "unchecked", files: toEntries(r.files), pages: r.pages, notes: r.notes, timing },
           costMilli,
           durationMs,
         });
@@ -1175,6 +1197,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
             pages: r.pages,
             notes: r.notes,
             ...(left.length ? { unkept: left } : {}),
+            timing,
           },
           costMilli,
           durationMs,
@@ -1197,7 +1220,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
         await save({
           key,
           fingerprint: fp,
-          data: { status: "failed", problems: check.problems.slice(0, 5) },
+          data: { status: "failed", problems: check.problems.slice(0, 5), timing },
           costMilli,
           durationMs,
         });

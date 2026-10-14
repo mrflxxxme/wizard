@@ -8,6 +8,7 @@ import type {
   ReportScenario,
   ReportStage,
   ScenarioHttp,
+  ScenarioTiming,
 } from "./types.js";
 
 const num = (v: unknown): number => (typeof v === "number" ? v : Number(v) || 0);
@@ -142,11 +143,13 @@ export async function collectBuildReport(pg: postgres.Sql, o: CollectInput): Pro
     .map((c) => {
       const id = c.key.slice("scenario:".length);
       const d = obj(obj(c.checkpoint).data);
+      const timing = scenarioTiming(d.timing);
       return {
         id,
         status: str(d.status) ?? "unknown",
         problems: strs(d.problems).slice(0, 5),
         http: http.filter((h) => h.scenario === id),
+        ...(timing ? { timing } : {}),
       };
     })
     .sort((a, b) => a.id.localeCompare(b.id));
@@ -254,4 +257,25 @@ export async function collectBuildReport(pg: postgres.Sql, o: CollectInput): Pro
     gaps: o.gaps ?? [],
     createdAt: (o.now ?? (() => new Date()))().toISOString(),
   };
+}
+
+const TIMING_KEYS = [
+  "totalMs",
+  "composeMs",
+  "checkMs",
+  "g0Ms",
+  "g1Ms",
+  "promisesMs",
+  "repairMs",
+  "repairCheckMs",
+] as const;
+
+/** A scenario checkpoint's timing (V4-04); null — none recorded (an older build). */
+function scenarioTiming(v: unknown): ScenarioTiming | null {
+  const t = obj(v);
+  if (typeof t.totalMs !== "number") return null;
+  const out = {} as ScenarioTiming;
+  for (const k of TIMING_KEYS)
+    out[k] = typeof t[k] === "number" && Number.isFinite(t[k]) ? Math.round(t[k] as number) : 0;
+  return out;
 }

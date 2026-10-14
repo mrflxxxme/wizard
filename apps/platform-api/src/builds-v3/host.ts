@@ -448,23 +448,37 @@ export async function checkScenario(
   input: ScenarioCheckInput,
   promises?: (input: ScenarioCheckInput) => Promise<PromiseCheck>,
 ): Promise<ScenarioCheckResult> {
+  // V4-04: the duration of each check goes to the build report (scenarios[].timing).
+  const timing = { g0Ms: 0, g1Ms: 0, promisesMs: 0 };
+  let t = Date.now();
   const r0 = await gateWithRetry(() => host.runGates("G0"));
+  timing.g0Ms = Date.now() - t;
   const g0 = failedBlockers(r0);
-  if (g0.length) return { ok: false, problems: g0.map((c) => c.message_ru), browser: false };
+  if (g0.length) return { ok: false, problems: g0.map((c) => c.message_ru), browser: false, timing };
   const e0 = erroredBlockers(r0);
   if (e0.length)
-    return { ok: false, problems: e0.map((c) => c.message_ru), browser: false, unavailable: true };
+    return { ok: false, problems: e0.map((c) => c.message_ru), browser: false, unavailable: true, timing };
+  t = Date.now();
   const r1 = await gateWithRetry(() =>
     runGates(host, provider, withBrowser, "G1", withBrowser ? input.goalScenarios : undefined),
   );
+  timing.g1Ms = Date.now() - t;
   const g1 = failedBlockers(r1);
-  if (g1.length) return { ok: false, problems: g1.map((c) => c.message_ru), browser: withBrowser };
+  if (g1.length) return { ok: false, problems: g1.map((c) => c.message_ru), browser: withBrowser, timing };
   const e1 = erroredBlockers(r1);
   if (e1.length)
-    return { ok: false, problems: e1.map((c) => c.message_ru), browser: withBrowser, unavailable: true };
+    return {
+      ok: false,
+      problems: e1.map((c) => c.message_ru),
+      browser: withBrowser,
+      unavailable: true,
+      timing,
+    };
   // V4-21: what the scenario promises the visitor sees is on the site and shows it.
   // Not kept: the system works, so the layer stays (the build tries one repair; the rest goes to the requests).
+  t = Date.now();
   const kept = promises ? await promises(input) : null;
+  timing.promisesMs = Date.now() - t;
   if (kept?.problems.length)
     return {
       ok: true,
@@ -472,8 +486,9 @@ export async function checkScenario(
       browser: withBrowser,
       unkept: kept.problems,
       repairable: kept.repairable,
+      timing,
     };
-  return { ok: true, problems: [], browser: withBrowser };
+  return { ok: true, problems: [], browser: withBrowser, timing };
 }
 
 /**

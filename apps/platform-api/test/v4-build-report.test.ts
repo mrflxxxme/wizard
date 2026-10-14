@@ -139,6 +139,13 @@ describe("V4-04: the build report", () => {
     expect(report.rub).toBeGreaterThan(0);
     expect(report.scenarios.map((s) => s.id).sort()).toEqual(["s_book", "s_lead"]);
     expect(report.scenarios.every((s) => s.status === "passed")).toBe(true);
+    // V4-04: where each scenario's time went — composing, the check (G0, G1, promises), the repair round.
+    for (const s of report.scenarios) {
+      expect(s.timing).toBeDefined();
+      const t = s.timing as NonNullable<typeof s.timing>;
+      expect(t.totalMs).toBeGreaterThanOrEqual(t.composeMs);
+      expect(t.checkMs).toBeGreaterThanOrEqual(t.g0Ms + t.g1Ms + t.promisesMs - 5);
+    }
     expect(report.gates.map((g) => g.level).sort()).toEqual(["G0", "G1", "G2"]);
     expect(report.calls.length).toBeGreaterThan(0);
     // Tokens per call (input with cached, output with reasoning) from llm_calls.
@@ -169,6 +176,9 @@ describe("V4-04: the build report", () => {
     expect(md).toContain("s_book");
     expect(md).toContain("Записи вызовов");
     expect(md).toContain("| Токены |");
+    expect(md).toMatch(
+      /время: всего \d+ с: сборка \d+ с, проверка \d+ с \(G0 \d+ с, G1 \d+ с, обещания \d+ с\)/,
+    );
 
     // Staff with MFA reads the report (JSON, Markdown) and its files; a client gets 404.
     const r = await staff.req("GET", `/admin/runs/${run.id}/report`);

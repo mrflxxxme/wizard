@@ -30,6 +30,20 @@ export interface ReportScenario {
   status: string;
   problems: string[];
   http: ScenarioHttp[];
+  /** Where its time went (ms): composing, the check (G0, G1, promises) and the repair round; absent — not recorded. */
+  timing?: ScenarioTiming;
+}
+
+/** The durations of a scenario (ms), from its checkpoint. */
+export interface ScenarioTiming {
+  totalMs: number;
+  composeMs: number;
+  checkMs: number;
+  g0Ms: number;
+  g1Ms: number;
+  promisesMs: number;
+  repairMs: number;
+  repairCheckMs: number;
 }
 
 export interface ReportGate {
