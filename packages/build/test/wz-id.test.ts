@@ -58,7 +58,7 @@ describe("injectWzIds", () => {
     expect(injectWzIds(F, src).entries).toEqual([]);
   });
 
-  test("v3: sections of the system's pattern library (ui/patterns) are ui-kit; signature sections are not", () => {
+  test("v3: sections of the system's pattern library (ui/patterns) are ui-kit; signature sections are wrapped (V4-24)", () => {
     const page = "ui/pages/site/Home.tsx";
     const key = fileKey(page);
     const src = [
@@ -81,9 +81,13 @@ describe("injectWzIds", () => {
     expect(r.entries.map(([id, e]) => [id, e.componentName, e.line])).toEqual([
       [`${key}:1`, "HeroSplit", 7],
       [`${key}:2`, "FormCentered", 9],
+      [`${key}:3`, "FirstVisit", 11],
     ]);
     expect(r.code).toContain(`<HeroSplit {...{"title":"Т"}} wzId="${key}:1" />`);
-    expect(r.code).toContain("<FirstVisit />");
+    // A section written as code knows nothing of wzId: a div around it carries the attributes.
+    expect(r.code).toContain(
+      `<div data-wz-component="FirstVisit" data-wz-id="${key}:3"><FirstVisit /></div>`,
+    );
     // A relative import outside ui/patterns (the system's own code) stays as it is.
     expect(
       injectWzIds("ui/pages/A.tsx", 'import X from "./x";\nexport default () => <X />;').entries,
