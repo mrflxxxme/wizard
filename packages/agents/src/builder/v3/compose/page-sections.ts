@@ -129,7 +129,7 @@ function withoutUnknownHeadless(source: string): string {
 /**
  * Deterministic fixes of the slips models make most (code, never a model call): framer-motion → motion/react,
  * class → className, a named default export, `motion.x` → `m.x` inside LazyMotion, MotionConfig for reduced motion,
- * phone links of a finger's height. Returns the source unchanged when nothing applies.
+ * entrances without opacity 0, phone links of a finger's height. Returns the source unchanged when nothing applies.
  */
 export function autofixSection(source: string): string {
   let s = source
@@ -152,7 +152,7 @@ export function autofixSection(source: string): string {
     /\b(fitWords|useFitWords|srcSetOf|safeHref|richInline|richPlain)(<[^<>()]*>)?\(([^(),]+),[^()]*\)/g,
     "$1$2($3)",
   );
-  return withPhoneTargets(withReducedMotion(withLinkColor(withoutUnknownHeadless(s))));
+  return withPhoneTargets(withReducedMotion(withVisibleStart(withLinkColor(withoutUnknownHeadless(s)))));
 }
 
 /**
@@ -205,6 +205,21 @@ function withReducedMotion(source: string): string {
   if (!/from\s*["']motion\/react["']/.test(source) || /\buseReducedMotion\b|\bMotionConfig\b/.test(source))
     return source;
   return wrapReturn(source, '<MotionConfig reducedMotion="user">', "</MotionConfig>", ["MotionConfig"]);
+}
+
+/**
+ * The start state of an entrance (`initial` / variants `hidden`) without opacity 0: a section shown on scroll
+ * (whileInView) is blank in a whole-page shot and before its scroll (M05 of the critic); the shift stays, the text is
+ * visible from the start.
+ */
+function withVisibleStart(source: string): string {
+  return source.replace(
+    /\b(initial|hidden)(\s*[:=]\s*\{?[^{}]*?\{)([^{}]*)\}/g,
+    (all, key, head, body: string) => {
+      const kept = body.replace(/\bopacity:\s*0(?:\.0+)?(?![.\d])\s*,?\s*/g, "");
+      return kept === body ? all : `${key}${head}${kept.trim() ? ` ${kept.trim()} ` : ""}}`;
+    },
+  );
 }
 
 /**

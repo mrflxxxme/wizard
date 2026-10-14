@@ -267,6 +267,21 @@ describe("V4-06 speed: the page by sections", () => {
     expect(autofixSection(tall)).toBe(tall);
   });
 
+  test("an entrance starts visible: opacity 0 leaves initial and hidden, the shift stays", () => {
+    const fixed = autofixSection(
+      [
+        "const item = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0 } };",
+        "<m.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} />",
+        "<m.p initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} />",
+        "<m.p initial={{ opacity: 0.5 }} />",
+      ].join("\n"),
+    );
+    expect(fixed).toContain("hidden: { y: 12 }, show: { opacity: 1, y: 0 }");
+    expect(fixed).toContain("initial={{ y: 16 }} whileInView={{ opacity: 1, y: 0 }}");
+    expect(fixed).toContain("initial={reduce ? false : {}}");
+    expect(fixed).toContain("initial={{ opacity: 0.5 }}");
+  });
+
   test("the plan: sections as a JSON string are parsed, «01» ordinals leave props", () => {
     const plan = normalizePlan({
       sections: JSON.stringify([
