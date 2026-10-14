@@ -5,6 +5,7 @@ import { describe, expect, test } from "vitest";
 import * as S from "../../../packages/agents/src/stock/index.ts";
 import {
   bigEnough,
+  catalogNiches,
   FILL_LIMITS,
   MAX_FAILURES,
   REQUEST_TARGET,
@@ -156,6 +157,13 @@ describe("runFill", () => {
     expect(s.searches).toEqual({ pexels: 1, pixabay: 1 });
     expect(s.added).toBe(0);
   });
+});
+
+test("V4-32: a niche whose catalog rows needed more queries fills past NICHE_TARGET", () => {
+  const all = catalogNiches(S);
+  expect(all.find((c) => c.slug === "optics")?.target).toBeGreaterThan(S.NICHE_TARGET);
+  expect(all.find((c) => c.slug === "optics")?.queries).toContain("contact lenses");
+  expect(all.find((c) => c.slug === "dental")?.target).toBe(S.NICHE_TARGET);
 });
 
 describe("requested niches", () => {
