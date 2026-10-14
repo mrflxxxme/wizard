@@ -5,6 +5,7 @@
 // section) and the seed hints (the directions of the staff). Nothing is invented: a skipped question leaves the site
 // without it (V4-21 sends the promise to «Запросы на развитие»).
 import type { SystemBrief } from "@wizard/appspec";
+import { detect } from "@wizard/pii";
 import type { FallbackQuestion } from "./fallback.js";
 
 /** The question of the place: its text is the key of the answer in brief.qa. */
@@ -173,6 +174,43 @@ export function splitPlacePhone(text: string): { rest: string; phone: string | n
           .trim()
       : text,
     phone,
+  };
+}
+
+/** Private-use marks that stand for the kept names while the rest of the staff answer is scrubbed. */
+const NAME_MARK_BASE = 0xe000;
+const NAME_MARK_MAX = 0x100;
+const NAME_MARK_RE = /[\uE000-\uE0FF]/g;
+
+/**
+ * The names of the specialists in the owner's answer to the staff question, kept out of the scrub (D79 (3): the build
+ * stages go to the allowlist models unmasked; the owner names his specialists to show them on his site — not the end
+ * users' data). Only this answer and only the person names: each stands as a mark in `rest`, which is scrubbed as every
+ * answer (a phone, an e-mail, a document number in it are masked); `restore` puts the names back into the scrubbed text.
+ */
+export function splitStaffNames(text: string): {
+  rest: string;
+  names: string[];
+  restore: (scrubbed: string) => string;
+} {
+  const clean = text.replace(NAME_MARK_RE, "");
+  const names: string[] = [];
+  let rest = "";
+  let pos = 0;
+  // detect() resolves overlaps: a name never shares its span with an e-mail, a phone or an address.
+  for (const f of detect(clean)) {
+    if ((f.kind !== "person_name" && f.kind !== "person_name_latin") || f.start < pos) continue;
+    if (names.length >= NAME_MARK_MAX) break;
+    rest += clean.slice(pos, f.start) + String.fromCharCode(NAME_MARK_BASE + names.length);
+    names.push(clean.slice(f.start, f.end));
+    pos = f.end;
+  }
+  rest += clean.slice(pos);
+  return {
+    rest,
+    names,
+    restore: (scrubbed) =>
+      scrubbed.replace(NAME_MARK_RE, (m) => names[m.charCodeAt(0) - NAME_MARK_BASE] ?? ""),
   };
 }
 

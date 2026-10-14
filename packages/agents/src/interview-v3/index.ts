@@ -51,7 +51,8 @@ export {
 export { addAssumption, addQa, applyBriefPatch, type PatchResult, refreshCapability } from "./merge.js";
 /**
  * V4-24: the fact questions of a site with a place (where to find it, the specialists, the prices «от»), asked by code
- * within the cap, and their answers read back from brief.qa (placeFacts, staffFacts, priceFacts).
+ * within the cap, and their answers read back from brief.qa (placeFacts, staffFacts, priceFacts); D79 (3): the phone
+ * and the specialists' names the owner gives are kept out of the scrub (splitPlacePhone, splitStaffNames).
  */
 export {
   type FactQuestionKind,
@@ -68,6 +69,7 @@ export {
   priceQuestion,
   STAFF_QUESTION_TEXT,
   splitPlacePhone,
+  splitStaffNames,
   staffFacts,
   staffQuestion,
 } from "./place.js";
