@@ -245,7 +245,8 @@ export function retargetAnchors(
   const ids = anchorIds(v, page);
   const out = new Map<string, string>();
   const section = ["form", "request", "contacts"].find((x) => ids.has(x));
-  const href = page.route !== "/booking" && routes.includes("/booking") ? "/booking" : section && `#${section}`;
+  const href =
+    page.route !== "/booking" && routes.includes("/booking") ? "/booking" : section && `#${section}`;
   if (!href) return out;
   for (const s of v.sections) {
     if (s.kind !== "code") continue;
@@ -454,7 +455,8 @@ export async function pageSections(
   for (let round = 0; round < SECTION_ROUNDS; round++) {
     // The model mends its own links first; on the last round the code sends what is left to the main action.
     if (round === SECTION_ROUNDS - 1)
-      for (const [id, src] of retargetAnchors(planAnswer(plan, sources), s.page, routes)) sources.set(id, src);
+      for (const [id, src] of retargetAnchors(planAnswer(plan, sources), s.page, routes))
+        sources.set(id, src);
     const answer = planAnswer(plan, sources);
     // The last round keeps only the hard issues: soft ones never leave the page as it was (G0 still decides).
     const lint = [
