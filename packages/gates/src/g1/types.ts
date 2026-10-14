@@ -35,6 +35,11 @@ export interface SeedHint {
   field: string;
   /** V4-27: null — no value for that row (an optional photo the vision check found nothing for). */
   values: (string | number | boolean | null)[];
+  /**
+   * "owner" — the owner's own words for his own site (V4-24, D79 (3): the specialists he named in the interview): a
+   * person's name passes; any other personal data is still SEED_PII.
+   */
+  source?: "owner";
 }
 
 export interface Scenario {

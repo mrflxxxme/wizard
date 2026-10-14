@@ -159,5 +159,47 @@ export function seedHintsFromBrief(
     const h = { entity: CATALOG_NAMES.item, field: PRICE, values };
     if (validateSeedHint(spec, h).length === 0) out.push(h);
   }
+  out.push(...specialistHints(spec, brief.qa ?? []));
+  return out;
+}
+
+/** The booking's specialists (with_specialists): their names and what each does. */
+const SPECIALIST = { entity: "specialist", name: "name", role: "description" } as const;
+
+/**
+ * V4-24, D79 (3): the specialists the owner named in the interview («Анна Смирнова — терапевт») as the demo rows of the
+ * booking's specialists — the name as he wrote it (source "owner": a person's name passes the seed's DLP, nothing else
+ * does), the specialisation as the description. No photos of people. [] — no such entity or no names given.
+ */
+function specialistHints(spec: AppSpec, qa: SystemBrief["qa"]): SeedHint[] {
+  if (!spec.entities.some((e) => e.name === SPECIALIST.entity)) return [];
+  const people = staffFacts({ qa })
+    .map((x) => {
+      const [name, ...role] = x.split(/\s+[—–-]\s+/);
+      return { name: (name ?? "").trim(), role: role.join(" — ").trim() };
+    })
+    .filter(
+      (p) =>
+        p.name &&
+        validateSeedHint(spec, {
+          entity: SPECIALIST.entity,
+          field: SPECIALIST.name,
+          values: [p.name],
+          source: "owner",
+        }).length === 0,
+    )
+    .slice(0, SEED_HINT_MAX_VALUES);
+  if (!people.length) return [];
+  const out: SeedHint[] = [
+    { entity: SPECIALIST.entity, field: SPECIALIST.name, values: people.map((p) => p.name), source: "owner" },
+  ];
+  // The descriptions only while each person has one: values[i] goes to row i.
+  const roles: string[] = [];
+  for (const p of people) {
+    if (!p.role) break;
+    roles.push(cap(p.role));
+  }
+  const h = { entity: SPECIALIST.entity, field: SPECIALIST.role, values: roles };
+  if (roles.length && validateSeedHint(spec, h).length === 0) out.push(h);
   return out;
 }

@@ -359,7 +359,8 @@ export function validateSeedHint(spec: AppSpec, h: SeedHint): string[] {
       case "text":
         if (typeof v !== "string" || v.trim() === "") bad("ожидается непустая строка");
         else if (max !== undefined && [...v].length > max) bad(`длиннее ${max} символов`);
-        else if (nonSyntheticPii(v).length) bad("похоже на персональные данные (SEED_PII)");
+        else if (nonSyntheticPii(v).some((k) => !(h.source === "owner" && k === "person_name")))
+          bad("похоже на персональные данные (SEED_PII)");
         break;
       case "enum":
         if (!(f.enum ?? []).some((o) => o.value === v)) bad("значения нет в enum поля");
