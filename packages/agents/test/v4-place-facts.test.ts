@@ -2,15 +2,18 @@
 // it (address, phone, hours) and, when a scenario shows the specialists, who they are. The answers are kept in the
 // brief (brief.qa) and read back: the site's facts (the contacts and the hours of the page prompt), the seed hints (the
 // directions of the staff instead of «Услуга 1»). A shop online, or a brief that already says where it is, asks nothing.
-import { type SystemBrief, systemBriefSchema } from "@wizard/appspec";
+import { emptyBrief, type SystemBrief, systemBriefSchema, validateBrief } from "@wizard/appspec";
 import { describe, expect, test } from "vitest";
 import { dentalBrief } from "../../appspec/test/brief-fixtures.js";
 import { seedHintsFromBrief } from "../src/builder/index.js";
 import { siteFacts } from "../src/builder/v3/compose/index.js";
 import {
+  addQa,
+  createInterviewV3,
   needsPlace,
   needsPrices,
   needsStaff,
+  newInterviewV3Session,
   nextFactQuestion,
   PLACE_QUESTION_TEXT,
   PRICE_QUESTION_TEXT,
@@ -18,8 +21,10 @@ import {
   priceFacts,
   STAFF_QUESTION_TEXT,
   staffFacts,
+  staffQuestion,
   v3QuestionInputSchema,
 } from "../src/interview-v3/index.js";
+import { scriptedRoute } from "./interview-v3/helpers.js";
 import { briefSite } from "./v3-brief-site.js";
 import { composeContext } from "./v3-compose-fixtures.js";
 import { DENTAL_BOOKING } from "./v3-eval-briefs.js";
@@ -35,6 +40,23 @@ const withQa = (b: SystemBrief, ...items: ReturnType<typeof qa>[]): SystemBrief 
   qa: [...b.qa, ...items],
 });
 const DENTAL = systemBriefSchema.parse(dentalBrief());
+/** The spec with an entity of the specialists (name and description), as a booking with specialists has. */
+function specialistsSpec<T extends { entities: { name: string }[] }>(spec: T): T {
+  return {
+    ...spec,
+    entities: [
+      ...spec.entities.filter((e) => e.name !== "specialist"),
+      {
+        name: "specialist",
+        label: "Врач",
+        fields: [
+          { name: "name", label: "Название", type: "string", required: true, maxLength: 120 },
+          { name: "description", label: "Описание", type: "text", maxLength: 1000 },
+        ],
+      },
+    ],
+  } as T;
+}
 const CLINIC = "Стоматологическая клиника в Казани, запись к врачам онлайн";
 
 describe("V4-24 fact questions", () => {
@@ -150,20 +172,7 @@ describe("V4-24 fact questions", () => {
 
   test("D79 (3): the specialists the owner named — demo rows of the booking's specialists and a line of the page's facts", async () => {
     const { spec } = await briefSite("v4-24-staff", DENTAL_BOOKING);
-    const withSpecialists = {
-      ...spec,
-      entities: [
-        ...spec.entities.filter((e) => e.name !== "specialist"),
-        {
-          name: "specialist",
-          label: "Врач",
-          fields: [
-            { name: "name", label: "Название", type: "string", required: true, maxLength: 120 },
-            { name: "description", label: "Описание", type: "text", maxLength: 1000 },
-          ],
-        },
-      ],
-    } as typeof spec;
+    const withSpecialists = specialistsSpec(spec);
     const brief = withQa(
       systemBriefSchema.parse(DENTAL_BOOKING),
       qa(STAFF_QUESTION_TEXT, "Анна Смирнова — терапевт, Игорь Ким — хирург"),
@@ -258,5 +267,77 @@ describe("V4-24 fact questions", () => {
     expect(
       siteFacts({ ...ctx, brief: withQa(ctx.brief, qa(PRICE_QUESTION_TEXT, "Чистка — 4000")) }).prices,
     ).toBe(true);
+  });
+});
+
+describe("D79 (3): the specialists' names of the owner's answer are kept, the rest is scrubbed", () => {
+  const SALON = "Салон красоты в Казани: стрижки, окрашивание, маникюр, запись к мастерам онлайн";
+
+  /** The owner answers the staff question in the interview (by code, no model call); the brief after the answer. */
+  async function answerStaff(text: string): Promise<SystemBrief> {
+    const { route, inputs } = scriptedRoute([new Error("no model call on a fact answer")]);
+    const iv = createInterviewV3({
+      route,
+      orgPolicy: { ruOnly: false, t1Restricted: false },
+      ctx: { orgId: "org" },
+      research: null,
+      emit: async () => {},
+    });
+    const { patches, ...q } = staffQuestion();
+    const s = {
+      ...newInterviewV3Session(),
+      state: "asking" as const,
+      prompt: SALON,
+      brief: withQa(
+        systemBriefSchema.parse(DENTAL_BOOKING),
+        qa(PLACE_QUESTION_TEXT, "Казань, ул. Баумана, 12"),
+      ),
+      asked: 3,
+      current: { ...q, id: "q4", step: 4, source: "fallback" as const, patches },
+    };
+    const res = await iv.answer(s, { questionId: "q4", text });
+    expect(inputs).toHaveLength(0);
+    expect(validateBrief(res.session.brief).ok).toBe(true);
+    return res.session.brief;
+  }
+
+  test("the answer → brief.qa → staffFacts → the specialists' demo rows: the names as the owner wrote them", async () => {
+    const brief = await answerStaff("Анна Петрова — стилист-колорист, Мария — мастер маникюра");
+    expect(brief.qa.find((x) => x.q === STAFF_QUESTION_TEXT)?.a).toBe(
+      "Анна Петрова — стилист-колорист, Мария — мастер маникюра",
+    );
+    expect(staffFacts(brief)).toEqual(["Анна Петрова — стилист-колорист", "Мария — мастер маникюра"]);
+    const { spec } = await briefSite("v4-24-staff", DENTAL_BOOKING);
+    expect(seedHintsFromBrief(specialistsSpec(spec), brief).filter((h) => h.entity === "specialist")).toEqual(
+      [
+        { entity: "specialist", field: "name", values: ["Анна Петрова", "Мария"], source: "owner" },
+        { entity: "specialist", field: "description", values: ["Стилист-колорист", "Мастер маникюра"] },
+      ],
+    );
+  });
+
+  test("a phone, an e-mail and a passport in the same answer are scrubbed; the names stay", async () => {
+    const brief = await answerStaff(
+      "Анна Петрова — стилист-колорист, Мария — мастер маникюра; запись +7 999 123-45-67, anna.petrova@salon.ru; паспорт 4510 123456",
+    );
+    const a = brief.qa.find((x) => x.q === STAFF_QUESTION_TEXT)?.a ?? "";
+    expect(a).toContain("Анна Петрова — стилист-колорист");
+    expect(a).toContain("Мария — мастер маникюра");
+    expect(a).not.toMatch(/999|123-45-67|@salon|anna\.petrova|4510|123456/);
+    expect(staffFacts(brief).slice(0, 2)).toEqual([
+      "Анна Петрова — стилист-колорист",
+      "Мария — мастер маникюра",
+    ]);
+  });
+
+  test("only that answer: the names in any other answer are scrubbed as before", () => {
+    const b = emptyBrief();
+    addQa(b, {
+      q: "Кто ведёт запись?",
+      a: "Анна Петрова — администратор",
+      recommended: "x",
+      chosen: "custom",
+    });
+    expect(b.qa[0]?.a).not.toContain("Анна");
   });
 });

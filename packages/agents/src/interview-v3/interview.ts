@@ -7,7 +7,7 @@
 // the assumptions of «Решите за меня» and «Дальше решай сам», and the capability map. A crooked model answer never
 // ends the interview: tolerant reading, repairs inside the tool loop, then a deterministic question (fallback.ts).
 import { randomUUID } from "node:crypto";
-import { emptyBrief, type SystemBrief, validateBrief } from "@wizard/appspec";
+import { BRIEF_LIMITS, emptyBrief, type SystemBrief, validateBrief } from "@wizard/appspec";
 import { LlmError, type OrgPolicy, type RouteContext } from "@wizard/llm";
 import type { ModuleRegistry } from "@wizard/modules";
 import { scrub } from "@wizard/pii";
@@ -30,7 +30,9 @@ import {
   nextFactQuestion,
   PLACE_QUESTION_TEXT,
   PRICE_QUESTION_TEXT,
+  STAFF_QUESTION_TEXT,
   splitPlacePhone,
+  splitStaffNames,
 } from "./place.js";
 import { interviewV3Messages, type V3TurnInput } from "./prompt.js";
 import { interviewResearchTools } from "./research-tools.js";
@@ -375,12 +377,16 @@ export class InterviewV3 {
       chosen = "custom";
       label = text;
     }
-    // V4-24, D79 (3): the business phone of the place answer is kept as given; everything else is scrubbed as before.
+    // V4-24, D79 (3): the business phone of the place answer and the specialists' names of the staff answer are kept
+    // as given; everything else is scrubbed as before.
     const place = chosen === "custom" && q.text === PLACE_QUESTION_TEXT ? splitPlacePhone(label) : null;
-    if (chosen === "custom") this.dlp(s, out, place ? place.rest : label);
-    addQa(s.brief, { q: q.text, a: place ? place.rest : label, recommended: rec.label, chosen });
+    const staff = chosen === "custom" && q.text === STAFF_QUESTION_TEXT ? splitStaffNames(label) : null;
+    const rest = place?.rest ?? staff?.rest ?? label;
+    if (chosen === "custom") this.dlp(s, out, rest);
+    addQa(s.brief, { q: q.text, a: rest, recommended: rec.label, chosen });
     const kept = s.brief.qa.at(-1);
     if (place?.phone && kept) kept.a = `${kept.a}; ${place.phone}`;
+    if (staff && kept) kept.a = clip(staff.restore(kept.a), BRIEF_LIMITS.longText);
     // V4-24: the prices the owner gave replace the build-time question of prices and the «без цен» assumption.
     if (chosen === "custom" && q.text === PRICE_QUESTION_TEXT) {
       s.deferred = s.deferred.filter((d) => !/цен/i.test(d.text));
