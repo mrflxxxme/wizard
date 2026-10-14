@@ -90,10 +90,14 @@ describe.skipIf(!ON || !hasChromium)("V4-06: the inner pages (/services, /bookin
               const refusals: string[] = [];
               const routeFn = (i: RouteInput) => {
                 const last = i.messages.at(-1);
-                if (last?.role === "tool") {
-                  const text = typeof last.content === "string" ? last.content : JSON.stringify(last.content);
-                  if (text.includes("INVALID_ARGS")) refusals.push(text.slice(0, 700));
-                }
+                const text =
+                  typeof last?.content === "string" ? last.content : JSON.stringify(last?.content ?? "");
+                // Refusals of the tool and the page checks / G0 the sections or the page are sent back with.
+                if (
+                  (last?.role === "tool" && text.includes("INVALID_ARGS")) ||
+                  (last?.role === "user" && /не прошл[аи]? проверк/.test(text))
+                )
+                  refusals.push(text.slice(-700));
                 return router.route({ ...i, orgPolicy: OPEN, ctx: { orgId: "probe" } });
               };
               const ctx: V3BuildContext = { ...base, files, route: routeFn, budgetRub: 150 };
