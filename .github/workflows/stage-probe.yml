@@ -110,7 +110,7 @@ jobs:
 
       # V4-09: the critic's probe takes real screenshots in Chromium.
       - name: Chromium for the critic
-        if: contains(steps.stages.outputs.stages, 'critic_visual')
+        if: contains(steps.stages.outputs.stages, 'critic_')
         run: pnpm --filter @wizard/e2e exec playwright install --with-deps chromium
       - name: Live probe
         id: probe
