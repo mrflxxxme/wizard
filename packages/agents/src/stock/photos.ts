@@ -8,10 +8,12 @@ import type { PhotoSlot } from "@wizard/modules";
 import { STOCK_LICENSES } from "./client.js";
 import {
   type Candidate,
+  flagTextPhotos,
   type LibraryObjects,
   type LibraryPhotoEntry,
   loadSemanticLibrary,
   needsBackfill,
+  readFlags,
   requestBackfill,
   SEMANTIC_OBJECTS,
   type SearchOptions,
@@ -33,6 +35,8 @@ export interface SemanticPhotoSource {
   requestBackfill(text: string): Promise<void>;
   /** A 480 px WebP of a library photo (null — none). */
   thumbnail(file: string): Promise<Uint8Array | null>;
+  /** V4-26: marks library photos with readable text (search never returns them again). */
+  flagText?(files: readonly string[]): Promise<void>;
 }
 
 /** What the vision model is asked: the site, its slots and the numbered candidates (1-based in the prompt). */
@@ -45,8 +49,14 @@ export interface PickInput {
   candidates: { entry: LibraryPhotoEntry; thumbnail: Uint8Array }[];
 }
 
-/** The model's assignment: slot → candidate index (0-based); null — the model failed (rank order is used). */
-export type PhotoPicker = (input: PickInput) => Promise<{ slot: string; index: number }[] | null>;
+/**
+ * One answer of the model: slot → candidate index (0-based), or V4-26 a candidate with readable text in the frame (a
+ * sign, a caption, a logo, a watermark), which goes to no slot.
+ */
+export type PickAnswer = { slot: string; index: number } | { text: number };
+
+/** The model's answers; null — the model failed (rank order is used). */
+export type PhotoPicker = (input: PickInput) => Promise<PickAnswer[] | null>;
 
 /** Candidates the vision model sees at most. */
 export const PICK_CANDIDATES = 20;
@@ -164,7 +174,15 @@ export async function semanticPhotos(o: {
           .catch(() => null)
       : null;
     if (answer) {
+      // V4-26: photos with text go nowhere on this site, and the library remembers them for every next search.
+      const text = answer.flatMap((a) => {
+        const e = "text" in a ? withThumbs[a.text]?.entry : undefined;
+        return e ? [e] : [];
+      });
+      for (const e of text) used.add(sourceOf(e));
+      if (text.length && o.source.flagText) await o.source.flagText(text.map((e) => e.file)).catch(() => {});
       for (const a of answer) {
+        if (!("slot" in a)) continue;
         const slot = o.slots.find((s) => s.slot === a.slot);
         const entry = withThumbs[a.index]?.entry;
         if (
@@ -234,11 +252,14 @@ export function createSemanticSource(o: {
   const now = o.now ?? Date.now;
   let cached: { at: number; lib: SemanticLibrary | null } | undefined;
   let pending: Promise<SemanticLibrary | null> | undefined;
+  /** V4-26: photos with readable text (the library's flags and the ones this process flagged since). */
+  const textPhotos = new Set<string>();
   const library = async () => {
     if (cached && now() - cached.at <= ttl) return cached.lib;
-    pending ??= loadSemanticLibrary(o.objects)
-      .then((lib) => {
+    pending ??= Promise.all([loadSemanticLibrary(o.objects), readFlags(o.objects).catch(() => null)])
+      .then(([lib, flags]) => {
         cached = { at: now(), lib };
+        for (const f of flags?.text ?? []) textPhotos.add(f);
         return lib;
       })
       .finally(() => {
@@ -255,10 +276,18 @@ export function createSemanticSource(o: {
       return loadTextEncoder(o.modelDir);
     });
   return {
-    async search(text, so) {
+    async search(query, so) {
       const lib = await library();
       if (!lib || lib.size === 0) return [];
-      return lib.search(await encoder.encode(text), so);
+      const filter = so.filter;
+      return lib.search(await encoder.encode(query), {
+        ...so,
+        filter: (e) => !textPhotos.has(e.file) && (!filter || filter(e)),
+      });
+    },
+    async flagText(files) {
+      for (const f of files) textPhotos.add(f);
+      await flagTextPhotos(o.objects, files);
     },
     async requestBackfill(text) {
       // While CI is still filling the catalog, a thin topic is not a new niche yet.

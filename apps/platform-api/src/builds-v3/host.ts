@@ -151,7 +151,18 @@ export async function draftSeedHints(
     if (storage && semanticSource) {
       const covered = new Set([...fromIndex.map((h) => `${h.entity}.${h.field}`), ...skip]);
       const used = new Set(plan.map((p) => String((p as { file?: unknown })?.file ?? "")));
-      out = [...out, ...(await semanticSeedHints(spec, out, used, covered, semanticSource(storage)))];
+      const niche = planNiche(plan);
+      out = [
+        ...out,
+        ...(await semanticSeedHints(
+          spec,
+          out,
+          used,
+          covered,
+          semanticSource(storage),
+          niche ? { niche } : {},
+        )),
+      ];
     }
   } catch {}
   return out;
@@ -175,10 +186,21 @@ function publicImageFields(spec: AppSpec): { entity: string; field: string }[] {
 /** Rows a field without name hints gets photos for. */
 const UNNAMED_ROWS = 6;
 
+/** The niche the photos stage searched for (its alt «… — фото по теме «<niche>»», photos.ts semanticPhotos). */
+export function planNiche(plan: readonly unknown[]): string | null {
+  for (const p of plan) {
+    const alt = (p as { alt?: unknown })?.alt;
+    const m = typeof alt === "string" ? /по теме «([^»]{2,120})»$/.exec(alt) : null;
+    if (m?.[1]) return m[1];
+  }
+  return null;
+}
+
 /**
- * V4-22: image hints from the semantic library — one photo per row, searched by the site's name and the row's name
- * (the name hints of the same entity, in row order), else by the site's name alone; landscape, never twice, never one
- * of `used` (the plan's photos). [] — no library or nothing fits.
+ * V4-22: image hints from the semantic library — one photo per row, searched by the site's niche (else its name) and
+ * the row's name (the name hints of the same entity, in row order), else by the niche alone; landscape, never twice,
+ * never one of `used` (the plan's photos). V4-26: only from the niche shards the plan's photos came from — «Терапия» of
+ * a dental clinic is a dentist's chair, not a gynecologist's. [] — no library or nothing fits.
  */
 export async function semanticSeedHints(
   spec: AppSpec,
@@ -186,9 +208,21 @@ export async function semanticSeedHints(
   used: ReadonlySet<string>,
   covered: ReadonlySet<string>,
   source: Pick<SemanticPhotoSource, "search">,
+  topic: { niche?: string } = {},
 ): Promise<SeedHint[]> {
-  const site = spec.app.name.trim();
+  const site = topic.niche?.trim() || spec.app.name.trim();
   const taken = new Set(used);
+  const own = [...used].filter(Boolean);
+  const shards = new Set(
+    own.length
+      ? (
+          await source
+            .search(site.slice(0, 200), { limit: own.length, filter: (e) => used.has(e.file) })
+            .catch(() => [])
+        ).map((c) => c.entry.niche)
+      : [],
+  );
+  const inNiche = (e: { niche: string }) => shards.size === 0 || shards.has(e.niche);
   const out: SeedHint[] = [];
   for (const f of publicImageFields(spec)) {
     if (covered.has(`${f.entity}.${f.field}`) || covered.has(f.entity)) continue;
@@ -200,7 +234,7 @@ export async function semanticSeedHints(
       const found = await source
         .search(q.slice(0, 200), {
           limit: want + 4,
-          filter: (e) => e.width >= e.height * 1.15 && !taken.has(e.file),
+          filter: (e) => e.width >= e.height * 1.15 && !taken.has(e.file) && inNiche(e),
         })
         .catch(() => []);
       for (const c of found.filter((x) => !taken.has(x.entry.file)).slice(0, want)) {

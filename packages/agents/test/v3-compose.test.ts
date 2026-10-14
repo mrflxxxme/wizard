@@ -58,7 +58,7 @@ describe("skeleton: pages, sections, texts", () => {
     expect(a.out.spentRub).toBe(0);
     expect([...a.out.files]).toEqual([...b.out.files]);
     expect(a.out.pages.map((p) => p.route)).toEqual(["/", "/services", "/photos"]);
-    expect(a.out.pages.map((p) => p.title)).toEqual(["Главная", "Каталог и цены", "Источники фото"]);
+    expect(a.out.pages.map((p) => p.title)).toEqual(["Главная", "Услуги", "Источники фото"]);
     expect(a.out.notes[0]).toMatch(/^Собрал каркас сайта в стиле «.+»: 3 стр\./);
     // Every section type of the pages has library patterns now; sections whose required content the facts do not give
     // (FAQ needs two answers — the plan has one) are left out, never invented.
@@ -90,7 +90,7 @@ describe("skeleton: pages, sections, texts", () => {
     });
     const catalog = site.pages[1]?.sections.find((s) => s.id === "catalog");
     expect(meta(catalog?.pattern)?.needs).toBe("catalog");
-    expect(catalog?.props).toMatchObject({ entity: "service", title: "Услуги и цены" });
+    expect(catalog?.props).toMatchObject({ entity: "service", title: "Все услуги" });
     // The services section of the home page in the services slot contract (≥ 2 items of the plan).
     const services = site.pages[0]?.sections.find((s) => s.id === "services");
     expect(meta(services?.pattern)?.sectionType).toBe("services");
@@ -121,8 +121,8 @@ describe("skeleton: pages, sections, texts", () => {
       expect.arrayContaining(["/cabinet", "/cabinet/notifications", "/", "/services", "/photos"]),
     );
     expect(JSON.parse(out.files.get(SEO_JSON) as string).pages["/services"]).toEqual({
-      title: "Каталог и цены — Белая линия",
-      description: "Каталог и цены. Белая линия — стоматологическая клиника.",
+      title: "Услуги — Белая линия",
+      description: "Услуги. Белая линия — стоматологическая клиника.",
     });
   });
 
@@ -152,7 +152,7 @@ describe("skeleton: pages, sections, texts", () => {
     const nav = (p: typeof home) => p.sections[0]?.props.nav;
     expect(nav(home)).toEqual([
       { label: "Главная", href: "/" },
-      { label: "Каталог и цены", href: "/services" },
+      { label: "Услуги", href: "/services" },
     ]);
     const footer = home.sections.at(-1)?.props as { columns?: { links: { href: string }[] }[] };
     expect(footer.columns?.[0]?.links.map((l) => l.href)).toEqual(["/", "/services", "/photos"]);
@@ -275,7 +275,7 @@ describe("V3-18: photo credits, inner first screens, the footer", () => {
   test("an inner page's first screen says what the page holds, not only its title and a button", async () => {
     const { site } = await skeleton(composeContext());
     const services = props(site, "/services", "hero");
-    expect(services?.title).toBe("Каталог и цены");
+    expect(services?.title).toBe("Услуги");
     expect(typeof services?.lead).toBe("string");
     expect(String(services?.lead ?? "").length).toBeGreaterThan(10);
   });

@@ -137,8 +137,13 @@ export function composeSite(ctx: V3BuildContext, lib: ComposeLibrary = {}): Skel
   // V3-18: the catalog's page is called by what it shows in the brief's words («Туры»), not «Каталог и цены».
   const noun = facts.copy.catalog;
   const nounTitle = noun ? noun.charAt(0).toUpperCase() + noun.slice(1) : undefined;
-  if (nounTitle && nounTitle.length <= 40)
+  if (nounTitle && nounTitle.length <= 40) {
     for (const p of planned) if (p.kind === "catalog" && p.module === "catalog") p.title = nounTitle;
+  } else if (!facts.prices) {
+    // D49: a catalog without a price in the facts does not promise prices in its page title («Каталог и цены»).
+    for (const p of planned)
+      if (p.kind === "catalog" && p.module === "catalog" && /цен/i.test(p.title)) p.title = "Услуги";
+  }
   // V3-24: the list of articles is called as the owner named it (blog_title of «Контент и блог»).
   const content = ctx.plan.modules.find((m) => m.id === CONTENT_MODULE);
   if (content)

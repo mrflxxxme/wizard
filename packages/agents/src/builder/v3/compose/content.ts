@@ -570,7 +570,7 @@ function boundProps(type: SectionType, c: SectionContext): Props | null {
       const all = (noun && fits(`Все ${noun}`, LINE.label)) || "Весь каталог";
       return {
         entity,
-        title: (noun && fits(cap(noun), LINE.cta)) || "Услуги и цены",
+        title: (noun && fits(cap(noun), LINE.cta)) || (f.prices ? "Услуги и цены" : "Услуги"),
         empty,
         pageSize: 6,
         preview: true,
@@ -585,9 +585,11 @@ function boundProps(type: SectionType, c: SectionContext): Props | null {
       // The page heading (h1) is the screen title; the showcase heading says what the list is, without repeating it.
       title: noun
         ? (fits(`Все ${noun}`, LINE.cta) ?? cap(noun))
-        : own === "услуги и цены"
+        : own === "услуги и цены" || own === "услуги"
           ? "Все услуги"
-          : "Услуги и цены",
+          : f.prices
+            ? "Услуги и цены"
+            : "Услуги",
       empty,
       ...(itemAction ? { itemAction } : {}),
     };

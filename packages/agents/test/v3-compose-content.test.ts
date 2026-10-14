@@ -126,7 +126,7 @@ describe("pages of «Контент и блог»", () => {
     const nav = header?.nav;
     expect(nav).toEqual([
       { label: "Главная", href: "/" },
-      { label: "Каталог и цены", href: "/services" },
+      { label: "Услуги", href: "/services" },
     ]);
     const footer = home.sections.find((s) => s.type === "footer")?.props as {
       columns: { links: { href: string }[] }[];
