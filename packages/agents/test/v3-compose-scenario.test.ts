@@ -116,7 +116,14 @@ function scripted(answers: Partial<Record<string, unknown[]>>) {
 
 const noVerify = async () => ({ ok: true, problems: [] as string[] });
 const composer = (o: Parameters<typeof createPageComposer>[0] = {}) =>
-  createPageComposer({ patterns: PATTERNS, registry: llm, verify: noVerify, firstScreen: false, ...o });
+  createPageComposer({
+    patterns: PATTERNS,
+    registry: llm,
+    verify: noVerify,
+    firstScreen: false,
+    sections: false,
+    ...o,
+  });
 
 describe("V4-06: the page as free code", () => {
   test("the model writes the sections as code, keeps the SDK components; files, site model, SEO, budget", async () => {
@@ -365,10 +372,12 @@ describe("V4-06: G0 of the system decides (real build)", () => {
       sections: HOME.sections.map((s) => (s.id === "first-visit" ? { ...s, source: brokenSource } : s)),
     };
     const { route, calls } = scripted({ page_compose: [broken] });
-    const r = await createPageComposer({ patterns: PATTERNS, registry: llm, firstScreen: false }).scenario(
-      { ...ctx, route },
-      LEAD,
-    );
+    const r = await createPageComposer({
+      patterns: PATTERNS,
+      registry: llm,
+      firstScreen: false,
+      sections: false,
+    }).scenario({ ...ctx, route }, LEAD);
     expect(calls).toHaveLength(2);
     expect(JSON.stringify(calls[1]?.messages.at(-1))).toContain("G0-");
     expect(r.notes.join("\n")).toContain("не собрался");
@@ -378,10 +387,12 @@ describe("V4-06: G0 of the system decides (real build)", () => {
   test("good code builds: the page with its code sections passes G0", async () => {
     const { ctx } = await prepared();
     const { route, calls } = scripted({ page_compose: [HOME] });
-    const r = await createPageComposer({ patterns: PATTERNS, registry: llm, firstScreen: false }).scenario(
-      { ...ctx, route },
-      LEAD,
-    );
+    const r = await createPageComposer({
+      patterns: PATTERNS,
+      registry: llm,
+      firstScreen: false,
+      sections: false,
+    }).scenario({ ...ctx, route }, LEAD);
     expect(calls).toHaveLength(1);
     expect(apply(ctx.files, r).get("ui/sections/home-hero.tsx")).toBe(HERO_CODE.source);
   }, 180_000);
