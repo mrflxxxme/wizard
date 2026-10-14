@@ -9,22 +9,21 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   ART_DIRECTION_CALL_TYPE,
-  briefFacts,
-  DIRECTION_TEXTS_TOOL,
+  DIRECTION_IDEAS_TOOL,
   directionsNiche,
-  directionTextsMessages,
-  directionTextsSchema,
+  pickIdeas,
   proposeDirections,
 } from "@wizard/agents/builder";
 import type { RecordedExchange } from "@wizard/agents/research";
 import { recordedFetch } from "@wizard/agents/research";
 import type { SystemBriefInput } from "@wizard/appspec";
-import { createRouter } from "@wizard/llm";
+import { createRouter, ROUTES, type RouteInput, type RouteOutput, requestKey } from "@wizard/llm";
 import { PNG } from "pngjs";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { defineTool } from "../../../packages/agents/src/core/tool.js";
 import { fixtureLine } from "../../../packages/agents/test/build-v2-fixtures.js";
+import { fiveDirections } from "../../../packages/agents/test/v4-art-fixtures.js";
 import { dentalBrief } from "../../../packages/appspec/test/brief-fixtures.js";
+import { scrubMessagesForT1 } from "../../../packages/llm/src/policy.js";
 import { getLatestBrief, saveBriefVersion } from "../src/briefs/store.js";
 import { DEFAULT_ORG_ID, DEV_USER_ID, json } from "../src/db/index.js";
 import { DIRECTIONS_RATE } from "../src/directions/service.js";
@@ -121,39 +120,83 @@ async function addSystem(
   return row.id;
 }
 
-/** The recorded texts answer for a system: the prompt the platform will send, three sets in the client's words. */
-async function recordTexts(systemId: string, name: string): Promise<void> {
+/**
+ * The recorded answers of the parallel path (V4-17) for a system: the ideas call, then one call per direction (its
+ * design system and its first-screen texts in the client's words). The requests are the ones the platform will send:
+ * the same input through proposeDirections with a capturing model.
+ */
+async function recordDirections(systemId: string, name: string): Promise<void> {
   const latest = await getLatestBrief(api.deps.db, systemId);
   if (!latest) throw new Error("no brief");
   const niche = directionsNiche(name, REQUEST);
-  const p = await proposeDirections({ brief: latest.brief, name, niche, seed: systemId });
-  const ids = p.directions.map((d) => d.archetype);
-  const tool = defineTool({
-    name: DIRECTION_TEXTS_TOOL,
-    description: "texts",
-    input: directionTextsSchema(ids),
-  });
-  const messages = directionTextsMessages(
-    briefFacts(latest.brief, name, niche),
-    p.directions.map((d) => ({ archetype: d.archetype, voice: d.voice })),
-  );
-  const sets = ids.map((direction, i) => ({
-    direction,
-    title: [
-      "Запись на приём с сайта — без звонков",
-      "Приём у стоматолога рядом с домом",
-      "Стоматология «Улыбка» онлайн",
-    ][i],
-    lead: "Выберите услугу и удобное время — подтверждение придёт в Telegram. Для жителей района и семей с детьми.",
-    action: ["Записаться", "Выбрать время", "Записаться онлайн"][i],
+  const five = fiveDirections().directions;
+  const ideas = five.map(({ name: n, why, probability, base, voice }) => ({
+    name: n,
+    why,
+    probability,
+    base,
+    voice,
   }));
-  const line = fixtureLine(ART_DIRECTION_CALL_TYPE, messages, [tool.definition], {
-    name: DIRECTION_TEXTS_TOOL,
-    args: { sets },
-  });
-  writeFileSync(join(fixtures, "unit", "design-directions.jsonl"), `${JSON.stringify(line)}\n`, {
-    flag: "a",
-  });
+  const order = pickIdeas({ ideas }).map((d) => d.base);
+  const titles = [
+    "Запись на приём с сайта — без звонков",
+    "Приём у стоматолога рядом с домом",
+    "Стоматология «Улыбка» онлайн",
+  ];
+  const lines: string[] = [];
+  const route = async (input: RouteInput): Promise<RouteOutput> => {
+    const tool = input.tools?.[0];
+    if (!tool) throw new Error("no tool");
+    let args: unknown;
+    if (tool.name === DIRECTION_IDEAS_TOOL) args = { ideas };
+    else {
+      const base = /base: ([a-z_]+);/.exec(JSON.stringify(input.messages))?.[1] as string;
+      const i = Math.max(0, order.indexOf(base as (typeof order)[number]));
+      const d = five.find((x) => x.base === base) ?? five[0];
+      args = {
+        ...d,
+        base,
+        texts: {
+          title: titles[i],
+          lead: "Выберите услугу и удобное время — подтверждение придёт в Telegram. Для жителей района и семей с детьми.",
+          action: ["Записаться", "Выбрать время", "Записаться онлайн"][i],
+        },
+      };
+    }
+    const tools = [...(input.tools ?? [])];
+    const line = fixtureLine(ART_DIRECTION_CALL_TYPE, input.messages, tools, { name: tool.name, args });
+    // The router keys a request by its scrubbed messages with the system id masked (<systemId>: the ideas carry it as
+    // their seed).
+    const route = ROUTES[ART_DIRECTION_CALL_TYPE];
+    line.key = requestKey({
+      callType: ART_DIRECTION_CALL_TYPE,
+      modelId: line.modelId,
+      messages: scrubMessagesForT1(input.messages).messages,
+      tools,
+      temperature: route.temperature,
+      maxTokens: route.maxTokens,
+      systemId,
+    });
+    lines.push(JSON.stringify(line));
+    return {
+      tier: "T1",
+      model: "glm-5.3",
+      result: { toolCalls: [{ id: `c${lines.length}`, name: tool.name, args }], finishReason: "tool-calls" },
+      usage: { inputTokens: 1000, cachedTokens: 0, outputTokens: 500 },
+      creditsCharged: 0.1,
+      creditsMilli: 100,
+      routeReason: "default_T1",
+      scrubbed: false,
+      ruFallback: false,
+    } as RouteOutput;
+  };
+  const p = await proposeDirections(
+    { brief: latest.brief, name, niche, seed: systemId, recent: [] },
+    { route },
+    { onDirection: () => {} },
+  );
+  if (p.fallback) throw new Error("the capturing model did not take the parallel path");
+  writeFileSync(join(fixtures, "unit", "design-directions.jsonl"), `${lines.join("\n")}\n`, { flag: "a" });
 }
 
 const get = (path: string) =>
@@ -188,7 +231,7 @@ let first: Record<string, any>;
 describe("three directions after the brief", () => {
   test("≤ 2 min and ≤ 40 ₽: three archetypes, the model's texts, live previews built in parallel, a chat card", async () => {
     main = await addSystem();
-    await recordTexts(main, "Стоматология «Улыбка»");
+    await recordDirections(main, "Стоматология «Улыбка»");
     const t0 = performance.now();
     const r = await api.req("POST", `/systems/${main}/directions`);
     const ms = performance.now() - t0;
@@ -217,14 +260,16 @@ describe("three directions after the brief", () => {
       );
       expect(d.palette.accent).toMatch(/^#[0-9A-F]{6}$/);
     }
-    // The texts call is journaled like every model call (T1, a build stage without scrub — D79 (3)).
+    // The calls (ideas, then one per direction) are journaled like every model call (T1, a build stage without
+    // scrub — D79 (3)).
     const calls = await api.deps.pg<
       { call_type: string; tier: string; scrubbed: boolean; cost_rub: string }[]
     >`
       select call_type, tier, scrubbed, cost_rub from platform.llm_calls where system_id = ${main}`;
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatchObject({ call_type: "art_direction", tier: "T1", scrubbed: false });
-    expect(Number(calls[0]?.cost_rub)).toBeLessThanOrEqual(40);
+    expect(calls).toHaveLength(4);
+    for (const c of calls)
+      expect(c).toMatchObject({ call_type: "art_direction", tier: "T1", scrubbed: false });
+    expect(calls.reduce((sum, c) => sum + Number(c.cost_rub), 0)).toBeLessThanOrEqual(40);
     // A chat card announces them; GET returns the same set.
     const chat = await api.deps.pg<{ role: string; text: string; payload: Record<string, unknown> }[]>`
       select role, text, payload from platform.messages where system_id = ${main} order by seq`;
