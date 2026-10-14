@@ -435,8 +435,8 @@ describe("v3 shape probe: the plan, the cap, the pod script", () => {
       (x: { group: string; model: string; variant: string }) => `${x.group}:${x.model}:${x.variant}`,
     );
     expect(ids.slice(0, 6)).toEqual([
-      "critic:kimi-k2.6:prod",
       "critic:qwen3.6-35b:prod",
+      "critic:kimi-k2.6:prod",
       "techreview:gpt-oss-120b:prod",
       "techreview:gigachat-3.5:prod",
       "techreview:deepseek-v4-pro:prod",

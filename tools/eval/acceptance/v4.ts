@@ -155,8 +155,8 @@ export function renderSummary(rows: readonly Row[], meta: { runUrl: string; shot
     "",
     `Цели: три экрана ≤ ${V4_TARGETS.screensSec} с, система ≤ ${V4_TARGETS.systemMin} мин, ≤ ${V4_TARGETS.rub} ₽. Прогон: ${meta.runUrl}`,
     "",
-    "| бриф | итог | три экрана, с | система, мин | ₽ | критик | гейты | снимки |",
-    "|---|---|---|---|---|---|---|---|",
+    "| бриф | итог | три экрана, с | система, мин | ₽ | критик | главное у критика | гейты | снимки |",
+    "|---|---|---|---|---|---|---|---|---|",
   ];
   for (const r of rows) {
     const rep = r.report;
@@ -176,9 +176,15 @@ export function renderSummary(rows: readonly Row[], meta: { runUrl: string; shot
     const critic = rep?.critic?.scores.length
       ? `${rep.critic.scores.join(" → ")} (${STOP_RU[rep.critic.stop ?? "none"] ?? rep.critic.stop})`
       : "—";
+    // «На глаз»: the critic's three main findings of its last cycle, in words, without opening the screenshots.
+    const eye =
+      (rep?.critic?.top ?? [])
+        .slice(0, 3)
+        .map((t) => t.replace(/\|/g, "/"))
+        .join("<br>") || "—";
     const shots = r.shots.map((s) => `[${s.replace(/\.jpg$/, "")}](${meta.shotsBase}/${r.brief}/${s})`).join(" · ") || "—";
     out.push(
-      `| ${r.brief} | ${r.status}${r.error ? `: ${r.error.slice(0, 80)}` : ""} | ${r.screensSec ?? "—"} ${mark(r.screensSec === null ? null : r.screensSec <= V4_TARGETS.screensSec)} | ${r.systemMin ?? "—"} ${mark(r.systemMin === null ? null : r.systemMin <= V4_TARGETS.systemMin)} | ${round(r.rub)} ${mark(r.rub <= V4_TARGETS.rub)} | ${critic} | ${gates} | ${shots} |`,
+      `| ${r.brief} | ${r.status}${r.error ? `: ${r.error.slice(0, 80)}` : ""} | ${r.screensSec ?? "—"} ${mark(r.screensSec === null ? null : r.screensSec <= V4_TARGETS.screensSec)} | ${r.systemMin ?? "—"} ${mark(r.systemMin === null ? null : r.systemMin <= V4_TARGETS.systemMin)} | ${round(r.rub)} ${mark(r.rub <= V4_TARGETS.rub)} | ${critic} | ${eye} | ${gates} | ${shots} |`,
     );
   }
   out.push("", "## ₽ и минуты по этапам сборки (отчёт V4-04)", "");
