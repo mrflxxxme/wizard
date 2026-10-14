@@ -461,10 +461,21 @@ export class DirectionsService {
     const recent = opts.reroll ? await this.#recentArchetypes(sys.id) : [];
     const niche = directionsNiche(sys.name, await loadBrief(this.d.db, sys.id));
     const model = await this.#model(sys, new RubWallet(DIRECTIONS_BUDGET_RUB, RUB_PER_CREDIT));
+    // The parallel path of V4-17, as the stream takes: one short call for the ideas, then the three directions at
+    // once, each preview built as soon as its direction is ready (the cache is by content: view() reuses them). The
+    // sequential path took 4–6 calls one after another with its repairs (three screens 98 s in rehearsal №5).
+    const building: Promise<unknown>[] = [];
     const proposal = await proposeDirections(
       { brief: latest.brief, name: sys.name, niche, seed: sys.id, recent },
       { ...model, ...(opts.signal ? { signal: opts.signal } : {}) },
+      {
+        onDirection: (d, base) => {
+          // A failed build is retried by view(), which reports it.
+          building.push(this.previews.build(`propose:${sys.id}`, base, d).catch(() => {}));
+        },
+      },
     );
+    await Promise.all(building);
     const { id, stored } = await this.#announce(sys, proposal, latest.version);
     return this.view(id, stored, latest.brief);
   }
