@@ -200,7 +200,11 @@ export async function composeScenario(
       const page = site.pages.find((p) => p.route === target.route) as SitePage;
       const own: string[] = [];
       const step = opts.sections === false ? pageCode : pageSections;
-      const done = await step(ctx, base, {
+      // The home page's first screen a model already wrote (the judge's pick of the pair): a later scenario or a repair
+      // keeps it as it is — one author must not quietly replace the better of the two.
+      const writtenHero =
+        page.route === "/" ? page.sections.find((x) => x.id === "hero" && x.type === "signature") : undefined;
+      const result = await step(ctx, base, {
         site,
         page,
         scenario,
@@ -212,10 +216,14 @@ export async function composeScenario(
         stop: stopper(own),
         registry,
         ...(opts.inspect ? { inspect: opts.inspect } : {}),
-        firstScreen: opts.firstScreen !== false && page.route === "/",
+        // Two first screens only when a model writes the home page for the first time (its hero is still the
+        // skeleton's pattern): a later scenario or a repair that rewrites it keeps one author — the pair and its judge
+        // cost ≈ 35 s each time (rehearsal №5: s1 and s3).
+        firstScreen: opts.firstScreen !== false && page.route === "/" && !writtenHero,
         callType: COMPOSE_CALL_TYPES.page,
         ...(ctx.repair?.length ? { repair: ctx.repair } : {}),
       });
+      const done = writtenHero && result && result !== "stop" ? keepHero(result, writtenHero) : result;
       return { done, own };
     }),
   );
@@ -252,4 +260,20 @@ export async function composeScenario(
     notes,
     spentRub: wallet.spent(),
   };
+}
+
+/** The page with its first body section back to the written hero; the new hero's file is not written. */
+function keepHero(
+  r: { page: SitePage; sources: Map<string, string> },
+  hero: SitePage["sections"][number],
+): { page: SitePage; sources: Map<string, string> } {
+  const sections = [...r.page.sections];
+  const at = sections.findIndex((x) => x.type !== "header");
+  const was = sections[at];
+  if (at < 0 || !was || was.type === "footer") return r;
+  const sources = new Map(r.sources);
+  if (was.file) sources.delete(was.file);
+  if (hero.file) sources.delete(hero.file);
+  sections[at] = hero;
+  return { ...r, page: { ...r.page, sections }, sources };
 }
