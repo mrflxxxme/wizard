@@ -2677,6 +2677,28 @@ tasks:
       - "Фото, отмеченное моделью как фото с текстом, не попадает на сайт, флаг сохраняется в библиотеке и исключает фото из поиска (тесты)"
       - "Фото карточек — по нише и только из шардов ниши фото сайта (тест)"
       - "Живая проба photo_pick: вывеска найдена и не стоит на месте, выбор по теме на 3 нишах × 2 моделях"
+  - id: V4-27
+    title: "Фото карточек каталога проверяет визуальная модель: один вызов photo_pick на все строки до засева черновика"
+    milestone: V4
+    deps: [V4-26]
+    specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4"]
+    owner: platform
+    parallel_group: v4-c
+    estimate_days: 0.5
+    status: in_progress
+    claimed_by: session_01HWKT1m6cHQBBtUV7d9pQhf
+    owns: ["apps/platform-api/src/builds-v3/card-photos.ts", "apps/platform-api/src/builds-v3/host.ts (draftSeedHints, checkCardPhotos)", "packages/agents/src/builder/v2/photos.ts (PhotoHost.cards)", "packages/agents/src/builder/v3/run.ts (startCardCheck)", "packages/agents/src/stock/pick.ts (stepName)", "packages/agents/test/v3-harness.test.ts", "packages/agents/test/stock-pick.live.test.ts", "apps/platform-api/test/v4-semantic-seed.test.ts", "apps/platform-api/test/v3-seed-hints.test.ts"]
+    description: >
+      Поток Б, по просьбе оркестратора после V4-26: ленивый флаг текста ловит вывеску в карточке, только если фото раньше
+      видел выбор героя. Теперь сборка, как только бэкенд скомпилирован, одним вызовом photo_pick (шаг photo_cards)
+      проверяет кандидатов всех карточек — по два на строку, до 6 строк: модель выбирает фото строки по нише, отмечает
+      фото с текстом. Вердикт хранится в чекпоинте «card_photos»; засев черновика берёт его, пока строки, фото сайта и
+      ниша те же; повторная сборка с теми же строками модель не вызывает. Превью ждёт проверку не дольше 15 с.
+    acceptance:
+      - "Один вызов на все строки; строка берёт фото модели, иначе своего кандидата без текста; сбой модели — первые кандидаты (тесты)"
+      - "Вердикт сохраняется и попадает в засев; те же строки не проверяются повторно (тест с базой)"
+      - "Превью ждёт проверку, но не дольше CARD_CHECK_WAIT_MS (тесты харнесса)"
+      - "Живая проба карточек стоматологии: ≤ 2 ₽ и ≤ 15 с на glm-5v-turbo, фото строк по теме"
   - id: V4-19
     title: "Записи e2e v3 по этапам и частичная перезапись record-stale"
     milestone: V4

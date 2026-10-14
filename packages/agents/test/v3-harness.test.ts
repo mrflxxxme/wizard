@@ -15,7 +15,7 @@ import {
 import type { GateReport, GoalScenarioInput } from "@wizard/gates";
 import { createRegistry, createRouter, LlmError, type RouteInput } from "@wizard/llm";
 import { type DesignSystemV3, designSystemV3 } from "@wizard/ui-kit/v3/design";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
   briefNiche,
   CHECKS_UNAVAILABLE_RU,
@@ -34,7 +34,7 @@ import {
   type V3ReadyNotice,
   type V3StageHook,
 } from "../src/builder/index.js";
-import { photoSwap, swapIds } from "../src/builder/v3/run.js";
+import { CARD_CHECK_WAIT_MS, photoSwap, swapIds } from "../src/builder/v3/run.js";
 import type { DevelopmentRequestInput } from "../src/gaps.js";
 import {
   CLINIC_MUST,
@@ -822,6 +822,48 @@ describe("harness v3: the vision pick of the photos next to the skeleton (V4-10)
     };
     expect(cp.picked).toBeUndefined();
     expect(sys.files["ui/pages/SitePhotos.tsx"]).toContain(entries[0]?.file as string);
+  });
+
+  test("V4-27: the card check gets the compiled spec and a picker, and the preview waits for it", async () => {
+    const sys = newSys();
+    const { host: photos } = library(async () => null);
+    const seen: { entities: number; picker: boolean }[] = [];
+    let checked = false;
+    photos.cards = async ({ spec, picker }) => {
+      seen.push({ entities: spec.entities.length, picker: typeof picker === "function" });
+      await new Promise((r) => setTimeout(r, 20));
+      checked = true;
+    };
+    let atPreview: boolean | null = null;
+    ok(
+      (
+        await build(sys, {
+          photos,
+          preview: () => {
+            atPreview ??= checked;
+            return { ok: true, problems: [] };
+          },
+        })
+      ).out,
+    );
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.entities).toBeGreaterThan(0);
+    expect(seen[0]?.picker).toBe(true);
+    expect(atPreview).toBe(true);
+  });
+
+  test("V4-27: a card check that never ends does not hold the preview past its wait", async () => {
+    const sys = newSys();
+    const { host: photos } = library(async () => null);
+    photos.cards = () => new Promise(() => {});
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const run = build(sys, { photos });
+      await vi.advanceTimersByTimeAsync(CARD_CHECK_WAIT_MS + 1000);
+      ok((await run).out);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("photoSwap and swapIds: only changed slots, and a swap of two photos stays a swap", () => {
