@@ -2662,7 +2662,7 @@ tasks:
     owner: platform
     parallel_group: v4-c
     estimate_days: 0.5
-    status: in_progress
+    status: done
     claimed_by: session_01HWKT1m6cHQBBtUV7d9pQhf
     owns: ["packages/agents/src/stock/pick.ts", "packages/agents/src/stock/photos.ts (flagText, PickAnswer)", "packages/agents/src/stock/semantic.ts (флаги)", "packages/agents/src/stock/index.ts", "packages/agents/test/stock-photos.test.ts", "packages/agents/test/stock-pick.live.test.ts", "apps/platform-api/src/builds-v3/host.ts (semanticSeedHints, planNiche)", "apps/platform-api/test/v4-semantic-seed.test.ts"]
     description: >
