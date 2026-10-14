@@ -2,7 +2,8 @@
 // Russian query, at most 20 go to the vision pick, its invalid choices are ignored and the slots it leaves take the
 // best remaining fitting photo, no photo repeats on the site, a thin topic queues the niche for backfill (only once the
 // catalog is mostly filled), the photos stage takes the library first and the stock way while it is empty, and the
-// site CSS applies the direction's grade to the library photos.
+// site CSS applies the direction's grade to the library photos. V4-26: the photos the model lists with readable text
+// (a foreign sign, a logo) go to no slot, the library remembers them and never returns them again.
 import type { SystemPlan } from "@wizard/appspec";
 import { createRegistry, type RouteInput, type RouteOutput } from "@wizard/llm";
 import { photoSlots } from "@wizard/modules";
@@ -18,6 +19,7 @@ import {
   type Candidate,
   createSemanticSource,
   EMBED_DIM,
+  flagTextPhotos,
   GOOD_SCORE,
   type LibraryObjects,
   type LibraryPhotoEntry,
@@ -29,6 +31,7 @@ import {
   photoPickTool,
   photoQueryText,
   quantize,
+  readFlags,
   readRequests,
   SEMANTIC_MODEL,
   SEMANTIC_VERSION,
@@ -181,6 +184,28 @@ describe("semanticPhotos", () => {
     expect(r.photos.find((x) => x.slot === "about")?.file).toBe(library[1]?.file);
   });
 
+  test("V4-26: photos with text go to no slot, not even by rank, and the library is told", async () => {
+    const { source } = fakeSource(library);
+    const flagged: string[] = [];
+    source.flagText = async (files) => void flagged.push(...files);
+    const top = slots[0]?.slot as string;
+    let sign = "";
+    const r = await semanticPhotos({
+      plan: p,
+      slots,
+      source,
+      // The best candidate has a sign: the model lists it and still (wrongly) puts it on the first screen.
+      picker: async (input) => {
+        sign = input.candidates[0]?.entry.file as string;
+        return [{ text: 0 }, { slot: top, index: 0 }];
+      },
+      pickedAt: "2026-10-13",
+    });
+    expect(flagged).toEqual([sign]);
+    expect(r.photos.map((x) => x.file)).not.toContain(sign);
+    expect(r.photos).toHaveLength(slots.length);
+  });
+
   test("too few photos on the topic queue the niche; slots without a fitting photo stay empty", async () => {
     const { source, log } = fakeSource([photo("landscape"), photo("landscape")], 0.01);
     const r = await semanticPhotos({ plan: p, slots, source, pickedAt: "2026-10-13" });
@@ -240,6 +265,29 @@ describe("createSemanticSource", () => {
     expect((await readRequests(objects)).requests).toEqual([]);
     expect(BACKFILL_MIN_LIBRARY).toBeGreaterThan(2);
   });
+});
+
+test("createSemanticSource: a photo flagged with text is never returned again, by this process or the next", async () => {
+  const objects = memory();
+  const entries = [photo("landscape"), photo("landscape")];
+  await writeShard(objects, { slug: "a", name: "a", entries, vectors: quantize([unit(5), unit(1)]) });
+  await writeManifest(objects, {
+    version: SEMANTIC_VERSION,
+    model: SEMANTIC_MODEL,
+    shards: [{ slug: "a", name: "a", count: 2, updatedAt: "2026-10-13" }],
+  });
+  const make = () =>
+    createSemanticSource({ objects, modelDir: "/nonexistent", thumbnail: async () => null, encoder });
+  const src = make();
+  expect((await src.search("стоматология", {})).map((c) => c.entry.file)).toHaveLength(2);
+  await src.flagText?.([entries[1]?.file as string]);
+  const ids = async (s: ReturnType<typeof make>) =>
+    (await s.search("стоматология", {})).map((c) => c.entry.file);
+  expect(await ids(src)).toEqual([entries[0]?.file]);
+  expect(await ids(make())).toEqual([entries[0]?.file]);
+  expect((await readFlags(objects)).text).toEqual([entries[1]?.file]);
+  await flagTextPhotos(objects, [entries[1]?.file as string]);
+  expect((await readFlags(objects)).text).toHaveLength(1);
 });
 
 describe("the photos stage with a semantic library", () => {
@@ -363,6 +411,14 @@ describe("photo_pick (the vision model)", () => {
     expect(calls).toHaveLength(2);
     const issues = photoPickTool(input).parse(bad);
     expect(issues.ok).toBe(false);
+  });
+
+  test("V4-26: the numbers with text come back as text answers; a photo with text on a slot is sent back", async () => {
+    const { route } = routeOf([{ choices: [{ slot: "top", photo: 3 }], text: [1, 1] }]);
+    expect(await modelPhotoPicker({ route })(input)).toEqual([{ slot: "top", index: 2 }, { text: 0 }]);
+    const bad = photoPickTool(input).parse({ choices: [{ slot: "top", photo: 1 }], text: [1, 7] });
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.issues.map((i) => i.code).sort()).toEqual(["TEXT_IN_FRAME", "UNKNOWN_PHOTO"]);
   });
 
   test("a failing model — null (the stage takes the rank order)", async () => {

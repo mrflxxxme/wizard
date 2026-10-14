@@ -11,7 +11,7 @@ import { PATTERN_IMPORTS, PATTERN_THEME, PATTERNS, type PatternMeta } from "@wiz
 import { z } from "zod";
 import { defineTool, type ToolIssue, toJsonSchema } from "../../../core/tool.js";
 import { heroPhoto } from "./content.js";
-import type { SiteFacts } from "./facts.js";
+import { type SiteFacts, textLeaves } from "./facts.js";
 import { copyIssues, lintErrors, propsIssues } from "./lint.js";
 import { SECTIONS_DIR, type SiteModel, type SitePage, type SiteSection } from "./site.js";
 import { lintSitePage } from "./skeleton.js";
@@ -163,6 +163,9 @@ const code = (i: number, c: string, message: string, path = `sections.${i}`): To
 /** The least body sections of the home page (rehearsal 13.10.2026: a home of a hero and two lists is thin). */
 export const HOME_MIN_SECTIONS = 4;
 
+/** A promise of prices in a heading or a text: «цены», «прайс», «стоимость». */
+const PRICE_WORD = /(?:^|[^а-яё])(?:цен[аыуе]?|ценами|прайс|стоимост)/i;
+
 interface PageCheckCtx {
   site: SiteModel;
   page: SitePage;
@@ -185,6 +188,18 @@ export function pageShapeIssues(
   v.sections.forEach((s, i) => {
     if (seen.has(s.id)) out.push(code(i, "DUPLICATE", `Секция ${s.id} повторяется`, `sections.${i}.id`));
     seen.add(s.id);
+    if (!ctx.facts.prices && s.props !== undefined) {
+      const promise = textLeaves(s.props).find((t) => PRICE_WORD.test(t));
+      if (promise)
+        out.push(
+          code(
+            i,
+            "NO_PRICES",
+            `«${promise}» обещает цены, а цен в фактах нет (D49): скажи «Услуги», «Меню» — без цен`,
+            `sections.${i}.props`,
+          ),
+        );
+    }
     if (s.kind === "keep" || s.props === undefined) return;
     const photos = new Set(ctx.facts.photos.map((p) => p.src));
     const props = JSON.stringify(s.props);
@@ -267,6 +282,7 @@ export const CODE_RULES = [
   "Запрещено: произвольные значения цвета и шрифта (text-[#…], font-[…], bg-[…]), палитра Tailwind по умолчанию (blue-500, gray-100…), #hex и rgb() в коде, style с цветом или шрифтом, градиентный текст.",
   "Раскладка — от 390 до 1440 px без горизонтальной прокрутки: grid/flex, min-w-0, перенос длинных слов (wrap-break-word).",
   "Доступность: на странице один h1 — в первом экране (hero); в остальных секциях h2 и h3 по порядку; у img осмысленный alt; у button — type и текст; у ссылок — href и класс цвета темы; цели нажатия ≥ 44 px (min-h-11).",
+  "Шаги процесса: номер шага стоит в одной строке с заголовком шага (flex items-baseline gap-3, номер — shrink-0), не над и не под ним; описание — под заголовком с тем же отступом.",
   "Движение (motion/react) — только m.* внутри <LazyMotion features={domAnimation}>, с useReducedMotion; при профиле still — без анимации; контент виден и без неё.",
 ];
 
@@ -284,7 +300,7 @@ const COPY_RULES = [
   "Пиши как владелец, который объясняет соседу: коротко, конкретно, на «вы» со строчной.",
   "Факты, числа, цены, сроки, имена, отзывы — только из раздела «Факты». Нет факта — не пиши его (D49). Никаких «лучший», «№ 1», «гарантируем».",
   "Кнопка — глагол и объект («Записаться на пробное»), не «Подробнее» и не «Отправить».",
-  "Первый экран — заголовок-оффер с фактом из брифа (до 90 знаков), одна строка пояснения, одна главная кнопка и фото; без подписи над заголовком, второй кнопки и сносок.",
+  "Первый экран — заголовок-оффер с фактом из брифа (до 90 знаков), одна строка пояснения, одна главная кнопка и фото; без подписи над заголовком, второй кнопки и сносок. Телефон, часы и адрес — не в первом экране (они в шапке и контактах).",
   "Ссылки — только на страницы и якоря из списка «Сайт», tel: и mailto: из фактов. Фото — только из списка «Фото», с осмысленным alt.",
 ];
 
@@ -293,7 +309,7 @@ const PAGE_RULES = [
   "Все компоненты SDK из списка ниже обязаны остаться (kind keep с их id): форма заявки, запись, корзина, вход и данные системы работают только через них. В props компонента можно переписать тексты по его схеме; привязку к данным не трогай.",
   "Первая секция — первый экран кодом (kind code, id hero) с единственным h1. Шапку и подвал не пиши — их добавит система.",
   "Главная — полная страница: 5–8 секций тела. Каждое обещание сценария из «Что показать» — своя секция: компонент SDK, если он есть в списке, иначе секция кодом по фактам. Контакты (телефон, адрес, как добраться) и «как проходит запись» по фактам — обязательно, если факты есть.",
-  "Каталог (услуги, меню, прайс) на главной — компонент SDK из списка: ставь его сразу после первого экрана; заголовок — словами брифа («Услуги и цены», «Меню»).",
+  "Каталог (услуги, меню, прайс) на главной — компонент SDK из списка: ставь его сразу после первого экрана; заголовок — словами брифа («Услуги», «Меню»); «цены» в заголовке — только если цены есть в фактах.",
   "Врачи, отзывы, команда — только компонентом SDK с данными системы; кодом их не пиши. Нет ни фактов, ни компонента — секции нет: никаких секций-обещаний с одной кнопкой, выдуманных имён, цитат и стажа.",
   "Секция кодом: id — латиница через дефис, title — что она показывает (по-русски), source — TSX, props — тексты и фото, которые секция получит ровно в таком виде.",
   "seo.title — до 70 знаков, seo.description — 50–160 знаков, по фактам страницы.",
