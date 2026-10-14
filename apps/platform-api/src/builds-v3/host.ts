@@ -26,6 +26,7 @@ import {
   type V3ReadyNotice,
   type V3StageHook,
 } from "@wizard/agents/builder";
+import { staffFacts } from "@wizard/agents/interview-v3";
 import type { ModuleRegistry } from "@wizard/agents/planner";
 import type { PhotoPicker, SemanticPhotoSource } from "@wizard/agents/stock";
 import type { AppSpec } from "@wizard/appspec";
@@ -484,6 +485,8 @@ export function scenarioPromiseCheck(
   browser: GoalBrowserProvider | null,
   o: {
     contacts: () => Promise<KnownContacts>;
+    /** The specialists the owner named (staffFacts of the brief); [] — none. */
+    staff?: () => Promise<readonly string[]>;
     inspector?: Omit<CriticInspectorOptions, "browser" | "probe">;
   },
 ): (input: ScenarioCheckInput) => Promise<PromiseCheck> {
@@ -505,7 +508,7 @@ export function scenarioPromiseCheck(
           o.inspector,
         ).catch(() => null)
       : null;
-    return checkPromises(input.scenario, files, views, contacts);
+    return checkPromises(input.scenario, files, views, contacts, (await o.staff?.()) ?? []);
   };
 }
 
@@ -619,6 +622,8 @@ export async function buildByBrief(
       const v = await getLatestBrief(o.db, systemId);
       return knownContacts([JSON.stringify(v?.brief ?? {}), JSON.stringify(request ?? "")]);
     },
+    // V4-21 (#207): the specialists the owner named are facts — a section of them goes to the repair round.
+    staff: async () => staffFacts((await getLatestBrief(o.db, systemId))?.brief ?? { qa: [] }),
     inspector: { ...(o.files ? { photo: criticLibraryPhotos(o.files) } : {}), data: demoRows },
   });
   // V3-12 / V4-06: the page composer (skeleton without a model; pages as code through host.route); the judge of the

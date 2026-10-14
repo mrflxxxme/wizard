@@ -262,8 +262,9 @@ export interface PromiseCheck {
   /** Russian reasons of the promises not kept. */
   problems: string[];
   /**
-   * Of `problems`, those the composer can keep from the facts (services, contacts, hours): the repair round gets only
-   * these; specialists without their facts, reviews and prices (D49: never invented) go to «Запросы на развитие».
+   * Of `problems`, those the composer can keep from the facts (services, contacts, hours; specialists when the owner
+   * named them): the repair round gets only these; specialists without their facts, reviews and prices (D49: never
+   * invented) go to «Запросы на развитие».
    */
   repairable: string[];
   /** The browser looked at the sections (false — by the site model only). */
@@ -279,6 +280,8 @@ export function checkPromises(
   files: ReadonlyMap<string, string>,
   views: SiteViews | null,
   contacts?: KnownContacts,
+  /** The specialists the owner named (staffFacts): with them a section of specialists is kept from the facts. */
+  staff: readonly string[] = [],
 ): PromiseCheck {
   const promises = scenarioPromises(scenario);
   const problems: string[] = [];
@@ -288,7 +291,7 @@ export function checkPromises(
   const miss = (p: ScenarioPromise, text: string) => {
     const r = reason(p, text);
     problems.push(r);
-    if (REPAIRABLE.has(p.kind)) repairable.push(r);
+    if (REPAIRABLE.has(p.kind) || (p.kind === "staff" && staff.length)) repairable.push(r);
   };
   for (const p of promises) {
     const types = SECTION_TYPES[p.kind];
