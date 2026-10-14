@@ -25,7 +25,13 @@ import { CAPABILITY_LABELS, capabilityCounts, normText } from "./capability.js";
 import { defaultPatch, fallbackQuestion } from "./fallback.js";
 import { BLOCKING_QUESTIONS_CAP, type BlockingGap, blockingGaps, questionOrderIssues } from "./gaps.js";
 import { addAssumption, addQa, applyBriefPatch, refreshCapability } from "./merge.js";
-import { isFactQuestion, nextFactQuestion, PLACE_QUESTION_TEXT, splitPlacePhone } from "./place.js";
+import {
+  isFactQuestion,
+  nextFactQuestion,
+  PLACE_QUESTION_TEXT,
+  PRICE_QUESTION_TEXT,
+  splitPlacePhone,
+} from "./place.js";
 import { interviewV3Messages, type V3TurnInput } from "./prompt.js";
 import { interviewResearchTools } from "./research-tools.js";
 import {
@@ -375,6 +381,11 @@ export class InterviewV3 {
     addQa(s.brief, { q: q.text, a: place ? place.rest : label, recommended: rec.label, chosen });
     const kept = s.brief.qa.at(-1);
     if (place?.phone && kept) kept.a = `${kept.a}; ${place.phone}`;
+    // V4-24: the prices the owner gave replace the build-time question of prices and the «без цен» assumption.
+    if (chosen === "custom" && q.text === PRICE_QUESTION_TEXT) {
+      s.deferred = s.deferred.filter((d) => !/цен/i.test(d.text));
+      s.brief.assumptions = s.brief.assumptions.filter((x) => !/без цен/i.test(x.text));
+    }
     if (optionId) this.applyOptionPatch(s, q, optionId, "default");
     s.current = null;
     // V4-24: a fact question is asked once nothing blocking is left: its answer ends the turn by code (no model call).

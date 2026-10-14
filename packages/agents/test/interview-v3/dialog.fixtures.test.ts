@@ -78,9 +78,11 @@ async function recordAndReplay(name: string, script: readonly ScriptStep[], answ
 
 describe("interview v3 on recorded answers (fixture router)", () => {
   test("the dental dialog to the end: 3 questions, brief ready, the same brief as recorded; abroad as is (D79 (3))", async () => {
-    // V4-24: the fourth question — where to find the clinic — is by code: its answer calls no model.
+    // V4-24: the fourth and the fifth questions — where to find the clinic, its prices «от» — are by code: their
+    // answers call no model.
     const r = await recordAndReplay("interview-v3-dental", DENTAL_SCRIPT, [
       ...DENTAL_ANSWERS,
+      { optionId: "later" },
       { optionId: "later" },
     ]);
     expect(r.lines.map((l) => l.callType)).toEqual(Array(5).fill("interview_v3"));
@@ -92,6 +94,7 @@ describe("interview v3 on recorded answers (fixture router)", () => {
       ["question"],
       ["question"],
       ["question"],
+      ["question"],
       ["brief"],
     ]);
     expect(blockingGaps(last.session.brief)).toEqual([]);
@@ -99,6 +102,7 @@ describe("interview v3 on recorded answers (fixture router)", () => {
       "recommended",
       "delegated",
       "custom",
+      "recommended",
       "recommended",
     ]);
     // V4-05 (D79 (3)): the interview is a build stage — abroad as is.
