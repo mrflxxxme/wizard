@@ -241,12 +241,13 @@ export function pickerCardCheck(o: {
     }
     if (text.size && o.source.flagText) await o.source.flagText([...text]).catch(() => {});
     const taken = new Set<string>();
-    return rows.map((r, i) => {
+    return rows.map((_r, i) => {
       const chosen = answer.flatMap((a) =>
         "slot" in a && a.slot === slotOf(i) ? [pool[a.index]?.entry] : [],
       )[0];
+      // Any candidate of the call may go to the row (a croissant found for «Завтраки» shows «Десерты» as well), once.
       const own = (e: LibraryPhotoEntry | undefined): e is LibraryPhotoEntry =>
-        !!e && r.candidates.some((c) => c.file === e.file) && !text.has(e.file) && !taken.has(e.file);
+        !!e && !text.has(e.file) && !taken.has(e.file);
       // The model left the card empty or chose a photo with text: the card shows none (rule 6), not a wrong one.
       if (!own(chosen)) return null;
       taken.add(chosen.file);

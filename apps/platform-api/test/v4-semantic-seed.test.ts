@@ -171,6 +171,28 @@ test("the card check: one call, the model's photo; an empty row's second round; 
   expect(hints[0]?.values).toEqual([photoOf(22), photoOf(33), photoOf(43)]);
 });
 
+test("the model may give a row another row's candidate of the call, once", async () => {
+  const src = rowsSource();
+  const check = pickerCardCheck({
+    niche: "стоматология",
+    source: { thumbnail: async () => new Uint8Array([1]) },
+    picker: async (input) => {
+      const at = (f: string) => input.candidates.findIndex((c) => c.entry.file === f);
+      // Row 2 takes row 3's 41; row 3 takes its own 42; row 1 its 21.
+      return [
+        { slot: "card-1", index: at(uuid(21)) },
+        { slot: "card-2", index: at(uuid(41)) },
+        { slot: "card-3", index: at(uuid(42)) },
+      ];
+    },
+  });
+  const hints = await semanticSeedHints(spec, [names3], new Set([uuid(1)]), new Set(), src, {
+    niche: "стоматология",
+    check,
+  });
+  expect(hints[0]?.values).toEqual([photoOf(21), photoOf(41), photoOf(42)]);
+});
+
 test("a card still empty after the second round leaves the whole catalog without photos; a failed call takes the first", async () => {
   const empty = async (rows: readonly { candidates: { file: string }[] }[]) =>
     rows.map((r, i) => (rows.length === 3 && i !== 1 ? r.candidates[0] : null)) as never;
