@@ -212,7 +212,13 @@ export async function composeScenario(
         stop: stopper(own),
         registry,
         ...(opts.inspect ? { inspect: opts.inspect } : {}),
-        firstScreen: opts.firstScreen !== false && page.route === "/",
+        // Two first screens only when a model writes the home page for the first time (its hero is still the
+        // skeleton's pattern): a later scenario or a repair that rewrites it keeps one author — the pair and its judge
+        // cost ≈ 35 s each time (rehearsal №5: s1 and s3).
+        firstScreen:
+          opts.firstScreen !== false &&
+          page.route === "/" &&
+          !page.sections.some((x) => x.id === "hero" && x.type === "signature"),
         callType: COMPOSE_CALL_TYPES.page,
         ...(ctx.repair?.length ? { repair: ctx.repair } : {}),
       });

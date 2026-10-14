@@ -371,6 +371,22 @@ describe("V4-06: the first screen — two candidates of different families and a
     expect(r.notes.join("\n")).toContain("судья выбрал вариант B");
   });
 
+  test("a later scenario that rewrites the home page keeps one author: no rival, no judge", async () => {
+    const { ctx } = await prepared();
+    const first = scripted({ page_compose: [HOME], signature_section: [RIVAL] });
+    const r = await composer({ firstScreen: true }).scenario({ ...ctx, route: first.route }, LEAD);
+    expect(first.calls.map((c) => c.callType)).toEqual(["page_compose", "signature_section"]);
+    const files = apply(ctx.files, r);
+    expect(
+      readSite(files)
+        ?.pages.find((p) => p.route === "/")
+        ?.sections.find((x) => x.id === "hero")?.type,
+    ).toBe("signature");
+    const again = scripted({ page_compose: [HOME] });
+    await composer({ firstScreen: true }).scenario({ ...ctx, files, route: again.route }, LEAD);
+    expect(again.calls.map((c) => c.callType)).toEqual(["page_compose"]);
+  });
+
   test("without a browser the first candidate stays; a failed rival changes nothing", async () => {
     const { ctx } = await prepared();
     const a = scripted({ page_compose: [HOME], signature_section: [RIVAL] });
