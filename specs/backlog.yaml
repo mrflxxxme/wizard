@@ -2685,7 +2685,7 @@ tasks:
     owner: platform
     parallel_group: v4-c
     estimate_days: 0.5
-    status: in_progress
+    status: done
     claimed_by: session_01HWKT1m6cHQBBtUV7d9pQhf
     owns: ["apps/platform-api/src/builds-v3/card-photos.ts", "apps/platform-api/src/builds-v3/host.ts (draftSeedHints, checkCardPhotos)", "packages/agents/src/builder/v2/photos.ts (PhotoHost.cards)", "packages/agents/src/builder/v3/run.ts (startCardCheck)", "packages/agents/src/stock/pick.ts (stepName)", "packages/agents/test/v3-harness.test.ts", "packages/agents/test/stock-pick.live.test.ts", "apps/platform-api/test/v4-semantic-seed.test.ts", "apps/platform-api/test/v3-seed-hints.test.ts"]
     description: >
