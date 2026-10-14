@@ -201,6 +201,12 @@ describe("V4-24 fact questions", () => {
       { entity: "service", field: "name", values: ["Лечение кариеса", "Чистка"] },
       { entity: "service", field: "price", values: [3500, 4000] },
     ]);
+    // A price the seed cannot take (not whole hundreds) leaves its service without a price, after the priced ones.
+    const odd = withQa(brief, qa(PRICE_QUESTION_TEXT, "Консультация — 750; Чистка — 4000"));
+    expect(seedHintsFromBrief(spec, odd)).toEqual([
+      { entity: "service", field: "name", values: ["Чистка", "Консультация"] },
+      { entity: "service", field: "price", values: [4000] },
+    ]);
     // With a list of services in the brief: the priced ones first in the list's spelling, the rest after them.
     const listed = withQa(
       withQa(brief, qa(STAFF_QUESTION_TEXT, "Анна Смирнова — терапевт, Игорь Ким — хирург")),

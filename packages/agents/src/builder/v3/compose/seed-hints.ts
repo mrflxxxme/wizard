@@ -129,9 +129,16 @@ export function seedHintsFromBrief(
     directionsOf(staffFacts({ qa: brief.qa ?? [] }));
   // V4-24: the prices «от» the owner gave — his priced services first (in the list's spelling when the name matches),
   // the rest of the list after them; the price hint is aligned to the first rows.
-  const priced = priceFacts({ qa: brief.qa ?? [] });
-  const rest = (items ?? []).filter((i) => !priced.some((p) => same(p.name, i)));
-  const offerItems = priced.length
+  // A price the seed takes (whole hundreds within the field's range); the others stay names without a price.
+  const owned = priceFacts({ qa: brief.qa ?? [] });
+  const priced = owned.filter(
+    (p) =>
+      validateSeedHint(spec, { entity: CATALOG_NAMES.item, field: PRICE, values: [p.price] }).length === 0,
+  );
+  const rest = [...(items ?? []), ...owned.map((p) => p.name)].filter(
+    (i, k, all) => !priced.some((p) => same(p.name, i)) && all.findIndex((x) => same(x, i)) === k,
+  );
+  const offerItems = owned.length
     ? [...priced.map((p) => (items ?? []).find((i) => same(p.name, i)) ?? p.name), ...rest]
     : items;
   const has = new Set(spec.entities.map((e) => e.name));
