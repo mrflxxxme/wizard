@@ -13,6 +13,8 @@ export interface CatalogNiche {
   queries: readonly string[];
   /** V4-30: the group of neighbouring niches (a site's photos may mix shards of one group only). */
   group: string;
+  /** V4-32: photos the shard holds, when not NICHE_TARGET (catalog rows its first queries did not cover). */
+  target?: number;
 }
 
 /** Photos one niche shard holds at most (≈ 100 niches → 20–30 thousand photos). */
@@ -23,6 +25,9 @@ const n = (slug: string, name: string, ...queries: string[]): Omit<CatalogNiche,
   name,
   queries,
 });
+/** V4-32: a niche whose catalog rows needed more queries — room for their photos in a full shard. */
+const WIDE_TARGET = 310;
+const wide = (c: Omit<CatalogNiche, "group">): Omit<CatalogNiche, "group"> => ({ ...c, target: WIDE_TARGET });
 const group = (name: string, list: Omit<CatalogNiche, "group">[]): CatalogNiche[] =>
   list.map((c) => ({ ...c, group: name }));
 
@@ -83,7 +88,21 @@ export const CATALOG: readonly CatalogNiche[] = [
       "lab technician",
       "test tubes laboratory",
     ),
-    n("optics", "оптика", "optician", "eyeglasses store", "eye exam", "glasses frames display"),
+    // V4-32: «Контактные линзы», «Очки» (the frames display is mostly brand text).
+    wide(
+      n(
+        "optics",
+        "оптика",
+        "optician",
+        "eyeglasses store",
+        "eye exam",
+        "glasses frames display",
+        "contact lenses",
+        "putting in contact lens",
+        "eyeglasses on table",
+        "trying on glasses",
+      ),
+    ),
     n(
       "physio",
       "реабилитация и ЛФК",
@@ -96,7 +115,19 @@ export const CATALOG: readonly CatalogNiche[] = [
   ]),
   // Beauty.
   ...group("beauty", [
-    n("barber", "барбершоп", "barber shop", "barber at work", "beard trim", "barber tools", "men haircut"),
+    // V4-32: «Детская стрижка».
+    wide(
+      n(
+        "barber",
+        "барбершоп",
+        "barber shop",
+        "barber at work",
+        "beard trim",
+        "barber tools",
+        "men haircut",
+        "kid haircut barbershop",
+      ),
+    ),
     n(
       "hair",
       "парикмахерская",
@@ -172,14 +203,18 @@ export const CATALOG: readonly CatalogNiche[] = [
       "kids drawing",
       "toddler playing blocks",
     ),
-    n(
-      "languages",
-      "курсы иностранных языков",
-      "language class",
-      "english lesson",
-      "students classroom",
-      "online tutoring",
-      "books and notebook",
+    wide(
+      n(
+        "languages",
+        "курсы иностранных языков",
+        "language class",
+        "english lesson",
+        "students classroom",
+        "online tutoring",
+        "books and notebook",
+        // V4-32: «Английский для взрослых».
+        "adult language class",
+      ),
     ),
     n("tutor", "репетитор", "tutor with student", "homework help", "math lesson", "student studying"),
     n(
@@ -207,7 +242,18 @@ export const CATALOG: readonly CatalogNiche[] = [
       "business seminar",
       "laptop learning",
     ),
-    n("driving", "автошкола", "driving lesson", "driving instructor", "learner driver car", "steering wheel"),
+    // V4-32: «Теория».
+    wide(
+      n(
+        "driving",
+        "автошкола",
+        "driving lesson",
+        "driving instructor",
+        "learner driver car",
+        "steering wheel",
+        "driving theory class",
+      ),
+    ),
     n(
       "coding-kids",
       "программирование для детей",
@@ -219,14 +265,19 @@ export const CATALOG: readonly CatalogNiche[] = [
   ]),
   // Repair and home services.
   ...group("home", [
-    n(
-      "cleaning",
-      "клининг",
-      "house cleaning",
-      "cleaning service",
-      "cleaner mopping floor",
-      "cleaning supplies",
-      "clean bright kitchen",
+    wide(
+      n(
+        "cleaning",
+        "клининг",
+        "house cleaning",
+        "cleaning service",
+        "cleaner mopping floor",
+        "cleaning supplies",
+        "clean bright kitchen",
+        // V4-32: «Уборка после ремонта».
+        "post renovation cleaning",
+        "cleaner vacuum dust",
+      ),
     ),
     n(
       "renovation",
@@ -247,14 +298,19 @@ export const CATALOG: readonly CatalogNiche[] = [
       "air conditioner repair",
     ),
     // V4-30: a plumber at home (bathroom, kitchen), not industrial pipelines («plumber at work» found gas mains).
-    n(
-      "plumbing",
-      "сантехник",
-      "plumber fixing kitchen sink",
-      "plumber in bathroom",
-      "bathroom faucet",
-      "toilet installation",
-      "shower installation",
+    wide(
+      n(
+        "plumbing",
+        "сантехник",
+        "plumber fixing kitchen sink",
+        "plumber in bathroom",
+        "bathroom faucet",
+        "toilet installation",
+        "shower installation",
+        // V4-32: «Прочистка труб».
+        "clogged sink plunger",
+        "drain cleaning",
+      ),
     ),
     n(
       "electric",
@@ -470,7 +526,19 @@ export const CATALOG: readonly CatalogNiche[] = [
       "wine glasses table",
     ),
     n("pizza", "пиццерия", "pizza", "pizzeria oven", "pizza chef", "pizza slice"),
-    n("sushi", "суши и роллы", "sushi", "sushi chef", "japanese food", "sushi rolls set"),
+    // V4-32: «Супы».
+    wide(
+      n(
+        "sushi",
+        "суши и роллы",
+        "sushi",
+        "sushi chef",
+        "japanese food",
+        "sushi rolls set",
+        "miso soup",
+        "ramen bowl",
+      ),
+    ),
     n(
       "confectionery",
       "кондитерская и торты на заказ",

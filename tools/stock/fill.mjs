@@ -242,7 +242,7 @@ function dequantRow(v, i) {
 /** The catalog niches to fill (all, or the slugs of --niches), with their target. */
 export function catalogNiches(S, only) {
   const list = only ? S.CATALOG.filter((c) => only.includes(c.slug)) : S.CATALOG;
-  return list.map((c) => ({ ...c, target: S.NICHE_TARGET }));
+  return list.map((c) => ({ ...c, target: c.target ?? S.NICHE_TARGET }));
 }
 
 /** Requested niches to fill: the most asked first, at most REQUESTS_PER_RUN; their text is the Russian query. */
@@ -264,7 +264,7 @@ export function statusText(S, manifest) {
   const rows = manifest?.shards ?? [];
   const by = new Map(rows.map((r) => [r.slug, r]));
   const total = rows.reduce((s, r) => s + r.count, 0);
-  const full = S.CATALOG.filter((c) => (by.get(c.slug)?.count ?? 0) >= S.NICHE_TARGET).length;
+  const full = S.CATALOG.filter((c) => (by.get(c.slug)?.count ?? 0) >= (c.target ?? S.NICHE_TARGET)).length;
   const lines = [
     `всего фото: ${total}; ниш каталога заполнено: ${full} из ${S.CATALOG.length}; запрошенных ниш: ${rows.filter((r) => r.slug.startsWith("req-")).length}`,
     "",
