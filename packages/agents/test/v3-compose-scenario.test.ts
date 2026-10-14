@@ -390,7 +390,7 @@ describe("V4-06: the first screen — two candidates of different families and a
     expect(r.notes.join("\n")).toContain("судья выбрал вариант B");
   });
 
-  test("a later scenario that rewrites the home page keeps one author: no rival, no judge", async () => {
+  test("a later scenario that rewrites the home page: one author, no rival, no judge; the written hero stays", async () => {
     const { ctx } = await prepared();
     const first = scripted({ page_compose: [HOME], signature_section: [RIVAL] });
     const r = await composer({ firstScreen: true }).scenario({ ...ctx, route: first.route }, LEAD);
@@ -401,9 +401,23 @@ describe("V4-06: the first screen — two candidates of different families and a
         ?.pages.find((p) => p.route === "/")
         ?.sections.find((x) => x.id === "hero")?.type,
     ).toBe("signature");
-    const again = scripted({ page_compose: [HOME] });
-    await composer({ firstScreen: true }).scenario({ ...ctx, files, route: again.route }, LEAD);
+    // The rewrite brings another hero: the written one (the judge's pick) stays, its file untouched.
+    const other: PageCodeAnswer = {
+      ...HOME,
+      sections: HOME.sections.map((x) =>
+        x.kind === "code" && x.id === "hero"
+          ? { ...x, source: RIVAL.source, props: RIVAL.props, title: RIVAL.title }
+          : x,
+      ),
+    };
+    const again = scripted({ page_compose: [other] });
+    const r2 = await composer({ firstScreen: true }).scenario({ ...ctx, files, route: again.route }, LEAD);
     expect(again.calls.map((c) => c.callType)).toEqual(["page_compose"]);
+    const after = apply(files, r2);
+    expect(after.get("ui/sections/home-hero.tsx")).toBe(HERO_CODE.source);
+    expect(readSite(after)?.pages[0]?.sections.find((x) => x.id === "hero")?.props.title).toBe(
+      HERO_CODE.props.title,
+    );
   });
 
   test("without a browser the first candidate stays; a failed rival changes nothing", async () => {
