@@ -215,8 +215,23 @@ const NICHE_PRICES: readonly [RegExp, readonly number[]][] = [
 const DEFAULT_PRICES = [1000, 1500, 2000, 3000, 5000];
 /** Prices of the niche named in `text`; null — none of the known niches. */
 const nichePrices = (text: string) => NICHE_PRICES.find(([re]) => re.test(text))?.[1] ?? null;
+/**
+ * V4-29: a niche that sells a menu or goods (a café, a coffee house, a bakery, a shop): its items are ordered, not
+ * booked, and have no duration (a cappuccino is not «2 ч»). Service niches (a clinic, a salon, a car service) are not.
+ */
+const GOODS_NICHE_RE =
+  /кафе(?!др)|кофе|ресторан|бистро|столов|кулинар|пекар|кондитер|выпеч|десерт|торт|пицц|бургер|суши|(?<![а-яё])бар(?![а-яё])|(?<![а-яё])ча[йияе]|мёд|пасек|пасеч|фермер|магазин|товар|цвет(?:ы|оч)|букет|флорист|обжар/;
+/** Whether `text` (a niche, a catalog noun) names a menu or goods rather than services (V4-29). */
+export const isGoodsNiche = (text: string): boolean => GOODS_NICHE_RE.test(text.toLowerCase());
 /** Service durations on the booking grid (minutes). */
 const DURATIONS = [60, 90, 30, 120];
+/** The item of a menu or of goods: the catalog's position (catalog module `service`) or a product. */
+const isMenuItem = (c: RealCtx) =>
+  entityIs(
+    c,
+    /^(service|product|menu_?item|item|dish|drink|good)s?$/,
+    /позици|меню|блюд|напит|товар|издели/i,
+  );
 const HOURS = ["Пн–Пт 10:00–19:00", "Ежедневно 10:00–20:00", "Пн–Сб 09:00–21:00"];
 
 // ------------------------------------------------------------------ domains
@@ -414,7 +429,7 @@ function moneyValue(c: RealCtx): number | null | undefined {
   return v;
 }
 
-function intValue(c: RealCtx): number | undefined {
+function intValue(c: RealCtx): number | null | undefined {
   const f = rng(c);
   if (fieldIs(c, /(^|_)(number|num|no)$/, /^номер/i) && c.field.unique) return clamp(1000 + c.n, c.field);
   if (c.field.unique) return undefined;
@@ -438,7 +453,13 @@ function intValue(c: RealCtx): number | undefined {
     return clamp(v, c.field);
   }
   // Durations on the booking grid (30/60/90/120 min), never a random number of minutes.
-  if (fieldIs(c, /duration|minutes/, /длительн/i)) return clamp(rotate(DURATIONS, c), c.field);
+  if (fieldIs(c, /duration|minutes/, /длительн/i)) {
+    // V4-29: a menu item or goods of the site's niche have no duration: an optional one stays empty, a required one
+    // (a booking of a pickup time reads it) is the shortest slot.
+    if (c.niche && isGoodsNiche(c.niche) && isMenuItem(c))
+      return c.field.required ? clamp(15, c.field) : null;
+    return clamp(rotate(DURATIONS, c), c.field);
+  }
   if (fieldIs(c, /weight|(^|_)grams?$/, /^вес/i)) return clamp(rotate([250, 500, 1000, 1500], c), c.field);
   const lo = c.field.min ?? 1;
   const hi = c.field.max ?? Math.max(lo + 100, 100);

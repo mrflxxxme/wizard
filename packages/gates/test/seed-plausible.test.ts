@@ -5,7 +5,7 @@
 import type { AppSpec, Entity } from "@wizard/appspec";
 import { describe, expect, test } from "vitest";
 import { slugify } from "../src/g1/realistic.js";
-import { generateSeed, type SeedHint, seedDlp } from "../src/index.js";
+import { generateSeed, isGoodsNiche, type SeedHint, seedDlp } from "../src/index.js";
 import { loadBakery } from "./g1-helpers.js";
 
 const NOW = new Date("2026-10-01T00:00:00.000Z");
@@ -211,6 +211,40 @@ describe("generic seed values without a hint (V3-18)", () => {
       expect(r.sku).toMatch(/^A-\d{4}$/);
       expect(Number(r.stock)).toBeLessThanOrEqual(100);
     }
+  });
+
+  test("V4-29: a menu or goods have no duration — a required one is the shortest slot, an optional one stays empty", () => {
+    const zerno = specOf("Зерно и пар");
+    for (const r of rowsOf(generateSeed(zerno, "key-1", { now: NOW, niche: "кофейня" }), "service"))
+      expect(r.duration_min).toBe(15);
+    const optional: AppSpec = {
+      ...zerno,
+      entities: zerno.entities.map((e) =>
+        e.name === "service"
+          ? { ...e, fields: e.fields.map((f) => (f.name === "duration_min" ? { ...f, required: false } : f)) }
+          : e,
+      ),
+    };
+    for (const r of rowsOf(generateSeed(optional, "key-1", { now: NOW, niche: "кофейня" }), "service"))
+      expect(r.duration_min ?? null).toBeNull();
+    // A service niche keeps the booking grid.
+    for (const niche of ["салон красоты", "стоматология", "автосервис"])
+      for (const r of rowsOf(generateSeed(zerno, "key-1", { now: NOW, niche }), "service"))
+        expect([30, 60, 90, 120]).toContain(r.duration_min);
+  });
+
+  test("V4-29: goods niches — a café, a coffee house, a bakery, a shop; not a clinic, a salon or a barbershop", () => {
+    for (const n of ["кофейня", "Кафе", "обжарка кофе", "кондитерская", "пекарня", "магазин", "чай и мёд"])
+      expect(isGoodsNiche(n), n).toBe(true);
+    for (const n of [
+      "стоматология",
+      "салон красоты",
+      "барбершоп",
+      "автосервис",
+      "медицинская клиника",
+      "фитнес",
+    ])
+      expect(isGoodsNiche(n), n).toBe(false);
   });
 
   test("slugs: Latin from the title, unique, no spaces or Cyrillic (links /blog/statya-1)", () => {

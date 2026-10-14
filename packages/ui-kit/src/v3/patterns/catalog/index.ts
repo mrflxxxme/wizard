@@ -29,7 +29,8 @@ export const catalogSlots = z.object({
       title: ident.optional(),
       description: ident.optional(),
       price: ident.optional(),
-      duration: ident.optional(),
+      /** null — no duration on the cards (a menu or goods: a cappuccino has no duration, V4-29). */
+      duration: ident.nullable().optional(),
       photo: ident.optional(),
       category: ident.optional(),
     })
