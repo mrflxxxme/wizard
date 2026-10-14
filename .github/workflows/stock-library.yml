@@ -8,7 +8,9 @@
 #   backfill — niches the builds asked for (a build with too few photos on its topic queues its niche);
 #   status   — the library by niche (counts) into the job summary;
 #   probe    — the live probe of photo_pick (plan v4 §5.2): the vision models of the route pick photos on 3 niches,
-#              a few rubles; no storage, only the model keys.
+#              a few rubles; no storage, only the model keys;
+#   sites    — V4-28: the photos the acceptance sites would show (coffee house, beauty salon) from this library with the
+#              live photo_pick — places and catalog cards; the 480 px copies as the artifact «site-photos».
 # Schedule: backfill every two hours, fill every six hours (both no-ops when there is nothing to do), prod only.
 # Secrets reach only the step that uses them, masked first; output is counts only. A failure is a warning: the
 # platform keeps working with the photos it has.
@@ -20,7 +22,7 @@ on:
       action:
         description: "model — загрузить модель SigLIP в хранилище; fill — наполнить библиотеку по каталогу ниш; backfill — докачать ниши, запрошенные сборками; probe — живая проба выбора фото моделью (photo_pick); status — сколько фото по нишам"
         type: choice
-        options: [fill, backfill, model, probe, status]
+        options: [fill, backfill, model, probe, status, sites]
         default: fill
       env:
         description: "Окружение (бакет files)"
@@ -76,8 +78,45 @@ jobs:
           for v in "$ZAI_API_KEY" "$KIMI_API_KEY"; do if [ -n "$v" ]; then echo "::add-mask::$v"; fi; done
           npx vitest run packages/agents/test/stock-pick.live.test.ts --reporter=verbose
 
+  sites:
+    if: inputs.action == 'sites'
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.env || 'prod' }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      # No secrets in the environment of dependency installation.
+      - run: pnpm install --frozen-lockfile
+      - name: Photos of the acceptance sites
+        env:
+          DEPLOY_ENV: ${{ inputs.env || 'prod' }}
+          WIZARD_LLM_MODE: live
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          WIZARD_S3_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          WIZARD_S3_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          WIZARD_S3_BUCKET: ${{ vars.WIZARD_FILES_BUCKET }}
+          WIZARD_FILES_STORAGE: s3
+        run: |
+          for v in "$ZAI_API_KEY" "$KIMI_API_KEY" "$WIZARD_S3_ACCESS_KEY_ID" "$WIZARD_S3_SECRET_ACCESS_KEY"; do if [ -n "$v" ]; then echo "::add-mask::$v"; fi; done
+          node tools/stock/sites.mjs --out="$RUNNER_TEMP/site-photos"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: site-photos
+          path: ${{ runner.temp }}/site-photos
+          if-no-files-found: ignore
+          retention-days: 7
+
   library:
-    if: inputs.action != 'probe'
+    if: inputs.action != 'probe' && inputs.action != 'sites'
     runs-on: ubuntu-24.04
     environment: ${{ inputs.env || 'prod' }}
     timeout-minutes: 350
