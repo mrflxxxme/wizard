@@ -204,13 +204,25 @@ export function critiqueMessages(o: CritiqueInput): LlmMessage[] {
   ];
 }
 
+/** `findings` sent as a JSON string of the array (qwen3.6-35b now and then, its repair too) → the array. */
+function parsedFindings(v: unknown): unknown {
+  if (typeof v !== "string") return v;
+  try {
+    const parsed: unknown = JSON.parse(v);
+    return Array.isArray(parsed) ? parsed : v;
+  } catch {
+    return v;
+  }
+}
+
 /**
- * Slips of one finding do not cost a repeat with the images: an edit outside the closed set becomes null (the finding
- * stays a note), a finding that does not say where it is is dropped.
+ * Slips of one finding do not cost a repeat with the images: findings as a JSON string are read, an edit outside the
+ * closed set becomes null (the finding stays a note), a finding that does not say where it is is dropped.
  */
 function dropBadEdits(args: unknown): unknown {
   if (!args || typeof args !== "object") return args;
-  const a = args as { findings?: unknown };
+  const a = { ...(args as { findings?: unknown }) };
+  a.findings = parsedFindings(a.findings);
   if (!Array.isArray(a.findings)) return args;
   return {
     ...a,

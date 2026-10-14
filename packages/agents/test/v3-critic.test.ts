@@ -142,6 +142,11 @@ describe("V3-13 rubric", () => {
     expect(r.value.findings[1]?.edit).toBeNull();
     // No replacement or no observable sign — not a finding (catalog C «отбрасываем»).
     expect(critiqueTool.parse(critique(2, [{ ...F.swap, replace: "" }])).ok).toBe(false);
+    // Findings sent as a JSON string of the array (qwen3.6-35b, V4-09 probe) are read as the array.
+    const asText = critique(2, [F.swap, F.free]) as { findings: unknown };
+    const s = critiqueTool.parse({ ...asText, findings: JSON.stringify(asText.findings) });
+    expect(s.ok && s.value.findings.map((f) => f.sign)).toEqual([F.swap.sign, F.free.sign]);
+    expect(critiqueTool.parse({ ...asText, findings: "не JSON" }).ok).toBe(false);
   });
 });
 
