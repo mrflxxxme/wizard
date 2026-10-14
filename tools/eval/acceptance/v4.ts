@@ -13,6 +13,7 @@ import { chromiumProvider } from "../../../apps/platform-api/src/agents/goal-bro
 import { OutboxMailer } from "../../../apps/platform-api/src/auth/mailer.ts";
 import { platformCritic } from "../../../apps/platform-api/src/builds-v3/critic.ts";
 import { loadBuildReport } from "../../../apps/platform-api/src/builds-v3/report/store.ts";
+import { promiseLines } from "../../../apps/platform-api/src/builds-v3/report/render.ts";
 import type { BuildReport } from "../../../apps/platform-api/src/builds-v3/report/types.ts";
 import { buildPipelineOrgsOf } from "../../../apps/platform-api/src/config.ts";
 import { createTestDb, startApi, type TestApi } from "../../../apps/platform-api/test/helpers.ts";
@@ -221,6 +222,9 @@ export function renderSummary(rows: readonly Row[], meta: { runUrl: string; shot
           .filter(Boolean)
           .join(". ")}.`,
       );
+    // V4-21: a scenario that passed without showing what it promised says so (withdrawn for want of facts, or not kept).
+    for (const s of r.report?.scenarios ?? [])
+      for (const line of promiseLines(s)) out.push(`Сценарий ${s.id}: ${line}.`);
     if (r.report?.techreview) out.push(`Техревью: ${r.report.techreview.status ?? "—"}, блокеров ${r.report.techreview.blockers.length}.`);
     if (r.report?.gaps.length) out.push(`Пробелы отчёта: ${r.report.gaps.join("; ")}.`);
     out.push("");
