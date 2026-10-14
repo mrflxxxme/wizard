@@ -24,6 +24,7 @@ import { createAgentExecutors } from "../src/agents/executors.js";
 import { OutboxMailer } from "../src/auth/mailer.js";
 import { totpCode } from "../src/auth/totp.js";
 import { saveBriefVersion } from "../src/briefs/store.js";
+import { criticTop } from "../src/builds-v3/report/collect.js";
 import { loadBuildReport, renderReportMd, reportFile, reportStorage } from "../src/builds-v3/report/index.js";
 import { startV3Build } from "../src/builds-v3/start.js";
 import { DEFAULT_ORG_ID, DEV_USER_ID, json } from "../src/db/index.js";
@@ -175,4 +176,27 @@ describe("V4-04: the build report", () => {
     ).toBe(404);
     expect((await client.req("GET", `/admin/runs/${run.id}/report`)).status).toBe(404);
   }, 300_000);
+});
+
+describe("V4-09: the critic's main findings in the report", () => {
+  test("the last cycle's top in words, a finding the model repeated is one line, at most five", () => {
+    const f = (severity: string, sign: string, where: string) => ({ severity, sign, where });
+    const top = [
+      f("P1", "L13", "/@390#hero"),
+      f("P1", "L13", "/@390#hero"),
+      f("P2", "L06", "/@390#catalog"),
+      f("P2", "C06", "/@390#hero"),
+      f("P2", "T02", "/@1440#hero"),
+      f("P3", "C01", "/@1440#footer"),
+      f("P3", "C02", "/@1440#footer"),
+    ];
+    expect(criticTop({ top })).toEqual([
+      "P1 · L13 · /@390#hero",
+      "P2 · L06 · /@390#catalog",
+      "P2 · C06 · /@390#hero",
+      "P2 · T02 · /@1440#hero",
+      "P3 · C01 · /@1440#footer",
+    ]);
+    expect(criticTop(undefined)).toEqual([]);
+  });
 });
