@@ -91,10 +91,12 @@ describe("the dental dialog on a scripted model", () => {
     // V4-24: a clinic is a place — where to find it is asked by code (no model call), the owner writes it himself.
     const place = questionOf(res.outputs);
     expect(place).toMatchObject({ text: PLACE_QUESTION_TEXT, topic: "content", step: 4 });
+    const callsBefore = res.session.llmCalls;
     res = await iv.answer(res.session, {
       questionId: place.id,
       text: "Казань, ул. Баумана, 12, второй этаж; +7 843 210-45-67; пн–пт 9:00–20:00, сб 10:00–16:00",
     });
+    expect(res.session.llmCalls).toBe(callsBefore);
     // D79 (3): the business phone of this answer is kept for the site (the other answers stay scrubbed).
     expect(placeFacts(res.session.brief)).toEqual({
       address: "Казань, ул. Баумана, 12, второй этаж",
