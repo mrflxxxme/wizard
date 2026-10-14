@@ -18,6 +18,8 @@ import {
   type PageCodeAnswer,
   pageShapeIssues,
   sdkSections,
+  softOnLastAttempt,
+  stripPricePromises,
   TASTE_RULES,
 } from "./page-code.js";
 import type { SiteModel, SitePage } from "./site.js";
@@ -438,8 +440,8 @@ export function pagePlanRequest(o: {
     description:
       "The plan of the public page: code sections with their idea and props, the kept SDK components, SEO.",
     input: pagePlanSchema(sdkSections(o.page).map((s) => s.id)),
-    normalize: normalizePlan,
-    check: (v) => pageShapeIssues(v, o),
+    normalize: (args: unknown) => stripPricePromises(normalizePlan(args), o.facts.prices),
+    check: softOnLastAttempt((v: PagePlan) => pageShapeIssues(v, o)),
   });
   return { tool, messages: pagePlanMessages(o) };
 }
@@ -454,7 +456,9 @@ export function sectionRequest(o: Parameters<typeof sectionMessages>[0]) {
       args && typeof args === "object" && typeof (args as { source?: unknown }).source === "string"
         ? { ...(args as object), source: autofixSection((args as { source: string }).source) }
         : args,
-    check: (v) => sectionIssues(v.source, { id: o.item.id, hero: o.item.id === "hero" }),
+    check: softOnLastAttempt((v: { source: string }) =>
+      sectionIssues(v.source, { id: o.item.id, hero: o.item.id === "hero" }),
+    ),
   });
   return { tool, messages: sectionMessages(o) };
 }

@@ -9,6 +9,7 @@ import type { LlmMessage } from "@wizard/llm";
 import type { DesignSystemV3 } from "@wizard/ui-kit/v3/design";
 import { PATTERN_IMPORTS, PATTERN_THEME, PATTERNS, type PatternMeta } from "@wizard/ui-kit/v3/patterns";
 import { z } from "zod";
+import { DEFAULT_MAX_REPAIRS } from "../../../core/loop.js";
 import { defineTool, type ToolIssue, toJsonSchema } from "../../../core/tool.js";
 import { heroPhoto } from "./content.js";
 import { type SiteFacts, textLeaves } from "./facts.js";
@@ -163,8 +164,94 @@ const code = (i: number, c: string, message: string, path = `sections.${i}`): To
 /** The least body sections of the home page (rehearsal 13.10.2026: a home of a hero and two lists is thin). */
 export const HOME_MIN_SECTIONS = 4;
 
+/**
+ * Issues that keep a page from the site whatever the round (orchestrator 14.10: the skeleton instead of a page only for
+ * something real): the SDK gate and the shape, code that is not allowed, h1, and the honesty of the copy (D49).
+ * Every other issue (taste, rhythm, a thin page, a price word) goes back to the model, but the last answer is taken.
+ */
+export const HARD_ISSUES: ReadonlySet<string> = new Set([
+  "SDK_REQUIRED",
+  "HERO_FIRST",
+  "DUPLICATE",
+  "UNKNOWN_PHOTO",
+  "IMPORT",
+  "DYNAMIC_CODE",
+  "DEFAULT_EXPORT",
+  "FORBIDDEN_SOURCE",
+  "UNKNOWN_IMPORT",
+  "NO_H1",
+  "EXTRA_H1",
+  "MULTIPLE_H1",
+  "FABRICATED",
+  "UNTRACED_NUMBER",
+  "SUPERLATIVE",
+  "PLACEHOLDER",
+  "SCRUB_TOKEN",
+]);
+
+/**
+ * A tool check that sends every issue back on the first attempts and only the hard ones on the last of
+ * `attempts` (callTool: DEFAULT_MAX_REPAIRS + 1): a soft slip never leaves the page as it was.
+ */
+export function softOnLastAttempt<T>(check: (v: T) => ToolIssue[], attempts = DEFAULT_MAX_REPAIRS + 1) {
+  let n = 0;
+  return (v: T): ToolIssue[] => {
+    n += 1;
+    const all = check(v);
+    return n >= attempts ? all.filter((i) => HARD_ISSUES.has(i.code ?? "")) : all;
+  };
+}
+
 /** A promise of prices in a heading or a text: «цены», «прайс», «стоимость». */
 const PRICE_WORD = /(?:^|[^а-яё])(?:цен[аыуе]?|ценами|прайс|стоимост)/i;
+
+/** Price promises the code removes from a text: «и цены», «, прайс», «с ценами «от»», «цены и …». */
+const PRICE_PHRASES: readonly RegExp[] = [
+  /\s*(?:,\s*|\s+и\s+)(?:цены|прайс|стоимость)(?:\s*«от»)?/gi,
+  /\s+(?:с|и)\s+ценами(?:\s*«от»)?/gi,
+  /^(?:цены|прайс|стоимость)\s+и\s+/i,
+];
+
+/** A text without its price promises (D49: no prices in the facts); a text that was only one becomes «Услуги». */
+export function withoutPricePromise(text: string): string {
+  const t = text.trim();
+  if (/^(?:цены|прайс|прайс-лист|стоимость)$/i.test(t)) return "Услуги";
+  let out = t;
+  for (const re of PRICE_PHRASES) out = out.replace(re, "");
+  out = out.replace(/\s{2,}/g, " ").trim();
+  if (!out) return "Услуги";
+  return t.charAt(0) === t.charAt(0).toUpperCase() ? out.charAt(0).toUpperCase() + out.slice(1) : out;
+}
+
+/**
+ * The answer with the price promises removed from the props of its sections (orchestrator 14.10: a soft slip is fixed
+ * by the code, not sent back for a round): only when the facts name no price.
+ */
+export function stripPricePromises(args: unknown, prices: boolean): unknown {
+  if (prices || !args || typeof args !== "object") return args;
+  const a = args as { sections?: unknown };
+  if (!Array.isArray(a.sections)) return args;
+  const fix = (v: unknown): unknown =>
+    typeof v === "string"
+      ? PRICE_WORD.test(v)
+        ? withoutPricePromise(v)
+        : v
+      : Array.isArray(v)
+        ? v.map(fix)
+        : v && typeof v === "object"
+          ? Object.fromEntries(
+              Object.entries(v).map(([k, x]) => [k, k === "src" || k === "href" ? x : fix(x)]),
+            )
+          : v;
+  return {
+    ...a,
+    sections: a.sections.map((sec) =>
+      sec && typeof sec === "object" && "props" in sec
+        ? { ...sec, props: fix((sec as { props: unknown }).props) }
+        : sec,
+    ),
+  };
+}
 
 interface PageCheckCtx {
   site: SiteModel;
@@ -443,7 +530,10 @@ export function pageCodeRequest(o: {
     name: PAGE_CODE_TOOL,
     description: "The public page as free code: code sections and the kept SDK components in order, SEO.",
     input: pageCodeSchema(sdkSections(o.page).map((s) => s.id)),
-    check: (v) => pageCodeIssues(v, { site: o.site, page: o.page, facts: o.facts, library, signatures }),
+    normalize: (args: unknown) => stripPricePromises(args, o.facts.prices),
+    check: softOnLastAttempt((v: PageCodeAnswer) =>
+      pageCodeIssues(v, { site: o.site, page: o.page, facts: o.facts, library, signatures }),
+    ),
   });
   return {
     tool,
