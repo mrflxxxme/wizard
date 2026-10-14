@@ -2654,6 +2654,29 @@ tasks:
     acceptance:
       - "Без подсказки заголовков в демо-строках нет статей, с подсказкой — есть; обложки статей тогда не забирают фото (тесты)"
       - "Живая проба photo_pick с правилом 4: выбор по теме на 3 нишах × 2 моделях"
+  - id: V4-26
+    title: "Приёмка клиники: фото с текстом (вывески, логотипы) не идут в герой и карточки; фото карточек — из шардов ниши сайта"
+    milestone: V4
+    deps: [V4-10]
+    specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4"]
+    owner: platform
+    parallel_group: v4-c
+    estimate_days: 0.5
+    status: in_progress
+    claimed_by: session_01HWKT1m6cHQBBtUV7d9pQhf
+    owns: ["packages/agents/src/stock/pick.ts", "packages/agents/src/stock/photos.ts (flagText, PickAnswer)", "packages/agents/src/stock/semantic.ts (флаги)", "packages/agents/src/stock/index.ts", "packages/agents/test/stock-photos.test.ts", "packages/agents/test/stock-pick.live.test.ts", "apps/platform-api/src/builds-v3/host.ts (semanticSeedHints, planNiche)", "apps/platform-api/test/v4-semantic-seed.test.ts"]
+    description: >
+      Поток Б, по репетиции приёмки №3 (прогон 38495982727). В герое стоматологии — чужая вывеска «…ЗДОРОВЬЯ /
+      МЕДИЦИНСКИЙ ЦЕНТР»: строки промпта мало. photo_pick теперь отдельно перечисляет кандидатов с читаемым текстом
+      (вывеска, надпись, логотип, водяной знак); они не встают ни на одно место, даже по рангу, а библиотека помнит флаг
+      (semantic:v2:flags, заполняется лениво при выборе) — поиск их больше не возвращает ни герою, ни карточкам. У
+      карточки «Терапия» было гинекологическое кресло: фото карточек ищутся по нише сайта («стоматология, Терапия»), а не
+      по его названию, и только в шардах ниши, из которых взяты фото самого сайта; правило 1 фоторедактора называет
+      оборудование ниши.
+    acceptance:
+      - "Фото, отмеченное моделью как фото с текстом, не попадает на сайт, флаг сохраняется в библиотеке и исключает фото из поиска (тесты)"
+      - "Фото карточек — по нише и только из шардов ниши фото сайта (тест)"
+      - "Живая проба photo_pick: вывеска найдена и не стоит на месте, выбор по теме на 3 нишах × 2 моделях"
   - id: V4-19
     title: "Записи e2e v3 по этапам и частичная перезапись record-stale"
     milestone: V4
