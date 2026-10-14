@@ -326,6 +326,7 @@ function factsBlock(f: SiteFacts, site: SiteModel): string {
     f.phone || f.email || f.address
       ? `Контакты: ${[f.phone, f.email, f.address].filter(Boolean).join(", ")}`
       : "",
+    f.hours ? `Часы работы: ${f.hours}` : "",
     texts.length
       ? `Тексты владельца:\n${texts.join("\n")}`
       : "Текстов владельца нет: пиши только то, что следует из целей и сценария.",

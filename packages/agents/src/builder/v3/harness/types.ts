@@ -103,6 +103,11 @@ export interface ScenarioCheckResult {
    * to add): the layer stays, the build tries one repair and the rest goes to «Запросы на развитие».
    */
   unkept?: string[];
+  /**
+   * Of `unkept`, those the composer can keep from the facts (services, contacts, hours): the repair round gets only
+   * these (absent — all of `unkept`); the rest goes to «Запросы на развитие» without a model call.
+   */
+  repairable?: string[];
 }
 
 /** What a stage hook (critic V3-13, template_gate V3-14, techreview V3-15) returns. */

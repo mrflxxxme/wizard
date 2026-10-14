@@ -126,17 +126,73 @@ describe("V4-21 scenario promises", () => {
     expect(other.problems).toEqual([expect.stringContaining("в контактах нет телефона или адреса")]);
   });
 
-  test("a signature section (free code) may keep any promise: by the site model it stands, the browser judges it", () => {
+  test("a signature section (free code) keeps people, reviews and contacts only by a strong sign, never without the browser", () => {
     const files = site(["header", "hero", "signature", "footer"]);
     const doctors = steps("Посетитель видит врачей");
-    expect(checkPromises(doctors, files, null).problems).toEqual([]);
+    expect(checkPromises(doctors, files, null).problems).toEqual([
+      expect.stringContaining("на сайте нет специалистов"),
+    ]);
     const shown = (v: Partial<SectionView>) => new Map([["/", [view("signature-2", v)]]]);
     expect(
-      checkPromises(doctors, files, shown({ text: "Наши врачи", names: ["Анна Смирнова"] })).problems,
+      checkPromises(doctors, files, shown({ text: "Наши врачи", names: ["Анна Смирнова — терапевт"] }))
+        .problems,
     ).toEqual([]);
-    expect(checkPromises(doctors, files, shown({ text: "Красивая анимация" })).problems).toEqual([
-      expect.stringContaining("в секции специалистов нет настоящих имён"),
+    // Headings of steps are no people's names.
+    expect(
+      checkPromises(
+        doctors,
+        files,
+        shown({ text: "Как записаться", names: ["Выберите услугу", "Выберите врача"] }),
+      ).problems,
+    ).toEqual([expect.stringContaining("в секции специалистов нет настоящих имён")]);
+    // A review in free code is a quote, not any long paragraph.
+    const reviews = steps("Посетитель видит отзывы");
+    const para = "Запишитесь онлайн: выберите врача и время, подтверждение придёт на почту.";
+    expect(checkPromises(reviews, files, shown({ text: para, texts: [para] })).problems).toHaveLength(1);
+    expect(
+      checkPromises(reviews, files, shown({ text: para, quotes: ["Лечили без боли, спасибо доктору Ким!"] }))
+        .problems,
+    ).toEqual([]);
+  });
+
+  test("s2 of rehearsal №4: a «how it works» section keeps none of the doctors, reviews, contacts; only facts are repaired", () => {
+    const files = site(["header", "hero", "catalog", "signature", "footer"]);
+    const s2 = steps(
+      "Посетитель видит услуги с ценами «от», врачей с фото и опытом, отзывы, контакты и как доехать",
+    );
+    const how = view("signature-3", {
+      text: "Как проходит запись. Выберите услугу. Выберите врача. Подтвердите время. Мы пришлём напоминание за день до приёма.",
+      names: ["Выберите услугу", "Выберите врача", "Подтвердите время"],
+      texts: ["Мы пришлём напоминание за день до приёма — перенести можно в личном кабинете."],
+      images: 1,
+    });
+    const catalog = view("catalog", {
+      text: "Терапия 60 мин Хирургия 90 мин",
+      names: ["Терапия", "Хирургия"],
+    });
+    const footer = view("footer", { text: "Стоматологическая клиника в Казани" });
+    const r = checkPromises(s2, files, new Map([["/", [catalog, how, footer]]]));
+    const said = [
+      "цены не показаны: нет суммы с «₽» или «от»",
+      "в секции специалистов нет настоящих имён",
+      "фото специалистов не загрузились",
+      "у специалистов не указан опыт",
+      "в секции отзывов нет текстов отзывов",
+      "в контактах нет телефона или адреса",
+    ];
+    const kinds = (xs: string[]) => xs.map((x) => said.find((k) => x.includes(k)) ?? x);
+    expect(kinds(r.problems)).toEqual([
+      "цены не показаны: нет суммы с «₽» или «от»",
+      "в секции специалистов нет настоящих имён",
+      "фото специалистов не загрузились",
+      "у специалистов не указан опыт",
+      "в секции отзывов нет текстов отзывов",
+      "в контактах нет телефона или адреса",
     ]);
+    // The repair round is only for what the facts keep: contacts; doctors, reviews, prices go to the requests.
+    expect(kinds(r.repairable)).toEqual(["в контактах нет телефона или адреса"]);
+    // Without the browser the code section keeps none of them either.
+    expect(checkPromises(s2, files, null).problems.length).toBeGreaterThanOrEqual(4);
   });
 
   test("keeps: a price «от», an address, the hours", () => {
