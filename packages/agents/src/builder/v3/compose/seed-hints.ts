@@ -5,13 +5,14 @@
 import type { AppSpec, BriefScenario, SystemBrief } from "@wizard/appspec";
 import { SEED_HINT_MAX_VALUES, type SeedHint, validateSeedHint } from "@wizard/gates";
 import { CATALOG_NAMES, SHOP_NAMES } from "@wizard/modules";
-import { staffFacts } from "../../../interview-v3/place.js";
+import { priceFacts, staffFacts } from "../../../interview-v3/place.js";
 import { businessOf, offerOf, shownLists } from "./copy.js";
 
 /** Entities whose rows are the offer (catalog items, booking services, shop products) and their sections. */
 const ITEMS = [CATALOG_NAMES.item, SHOP_NAMES.product] as const;
 const SECTIONS = [CATALOG_NAMES.category, SHOP_NAMES.category] as const;
 const NAME = "name";
+const PRICE = CATALOG_NAMES.price;
 
 const PUBLIC_ACTORS: ReadonlySet<string> = new Set(["visitor", "client"]);
 /** Scenarios of the offer: the catalog, the shop, the booking of a service. */
@@ -24,6 +25,9 @@ const NOT_OFFER =
   /^(?:форм|пол[еяй]|статус|этап|шаг|контакт|врач|мастер|сотрудник|специалист|способ|вариант[ыа]? (?:оплат|доставк))/i;
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+/** The same service name, whatever the case and the spaces. */
+const same = (a: string, b: string) =>
+  a.replace(/\s+/g, " ").trim().toLowerCase() === b.replace(/\s+/g, " ").trim().toLowerCase();
 
 /** A list of the staff in the owner's words («пять врачей: терапевт, два хирурга, ортодонт и детский стоматолог»). */
 const STAFF_COLON = /(?:врач|специалист|мастер|сотрудник)\S*\s*:\s*([^.;]+)/giu;
@@ -123,10 +127,17 @@ export function seedHintsFromBrief(
     staffDirections(request) ??
     // V4-24: the specialists the owner named in the interview («Анна Смирнова — терапевт»), as directions.
     directionsOf(staffFacts({ qa: brief.qa ?? [] }));
+  // V4-24: the prices «от» the owner gave — his priced services first (in the list's spelling when the name matches),
+  // the rest of the list after them; the price hint is aligned to the first rows.
+  const priced = priceFacts({ qa: brief.qa ?? [] });
+  const rest = (items ?? []).filter((i) => !priced.some((p) => same(p.name, i)));
+  const offerItems = priced.length
+    ? [...priced.map((p) => (items ?? []).find((i) => same(p.name, i)) ?? p.name), ...rest]
+    : items;
   const has = new Set(spec.entities.map((e) => e.name));
   const out: SeedHint[] = [];
   for (const [entities, list] of [
-    [ITEMS, items],
+    [ITEMS, offerItems],
     [SECTIONS, sections],
   ] as const) {
     if (!list?.length) continue;
@@ -135,6 +146,11 @@ export function seedHintsFromBrief(
       const h = hintOf(spec, entity, names(list));
       if (h) out.push(h);
     }
+  }
+  if (priced.length && has.has(CATALOG_NAMES.item)) {
+    const values = priced.map((p) => p.price).slice(0, SEED_HINT_MAX_VALUES);
+    const h = { entity: CATALOG_NAMES.item, field: PRICE, values };
+    if (validateSeedHint(spec, h).length === 0) out.push(h);
   }
   return out;
 }

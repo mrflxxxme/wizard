@@ -9,10 +9,13 @@ import { seedHintsFromBrief } from "../src/builder/index.js";
 import { siteFacts } from "../src/builder/v3/compose/index.js";
 import {
   needsPlace,
+  needsPrices,
   needsStaff,
   nextFactQuestion,
   PLACE_QUESTION_TEXT,
+  PRICE_QUESTION_TEXT,
   placeFacts,
+  priceFacts,
   STAFF_QUESTION_TEXT,
   staffFacts,
   v3QuestionInputSchema,
@@ -143,5 +146,74 @@ describe("V4-24 fact questions", () => {
     expect(seedHintsFromBrief(spec, named)).toEqual([
       { entity: "service", field: "name", values: ["Терапия", "Хирургия"] },
     ]);
+  });
+
+  test("prices «от»: asked of a business with services after the place; not of a shop, nor when the brief names a price", () => {
+    const placed = withQa(DENTAL, qa(PLACE_QUESTION_TEXT, "Казань, ул. Баумана, 12"));
+    expect(needsPrices(placed, CLINIC)).toBe(true);
+    expect(nextFactQuestion(placed, CLINIC)?.kind).toBe("prices");
+    expect(v3QuestionInputSchema.safeParse(nextFactQuestion(placed, CLINIC)?.question).success).toBe(true);
+    expect(needsPrices(placed, `${CLINIC}, чистка от 4000 ₽`)).toBe(false);
+    expect(
+      needsPrices(
+        withQa(placed, qa(PRICE_QUESTION_TEXT, "Добавлю потом — пока без цен", "recommended")),
+        CLINIC,
+      ),
+    ).toBe(false);
+    const shop = systemBriefSchema.parse({
+      goals: [{ id: "g1", text: "Продажи чая", success: "50 заказов в месяц" }],
+      audience: "Любители чая",
+      scenarios: [
+        {
+          id: "s1",
+          actor: "visitor",
+          when: "покупатель смотрит каталог",
+          // biome-ignore lint/suspicious/noThenProperty: field name fixed by builder-v3.md §3 C1
+          then: ["кладёт товар в корзину"],
+          moduleHint: "catalog",
+        },
+      ],
+    });
+    expect(needsPrices(shop, "Чайная лавка в Казани")).toBe(false);
+  });
+
+  test("the prices as the owner wrote them: «— от 3 500 ₽», «: 4000 руб», a bare number; a button is no fact", () => {
+    const b = withQa(
+      DENTAL,
+      qa(
+        PRICE_QUESTION_TEXT,
+        "Лечение кариеса — от 3 500 ₽; Профессиональная чистка: 4000 руб\nИмплантация от 35000, Консультация 0",
+      ),
+    );
+    expect(priceFacts(b)).toEqual([
+      { name: "Лечение кариеса", price: 3500 },
+      { name: "Профессиональная чистка", price: 4000 },
+      { name: "Имплантация", price: 35000 },
+    ]);
+    expect(priceFacts(withQa(DENTAL, qa(PRICE_QUESTION_TEXT, "Цены по запросу", "recommended")))).toEqual([]);
+  });
+
+  test("the prices in the seed hints (the owner's services first, by name) and in the site's facts", async () => {
+    const { spec } = await briefSite("v4-24-prices", DENTAL_BOOKING);
+    const brief = systemBriefSchema.parse(DENTAL_BOOKING);
+    const priced = withQa(brief, qa(PRICE_QUESTION_TEXT, "Лечение кариеса — от 3500; Чистка — 4000"));
+    expect(seedHintsFromBrief(spec, priced)).toEqual([
+      { entity: "service", field: "name", values: ["Лечение кариеса", "Чистка"] },
+      { entity: "service", field: "price", values: [3500, 4000] },
+    ]);
+    // With a list of services in the brief: the priced ones first in the list's spelling, the rest after them.
+    const listed = withQa(
+      withQa(brief, qa(STAFF_QUESTION_TEXT, "Анна Смирнова — терапевт, Игорь Ким — хирург")),
+      qa(PRICE_QUESTION_TEXT, "хирургия — от 5000"),
+    );
+    expect(seedHintsFromBrief(spec, listed)).toEqual([
+      { entity: "service", field: "name", values: ["Хирургия", "Терапия"] },
+      { entity: "service", field: "price", values: [5000] },
+    ]);
+    const ctx = composeContext();
+    expect(siteFacts(ctx).prices).toBe(false);
+    expect(
+      siteFacts({ ...ctx, brief: withQa(ctx.brief, qa(PRICE_QUESTION_TEXT, "Чистка — 4000")) }).prices,
+    ).toBe(true);
   });
 });
