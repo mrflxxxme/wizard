@@ -223,6 +223,8 @@ export interface LlmCallsTable {
   input_tokens: number;
   cached_tokens: number;
   output_tokens: number;
+  /** V4-04 (migration 0046): reasoning tokens, part of output_tokens. */
+  reasoning_tokens: ColumnType<number, number | undefined, number>;
   tool_calls: number;
   latency_ms: number | null;
   ttft_ms: number | null;

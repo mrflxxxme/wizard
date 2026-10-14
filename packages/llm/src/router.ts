@@ -420,6 +420,7 @@ export function createRouter(opts: RouterOptions = {}): Router {
         inputTokens: usage.inputTokens,
         cachedTokens: usage.cachedTokens,
         outputTokens: usage.outputTokens,
+        ...(usage.reasoningTokens ? { reasoningTokens: usage.reasoningTokens } : {}),
         toolCalls: fields.toolCalls ?? 0,
         latencyMs: fields.latencyMs,
         ttftMs: null,
