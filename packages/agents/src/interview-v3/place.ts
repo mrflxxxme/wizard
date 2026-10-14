@@ -116,6 +116,24 @@ export function nextFactQuestion(
 export const isFactQuestion = (text: string): boolean =>
   text === PLACE_QUESTION_TEXT || text === STAFF_QUESTION_TEXT;
 
+/**
+ * The phone of the business in the owner's answer to the place question, taken out of the text before it is scrubbed
+ * (D79 (3): the build stages go to the allowlist models unmasked; the owner gives this phone to publish it on his site —
+ * not the end users' data). Only this answer and only the phone; the rest is scrubbed as every answer.
+ */
+export function splitPlacePhone(text: string): { rest: string; phone: string | null } {
+  const phone = PHONE_RE.exec(text)?.[0]?.trim() ?? null;
+  return {
+    rest: phone
+      ? text
+          .replace(phone, " ")
+          .replace(/\s{2,}/g, " ")
+          .trim()
+      : text,
+    phone,
+  };
+}
+
 /** The owner's own answer of a fact question (a button answer is no fact). */
 function ownAnswer(brief: Pick<SystemBrief, "qa">, text: string): string | null {
   const q = brief.qa.find((x) => x.q === text && x.chosen === "custom");

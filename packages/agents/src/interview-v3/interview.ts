@@ -25,7 +25,7 @@ import { CAPABILITY_LABELS, capabilityCounts, normText } from "./capability.js";
 import { defaultPatch, fallbackQuestion } from "./fallback.js";
 import { BLOCKING_QUESTIONS_CAP, type BlockingGap, blockingGaps, questionOrderIssues } from "./gaps.js";
 import { addAssumption, addQa, applyBriefPatch, refreshCapability } from "./merge.js";
-import { isFactQuestion, nextFactQuestion } from "./place.js";
+import { isFactQuestion, nextFactQuestion, PLACE_QUESTION_TEXT, splitPlacePhone } from "./place.js";
 import { interviewV3Messages, type V3TurnInput } from "./prompt.js";
 import { interviewResearchTools } from "./research-tools.js";
 import {
@@ -366,11 +366,15 @@ export class InterviewV3 {
     } else {
       const text = a.text?.trim() ?? "";
       if (!text || text.length > 2000) throw new AgentError("INVALID_INPUT", MSG.custom);
-      this.dlp(s, out, text);
       chosen = "custom";
       label = text;
     }
-    addQa(s.brief, { q: q.text, a: label, recommended: rec.label, chosen });
+    // V4-24, D79 (3): the business phone of the place answer is kept as given; everything else is scrubbed as before.
+    const place = chosen === "custom" && q.text === PLACE_QUESTION_TEXT ? splitPlacePhone(label) : null;
+    if (chosen === "custom") this.dlp(s, out, place ? place.rest : label);
+    addQa(s.brief, { q: q.text, a: place ? place.rest : label, recommended: rec.label, chosen });
+    const kept = s.brief.qa.at(-1);
+    if (place?.phone && kept) kept.a = `${kept.a}; ${place.phone}`;
     if (optionId) this.applyOptionPatch(s, q, optionId, "default");
     s.current = null;
     // V4-24: a fact question is asked once nothing blocking is left: its answer ends the turn by code (no model call).

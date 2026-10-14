@@ -118,15 +118,21 @@ describe("V4-24 fact questions", () => {
 
   test("the site's facts: the operator's data first, else the place the owner gave; the hours for the page prompt", () => {
     const ctx = composeContext();
-    const place = qa(PLACE_QUESTION_TEXT, "Казань, ул. Пушкина, 3; ежедневно 10:00–22:00");
+    const place = qa(PLACE_QUESTION_TEXT, "Казань, ул. Пушкина, 3; ежедневно 10:00–22:00; +7 843 555-12-34");
     // The operator's address and contact stay first.
     const withOperator = siteFacts({ ...ctx, brief: withQa(ctx.brief, place) });
     expect(withOperator.address).toBe("Казань, ул. Баумана, 15");
     expect(withOperator.hours).toBe("ежедневно 10:00–22:00");
     // No operator's data: the interview's answer.
-    const bare = { ...ctx.spec, compliance: { ...ctx.spec.compliance, operatorAddress: undefined } };
+    const bare = {
+      ...ctx.spec,
+      compliance: { ...ctx.spec.compliance, operatorAddress: undefined, operatorContact: undefined },
+    };
     const f = siteFacts({ ...ctx, spec: bare as never, brief: withQa(ctx.brief, place) });
     expect(f.address).toBe("Казань, ул. Пушкина, 3");
+    // D79 (3): the business phone of the place answer reaches the site (kept unscrubbed by the interview).
+    expect(f.phone).toBe("+7 843 555-12-34");
+    expect(withOperator.phone).toBe("+7 843 200-40-50");
   });
 
   test("the seed hints: the directions of the specialists the owner named, not «Услуга 1»", async () => {

@@ -63,6 +63,7 @@ export {
   placeFacts,
   placeQuestion,
   STAFF_QUESTION_TEXT,
+  splitPlacePhone,
   staffFacts,
   staffQuestion,
 } from "./place.js";
