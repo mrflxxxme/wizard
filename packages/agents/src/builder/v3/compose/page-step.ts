@@ -15,12 +15,14 @@ import type { CriticInspector, CriticShot, CriticShotRequest } from "../critic/t
 import { keepPhotoPlaces, siteFiles } from "./codegen.js";
 import type { SiteFacts } from "./facts.js";
 import { lintErrors } from "./lint.js";
+import { withMotionImports } from "./motion-imports.js";
 import {
   applyPageCode,
   CODE_RULES,
   codeSectionFile,
   designBlock,
   HARD_ISSUES,
+  HOME_MIN_SECTIONS,
   type PageCodeAnswer,
   pageCodeRequest,
   pageLintIssues,
@@ -194,11 +196,118 @@ export async function pageCode(
 /** Checks of the assembled page by sections: the first and two rounds of rewriting the failing sections. */
 const SECTION_ROUNDS = 3;
 
-/** Section ids named by problems of the page lint (path sections.<i>…) or of G0 (the section file in the text). */
+/**
+ * The section of a G0 error in the page file itself (`<file>:<line>`): the props of the plan do not fit the props type
+ * the section's code declares (rehearsal №6, salon: `cta` a string, the hero's type a link). The page file wraps each
+ * section's element in `<div id="<id>">` (codegen pageSource), so the nearest such line above names the section.
+ */
+function pageFileSection(
+  pageFile: string,
+  pageSource: string | undefined,
+  message: string,
+): string | undefined {
+  if (!pageSource) return undefined;
+  const at = new RegExp(`${pageFile.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:(\\d+)`).exec(message);
+  if (!at) return undefined;
+  const lines = pageSource.split("\n");
+  for (let i = Math.min(Number(at[1]), lines.length) - 1; i >= 0; i--) {
+    const div = /^\s*<div id="([^"]+)">\s*$/.exec(lines[i] ?? "");
+    if (div) return div[1];
+    if (/^\s*<\/div>\s*$/.test(lines[i] ?? "")) return undefined;
+  }
+  return undefined;
+}
+
+/** An anchor link of a section: `href="#x"` or `"/#x"` in its code, a string `#x` / `/#x` anywhere in its props. */
+const SOURCE_ANCHOR_RE = /href=\{?["'`](\/?#[a-zA-Z][\w-]*)["'`]/g;
+const PROPS_ANCHOR_RE = /^\/?#[a-zA-Z][\w-]*$/;
+
+/** Anchors of the page: its section ids, the ids of the answer's sections and the ids their code declares. */
+function anchorIds(v: PageCodeAnswer, page: Pick<SitePage, "sections">): Set<string> {
+  const code = v.sections.flatMap((s) => (s.kind === "code" ? [s] : []));
+  return new Set([
+    ...page.sections.map((s) => s.id),
+    ...v.sections.map((s) => s.id),
+    ...code.flatMap((s) => [...s.source.matchAll(/\bid=\{?["'`]([\w-]+)["'`]/g)].map((m) => m[1] ?? "")),
+  ]);
+}
+
+/**
+ * Code links to an anchor the page lacks, sent by code to the main action: /booking when the site has it, else the
+ * page's form, request or contacts section (probe «prices»: the hero's last fix round, mending a type error, wrote
+ * `#request` — no round was left to hear of it). Returns the sources that changed; with no target nothing changes.
+ */
+export function retargetAnchors(
+  v: PageCodeAnswer,
+  page: Pick<SitePage, "route" | "sections">,
+  routes: readonly string[],
+): Map<string, string> {
+  const ids = anchorIds(v, page);
+  const out = new Map<string, string>();
+  const section = ["form", "request", "contacts"].find((x) => ids.has(x));
+  const href =
+    page.route !== "/booking" && routes.includes("/booking") ? "/booking" : section && `#${section}`;
+  if (!href) return out;
+  for (const s of v.sections) {
+    if (s.kind !== "code") continue;
+    const next = s.source.replace(SOURCE_ANCHOR_RE, (all, link: string) =>
+      (link.startsWith("/") && page.route !== "/") || ids.has(link.slice(link.indexOf("#") + 1))
+        ? all
+        : all.replace(link, href),
+    );
+    if (next !== s.source) out.set(s.id, next);
+  }
+  return out;
+}
+
+/**
+ * Links of code sections to an anchor the page does not have (rehearsal №6, coffee: «#order» from the first screen,
+ * critic P0 S01) — a hard issue at the source section: the visitor's main action must lead somewhere. Anchors are the
+ * page's section ids and the ids the sections' code declares; «/#x» counts on the home page only.
+ */
+export function anchorIssues(
+  v: PageCodeAnswer,
+  page: Pick<SitePage, "route" | "sections">,
+): { path: string; code: string; message: string }[] {
+  const ids = anchorIds(v, page);
+  const out: { path: string; code: string; message: string }[] = [];
+  v.sections.forEach((s, i) => {
+    if (s.kind !== "code") return;
+    const links = new Set<string>();
+    for (const m of s.source.matchAll(SOURCE_ANCHOR_RE)) links.add(m[1] ?? "");
+    const visit = (x: unknown): void => {
+      if (typeof x === "string" && PROPS_ANCHOR_RE.test(x)) links.add(x);
+      else if (Array.isArray(x)) for (const y of x) visit(y);
+      else if (x && typeof x === "object") for (const y of Object.values(x)) visit(y);
+    };
+    visit(s.props);
+    for (const l of links) {
+      if (l.startsWith("/") && page.route !== "/") continue;
+      const id = l.slice(l.indexOf("#") + 1);
+      if (ids.has(id)) continue;
+      out.push({
+        path: `sections.${i}.source`,
+        code: "BROKEN_ANCHOR",
+        message: `Якоря #${id} на странице нет: ссылка на существующую секцию или на /booking`,
+      });
+    }
+  });
+  return out;
+}
+
+/** What the section hears of a G0 error in the page file: its props type must take the props of the plan as they are. */
+const PROPS_TYPE_HINT =
+  "Ошибка в файле страницы: props секции из плана не подходят под тип props, который объявляет код секции. Тип props в коде должен принимать ровно ключи и значения props плана (строка остаётся строкой).";
+
+/**
+ * Section ids named by problems of the page lint (path sections.<i>…) or of G0 (the section file in the text, or a
+ * line of the page file inside the section's wrapper).
+ */
 function failingSections(
   plan: PagePlan,
   page: SitePage,
   issues: readonly { path?: string; message: string }[],
+  pageSource?: string,
 ): Map<string, string[]> {
   const out = new Map<string, string[]>();
   const add = (id: string, m: string) => out.set(id, [...(out.get(id) ?? []), m]);
@@ -212,7 +321,13 @@ function failingSections(
     const byFile = plan.sections.find(
       (s) => s.kind === "code" && i.message.includes(codeSectionFile(page, s.id)),
     );
-    if (byFile) add(byFile.id, i.message);
+    if (byFile) {
+      add(byFile.id, i.message);
+      continue;
+    }
+    const id = pageFileSection(page.file, pageSource, i.message);
+    if (id && plan.sections.some((s) => s.kind === "code" && s.id === id))
+      add(id, `${i.message}\n${PROPS_TYPE_HINT}`);
   }
   return out;
 }
@@ -289,25 +404,69 @@ export async function pageSections(
         messages,
         tool: req.tool,
       });
-      if (r.ok) sources.set(item.id, r.value.source);
+      if (r.ok) sources.set(item.id, withMotionImports(r.value.source));
     } catch (e) {
       stopped ??= e;
     }
   };
   await Promise.all(items.map((it) => write(it)));
   if (stopped) return s.stop(stopped) ? "stop" : null;
+  const check = { site: s.site, page: s.page, facts: s.facts, library: s.library, signatures: s.signatures };
+  /**
+   * The page without the sections that still fail (rehearsal №6: six written sections thrown away for one): kept when
+   * the hero stays, the home page keeps HOME_MIN_SECTIONS, the hard lint passes and G0 builds it. Null — it does not.
+   */
+  const partial = async (
+    drop: ReadonlySet<string>,
+    why: readonly string[],
+  ): Promise<PageStepResult | null> => {
+    if (!drop.size || drop.has("hero")) return null;
+    const kept: PagePlan = {
+      ...plan,
+      sections: plan.sections.filter((x) => x.kind !== "code" || (!drop.has(x.id) && sources.has(x.id))),
+    };
+    if (s.page.route === "/" && kept.sections.length < HOME_MIN_SECTIONS) return null;
+    const answer = planAnswer(kept, sources);
+    if (pageLintIssues(answer, check).some((i) => HARD_ISSUES.has(i.code ?? ""))) return null;
+    if (anchorIssues(answer, s.page).length) return null;
+    const applied = codePage(s.page, answer, s.library);
+    const sys = systemWith(ctx, s, applied.page, new Map([...s.signatures, ...applied.sources]));
+    const g0 = await s.verify(sys.spec, sys.files, [...applied.sources.keys(), applied.page.file]);
+    if (!g0.ok) return null;
+    const names = plan.sections
+      .filter((x) => x.kind === "code" && drop.has(x.id))
+      .map((x) => `«${(x as PlanCodeItem).title}»`);
+    s.notes.push(
+      `Страница ${s.page.route} «${s.page.title}» собрана без секций ${names.join(", ")}: они не прошли проверки (${why.slice(0, 2).join("; ").slice(0, 300)}).`,
+    );
+    const model = author.model();
+    return { page: model ? { ...applied.page, author: model } : applied.page, sources: applied.sources };
+  };
   if (items.some((it) => !sources.has(it.id))) {
+    const missing = new Set(items.filter((it) => !sources.has(it.id)).map((it) => it.id));
+    const p = await partial(missing, ["секция не написана по форме"]);
+    if (p) return p;
     s.notes.push(`Секции страницы ${s.page.route} не прошли проверки — страница осталась прежней.`);
     return null;
   }
-  const check = { site: s.site, page: s.page, facts: s.facts, library: s.library, signatures: s.signatures };
+  let last: { path?: string; message: string }[] = [];
+  let lastSource: string | undefined;
+  const routes = s.site.pages.map((p) => p.route);
   for (let round = 0; round < SECTION_ROUNDS; round++) {
+    // The model mends its own links first; on the last round the code sends what is left to the main action.
+    if (round === SECTION_ROUNDS - 1)
+      for (const [id, src] of retargetAnchors(planAnswer(plan, sources), s.page, routes))
+        sources.set(id, src);
     const answer = planAnswer(plan, sources);
     // The last round keeps only the hard issues: soft ones never leave the page as it was (G0 still decides).
-    const lint = pageLintIssues(answer, check).filter(
-      (i) => round < SECTION_ROUNDS - 1 || HARD_ISSUES.has(i.code ?? ""),
-    );
+    const lint = [
+      ...pageLintIssues(answer, check).filter(
+        (i) => round < SECTION_ROUNDS - 1 || HARD_ISSUES.has(i.code ?? ""),
+      ),
+      ...anchorIssues(answer, s.page),
+    ];
     let problems = lint.map((i) => ({ path: i.path, message: i.message }));
+    lastSource = undefined;
     let applied = codePage(s.page, answer, s.library);
     if (!problems.length) {
       const sys = systemWith(ctx, s, applied.page, new Map([...s.signatures, ...applied.sources]));
@@ -324,15 +483,30 @@ export async function pageSections(
         return s.firstScreen ? firstScreen(ctx, base, s, result, model) : result;
       }
       problems = g0.problems.map((m) => ({ path: "", message: m }));
+      lastSource = sys.files.get(applied.page.file);
     }
+    last = problems;
     if (round === SECTION_ROUNDS - 1) break;
-    const failing = failingSections(plan, s.page, problems);
+    const failing = failingSections(plan, s.page, problems, lastSource);
     if (!failing.size) break;
     await Promise.all(items.filter((it) => failing.has(it.id)).map((it) => write(it, failing.get(it.id))));
     if (stopped) return s.stop(stopped) ? "stop" : null;
     applied = codePage(s.page, planAnswer(plan, sources), s.library);
   }
-  s.notes.push(`Код страницы ${s.page.route} не прошёл проверки — страница осталась прежней.`);
+  const failing = failingSections(plan, s.page, last, lastSource);
+  const p = await partial(
+    new Set(failing.keys()),
+    last.map((x) => x.message),
+  );
+  if (p) return p;
+  const why = last
+    .slice(0, 2)
+    .map((x) => x.message)
+    .join("; ")
+    .slice(0, 300);
+  s.notes.push(
+    `Код страницы ${s.page.route} не прошёл проверки${why ? ` (${why})` : ""} — страница осталась прежней.`,
+  );
   return null;
 }
 

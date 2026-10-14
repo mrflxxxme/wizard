@@ -88,8 +88,19 @@ describe.skipIf(!ON || !hasChromium)(
                 const registry = only(id);
                 const sink = new MemoryUsageSink();
                 const router = createRouter({ mode: "live", registry, sink });
-                const route = (i: RouteInput) =>
-                  router.route({ ...i, orgPolicy: OPEN, ctx: { orgId: "probe" } });
+                // The refusals the model was sent back with (tool checks, page checks and G0): why a page stayed.
+                const refusals: string[] = [];
+                const route = (i: RouteInput) => {
+                  const last = i.messages.at(-1);
+                  const text =
+                    typeof last?.content === "string" ? last.content : JSON.stringify(last?.content ?? "");
+                  if (
+                    (last?.role === "tool" && text.includes("INVALID_ARGS")) ||
+                    (last?.role === "user" && /не прош[её]?л[аи]? проверк/.test(text))
+                  )
+                    refusals.push(text.slice(-900));
+                  return router.route({ ...i, orgPolicy: OPEN, ctx: { orgId: "probe" } });
+                };
                 const ctx: V3BuildContext = {
                   ...base,
                   files: apply(base.files, skeleton),
@@ -156,6 +167,7 @@ describe.skipIf(!ON || !hasChromium)(
                   critic: cycle?.model ?? null,
                   top: cycle?.top.slice(0, 4).map((t) => `${t.severity} ${t.sign}`) ?? [],
                   notes: r.notes,
+                  refusals: refusals.slice(-6),
                 };
                 rows.push(row);
                 console.log(`page_quality=${JSON.stringify(row)}`);

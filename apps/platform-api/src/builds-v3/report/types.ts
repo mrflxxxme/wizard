@@ -30,6 +30,8 @@ export interface ReportScenario {
   status: string;
   problems: string[];
   http: ScenarioHttp[];
+  /** The composer's notes (why a page stayed as it was, what the checks refused), at most eight. */
+  notes?: string[];
   /** V4-21: promises of its «видит …» steps the site does not show (they went to «Запросы на развитие»). */
   unkept?: string[];
   /** Of `unkept`, those withdrawn for want of the owner's facts (specialists, reviews, prices — D49), not repaired. */

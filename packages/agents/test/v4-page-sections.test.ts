@@ -5,6 +5,7 @@ import { createRegistry, type RouteInput, type RouteOutput } from "@wizard/llm";
 import { PATTERNS } from "@wizard/ui-kit/v3/patterns";
 import { describe, expect, test } from "vitest";
 import { createPageComposer, readSite, type SiteModel } from "../src/builder/v3/compose/index.js";
+import { withMotionImports } from "../src/builder/v3/compose/motion-imports.js";
 import {
   autofixSection,
   normalizePlan,
@@ -13,6 +14,7 @@ import {
   SECTION_CODE_TOOL,
   sectionIssues,
 } from "../src/builder/v3/compose/page-sections.js";
+import { anchorIssues, retargetAnchors } from "../src/builder/v3/compose/page-step.js";
 import type { V3BuildContext, V3ComposeResult } from "../src/builder/v3/contract.js";
 import { BRIEF, composeContext, HERO_CODE, SIGNATURE_OK } from "./v3-compose-fixtures.js";
 
@@ -155,6 +157,132 @@ describe("V4-06 speed: the page by sections", () => {
     expect(apply(ctx.files, r).get("ui/sections/home-first-visit.tsx")).toBe(SIGNATURE_OK.source);
   });
 
+  test("G0 names a line of the page file: the section wrapped there hears it with the props hint", async () => {
+    const ctx = await prepared();
+    const broken = SIGNATURE_OK.source.replace("export default function", "export default function /*x*/");
+    const verify = async (_s: unknown, f: ReadonlyMap<string, string>) => {
+      if (!f.get("ui/sections/home-first-visit.tsx")?.includes("/*x*/")) return { ok: true, problems: [] };
+      const lines = (f.get("ui/pages/site/Home.tsx") ?? "").split("\n");
+      const at = lines.findIndex((l) => l.includes('<div id="first-visit">')) + 2;
+      return { ok: false, problems: [`G0-TS-01: Ошибка типов в ui/pages/site/Home.tsx:${at} (TS2322)`] };
+    };
+    const m = model({ hero: [HERO_CODE.source], "first-visit": [broken, SIGNATURE_OK.source] });
+    const r = await composer({ verify }).scenario({ ...ctx, route: m.route }, LEAD);
+    const fix = m.calls
+      .filter((c) => String(c.messages[1]?.content).includes("## Твоя секция: first-visit"))
+      .at(-1);
+    expect(JSON.stringify(fix?.messages)).toContain("props секции из плана не подходят под тип props");
+    expect(apply(ctx.files, r).get("ui/sections/home-first-visit.tsx")).toBe(SIGNATURE_OK.source);
+  });
+
+  test("a section linking to a missing anchor is written again alone with the anchor issue", async () => {
+    const ctx = await prepared();
+    const dead = SIGNATURE_OK.source.replace(
+      /(<section[^>]*>)/,
+      '$1<a href="#order" className="text-primary">Заказать</a>',
+    );
+    const m = model({ hero: [HERO_CODE.source], "first-visit": [dead, SIGNATURE_OK.source] });
+    const r = await composer().scenario({ ...ctx, route: m.route }, LEAD);
+    const asks = m.calls.filter((c) =>
+      String(c.messages[1]?.content).includes("## Твоя секция: first-visit"),
+    );
+    expect(asks).toHaveLength(2);
+    expect(JSON.stringify(asks[1]?.messages)).toContain("Якоря #order на странице нет");
+    expect(
+      m.calls.filter((c) => String(c.messages[1]?.content).includes("## Твоя секция: hero")),
+    ).toHaveLength(1);
+    expect(apply(ctx.files, r).get("ui/sections/home-first-visit.tsx")).toBe(SIGNATURE_OK.source);
+  });
+
+  test("a section that never passes is dropped: the page is assembled from the ones that did (not the skeleton)", async () => {
+    const ctx = await prepared();
+    const broken = SIGNATURE_OK.source.replace("export default function", "export default function /*x*/");
+    const verify = async (_s: unknown, f: ReadonlyMap<string, string>) =>
+      f.get("ui/sections/home-first-visit.tsx")?.includes("/*x*/")
+        ? { ok: false, problems: ["G0-TS-01: ошибка типов в ui/sections/home-first-visit.tsx"] }
+        : { ok: true, problems: [] };
+    const m = model({ hero: [HERO_CODE.source], "first-visit": [broken] });
+    const r = await composer({ verify }).scenario({ ...ctx, route: m.route }, LEAD);
+    const files = apply(ctx.files, r);
+    expect(files.get("ui/sections/home-hero.tsx")).toBe(HERO_CODE.source);
+    expect(files.has("ui/sections/home-first-visit.tsx")).toBe(false);
+    expect((readSite(files) as SiteModel).pages[0]?.sections.map((x) => x.id)).toEqual([
+      "header",
+      "hero",
+      "catalog",
+      "form",
+      "contacts",
+      "footer",
+    ]);
+    expect(r.notes.join(" ")).toMatch(/собрана без секций «[^»]+»: они не прошли проверки \(G0-TS-01/);
+  });
+
+  test("a hero that never passes keeps the page as it was; the note says why", async () => {
+    const ctx = await prepared();
+    const verify = async (_s: unknown, f: ReadonlyMap<string, string>) =>
+      f.has("ui/sections/home-hero.tsx")
+        ? { ok: false, problems: ["G0-TS-01: ошибка типов в ui/sections/home-hero.tsx"] }
+        : { ok: true, problems: [] };
+    const m = model({ hero: [HERO_CODE.source], "first-visit": [SIGNATURE_OK.source] });
+    const r = await composer({ verify }).scenario({ ...ctx, route: m.route }, LEAD);
+    expect(r.files.has("ui/sections/home-hero.tsx")).toBe(false);
+    expect(r.notes.join(" ")).toContain(
+      "не прошёл проверки (G0-TS-01: ошибка типов в ui/sections/home-hero.tsx)",
+    );
+  });
+
+  test("a link to an anchor the page lacks is a hard issue at its section; existing ids and other pages pass", () => {
+    const code = (id: string, source: string, props: Record<string, unknown> = {}) =>
+      ({ kind: "code", id, title: id, source, props }) as const;
+    const answer = (src: string, props?: Record<string, unknown>) =>
+      ({
+        seo: { title: "t", description: "d" },
+        sections: [
+          code("hero", src, props),
+          code("steps", '<section id="how">шаги</section>'),
+          { kind: "keep", id: "form" },
+        ],
+      }) as never;
+    const home = { route: "/", sections: [{ id: "header" }, { id: "form" }, { id: "footer" }] } as never;
+    expect(anchorIssues(answer('<a href="#order">Заказать</a>'), home)).toEqual([
+      expect.objectContaining({
+        path: "sections.0.source",
+        code: "BROKEN_ANCHOR",
+        message: expect.stringContaining("#order"),
+      }),
+    ]);
+    expect(
+      anchorIssues(answer("<a href={props.cta.href}>x</a>", { cta: { href: "/#order" } }), home),
+    ).toHaveLength(1);
+    expect(
+      anchorIssues(answer('<a href="#form">x</a><a href="#how">y</a><a href="#steps">z</a>'), home),
+    ).toEqual([]);
+    const inner = { route: "/services", sections: [{ id: "form" }] } as never;
+    expect(anchorIssues(answer('<a href="/#order">x</a>'), inner)).toEqual([]);
+  });
+
+  test("a link to an absent anchor is sent by code to /booking, else to the page's form; present ones stay", () => {
+    const answer = (src: string) =>
+      ({
+        seo: { title: "t", description: "d" },
+        sections: [
+          { kind: "code", id: "hero", title: "hero", source: src, props: {} },
+          { kind: "keep", id: "contacts" },
+        ],
+      }) as never;
+    const page = { route: "/services", sections: [{ id: "header" }, { id: "footer" }] } as never;
+    const src = '<a href="#request">Заявка</a><a href="#contacts">Контакты</a>';
+    expect(retargetAnchors(answer(src), page, ["/", "/services", "/booking"]).get("hero")).toBe(
+      '<a href="/booking">Заявка</a><a href="#contacts">Контакты</a>',
+    );
+    expect(retargetAnchors(answer(src), page, ["/", "/services"]).get("hero")).toBe(
+      '<a href="#contacts">Заявка</a><a href="#contacts">Контакты</a>',
+    );
+    expect(retargetAnchors(answer('<a href="#contacts">x</a>'), page, ["/booking"]).size).toBe(0);
+    const fixed = answer(retargetAnchors(answer(src), page, ["/booking"]).get("hero") ?? "");
+    expect(anchorIssues(fixed, page)).toEqual([]);
+  });
+
   test("mechanical slips are fixed by code, not by a call", () => {
     const slip = HERO_CODE.source
       .replace("export default function Hero", "export function Hero")
@@ -265,6 +393,29 @@ describe("V4-06 speed: the page by sections", () => {
     // A link already tall enough keeps its classes.
     const tall = '<a href="tel:+7" className="inline-flex min-h-12 items-center text-primary">x</a>';
     expect(autofixSection(tall)).toBe(tall);
+  });
+
+  test("motion names used but not imported join the import: <m.x> inside its own LazyMotion (DeepSeek)", () => {
+    const src = [
+      'import { LazyMotion, domAnimation, motion, useReducedMotion } from "motion/react";',
+      "export default function Steps() {",
+      "  const reduce = useReducedMotion();",
+      "  return (",
+      "    <LazyMotion features={domAnimation}>",
+      '      <m.h2 className="font-display text-h2">Как проходит запись</m.h2>',
+      "    </LazyMotion>",
+      "  );",
+      "}",
+      "",
+    ].join("\n");
+    const fixed = withMotionImports(src);
+    expect(fixed).toMatch(/import \{[^}]*\bm\b[^}]*\} from "motion\/react"/);
+    expect(fixed.match(/from "motion\/react"/g)).toHaveLength(1);
+    const ok = 'import { m } from "motion/react";\nconst X = () => <m.div />;';
+    expect(withMotionImports(ok)).toBe(ok);
+    expect(withMotionImports("const X = () => <m.div />;")).toBe(
+      'import { m } from "motion/react";\nconst X = () => <m.div />;',
+    );
   });
 
   test("an entrance starts visible: opacity 0 leaves initial and hidden, the shift stays", () => {

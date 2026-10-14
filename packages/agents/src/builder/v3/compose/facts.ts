@@ -223,10 +223,17 @@ export function siteFacts(ctx: Pick<V3BuildContext, "brief" | "plan" | "spec" | 
   };
 }
 
-/** A string field of the owner's landing texts. */
+/**
+ * The system's words that leak into a visitor's text from the brief and the plan (rehearsal №6: «Запишитесь на слот.»
+ * on the first screen): such a text is not shown — the next source of the place is taken.
+ */
+export const JARGON_RE =
+  /(?<![а-яёa-z])(?:слот(?:ы|а|у|ом|ов|ам|ами|ах)?|лид(?:ы|а|ов|ам)?|сущност(?:ь|и|ей|ям)|crud|эндпоинт\w*)(?![а-яёa-z])/i;
+
+/** A string field of the owner's landing texts; one in the system's jargon (JARGON_RE) is left out. */
 export function textOf(facts: SiteFacts, type: string, key: string): string | undefined {
   const v = facts.texts.get(type)?.[key];
-  return typeof v === "string" && v.trim() ? v.trim() : undefined;
+  return typeof v === "string" && v.trim() && !JARGON_RE.test(v) ? v.trim() : undefined;
 }
 
 /** A photo of a slot («top», «top-2», «about»…). */
