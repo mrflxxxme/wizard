@@ -1,15 +1,15 @@
 // The system's words in a visitor's text (rehearsal №6: «Запишитесь на слот.» on the first screen of the skeleton): a
-// plan text in the jargon is not shown, the next source of the place is taken; «лидер», «бронзовый» stay.
+// plan text in the jargon is not shown, the next source of the place is taken; «лидер», «бронь» stay.
 import { describe, expect, test } from "vitest";
 import { JARGON_RE, type SiteFacts, textOf } from "../src/builder/v3/compose/facts.js";
 
 const facts = (subtitle: string) => ({ texts: new Map([["hero", { subtitle }]]) }) as unknown as SiteFacts;
 
 describe("V4-06: the visitor's language, not the system's", () => {
-  test("слот, лид, бронь in a plan text: left out", () => {
+  test("слот, лид and the system's words in a plan text: left out", () => {
     expect(textOf(facts("Запишитесь на слот."), "hero", "subtitle")).toBeUndefined();
     expect(textOf(facts("Свободные слоты на неделю"), "hero", "subtitle")).toBeUndefined();
-    expect(textOf(facts("Бронь столика за минуту"), "hero", "subtitle")).toBeUndefined();
+    expect(textOf(facts("Каждая сущность — в карточке"), "hero", "subtitle")).toBeUndefined();
     expect(textOf(facts("Каждый лид — в CRM"), "hero", "subtitle")).toBeUndefined();
   });
 
@@ -17,7 +17,8 @@ describe("V4-06: the visitor's language, not the system's", () => {
     expect(textOf(facts("Выберите свободное время — запишем к врачу"), "hero", "subtitle")).toBe(
       "Выберите свободное время — запишем к врачу",
     );
-    for (const ok of ["Лидер района по отзывам", "Бронзовый загар за сеанс", "Забронируйте столик"])
+    // «бронь» is the client's word of a restaurant or a hotel (orchestrator, 14.10.2026).
+    for (const ok of ["Лидер района по отзывам", "Бронь столика за минуту", "Забронируйте номер"])
       expect(JARGON_RE.test(ok), ok).toBe(false);
   });
 });

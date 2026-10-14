@@ -228,7 +228,7 @@ export function siteFacts(ctx: Pick<V3BuildContext, "brief" | "plan" | "spec" | 
  * on the first screen): such a text is not shown — the next source of the place is taken.
  */
 export const JARGON_RE =
-  /(?<![а-яё])(?:слот(?:ы|а|у|ом|ов|ам|ами|ах)?|лид(?:ы|а|ов|ам)?|бронь|брони)(?![а-яё])/i;
+  /(?<![а-яёa-z])(?:слот(?:ы|а|у|ом|ов|ам|ами|ах)?|лид(?:ы|а|ов|ам)?|сущност(?:ь|и|ей|ям)|crud|эндпоинт\w*)(?![а-яёa-z])/i;
 
 /** A string field of the owner's landing texts; one in the system's jargon (JARGON_RE) is left out. */
 export function textOf(facts: SiteFacts, type: string, key: string): string | undefined {

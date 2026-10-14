@@ -152,42 +152,7 @@ export function autofixSection(source: string): string {
     /\b(fitWords|useFitWords|srcSetOf|safeHref|richInline|richPlain)(<[^<>()]*>)?\(([^(),]+),[^()]*\)/g,
     "$1$2($3)",
   );
-  return withMotionImports(
-    withPhoneTargets(withReducedMotion(withVisibleStart(withLinkColor(withoutUnknownHeadless(s))))),
-  );
-}
-
-/** motion/react names a section uses and the import may lack: `<m.x>`, the wrappers, `domAnimation` in its prop. */
-const MOTION_NAMES: readonly [string, RegExp][] = [
-  ["m", /<\/?m\.[a-zA-Z]/],
-  ["LazyMotion", /<LazyMotion\b/],
-  ["domAnimation", /features=\{domAnimation\}/],
-  ["MotionConfig", /<MotionConfig\b/],
-];
-
-/**
- * A motion/react name used but not imported (DeepSeek's slip, rehearsal №6: `<m.div>` inside its own <LazyMotion> with
- * `motion` imported — G0 TS2304 «Cannot find name 'm'» left the home page as the skeleton): it joins the import.
- */
-function withMotionImports(source: string): string {
-  const imp = /import\s*\{([^}]*)\}\s*from\s*["']motion\/react["'];?/.exec(source);
-  const have = new Set(
-    (imp?.[1] ?? "")
-      .split(",")
-      .map((x) => x.trim().split(/\s+as\s+/)[1] ?? x.trim())
-      .filter(Boolean),
-  );
-  const missing = MOTION_NAMES.filter(([n, re]) => !have.has(n) && re.test(source)).map(([n]) => n);
-  if (!missing.length) return source;
-  if (!imp) return `import { ${missing.join(", ")} } from "motion/react";\n${source}`;
-  const names = [
-    ...(imp[1] as string)
-      .split(",")
-      .map((x) => x.trim())
-      .filter(Boolean),
-    ...missing,
-  ];
-  return source.replace(imp[0], `import { ${names.join(", ")} } from "motion/react";`);
+  return withPhoneTargets(withReducedMotion(withVisibleStart(withLinkColor(withoutUnknownHeadless(s)))));
 }
 
 /**

@@ -5,6 +5,7 @@ import { createRegistry, type RouteInput, type RouteOutput } from "@wizard/llm";
 import { PATTERNS } from "@wizard/ui-kit/v3/patterns";
 import { describe, expect, test } from "vitest";
 import { createPageComposer, readSite, type SiteModel } from "../src/builder/v3/compose/index.js";
+import { withMotionImports } from "../src/builder/v3/compose/motion-imports.js";
 import {
   autofixSection,
   normalizePlan,
@@ -311,20 +312,20 @@ describe("V4-06 speed: the page by sections", () => {
       "  const reduce = useReducedMotion();",
       "  return (",
       "    <LazyMotion features={domAnimation}>",
-      '      <section className="bg-background px-gutter py-section text-foreground">',
-      '        <m.h2 className="font-display text-h2">Как проходит запись</m.h2>',
-      "      </section>",
+      '      <m.h2 className="font-display text-h2">Как проходит запись</m.h2>',
       "    </LazyMotion>",
       "  );",
       "}",
       "",
     ].join("\n");
-    const fixed = autofixSection(src);
+    const fixed = withMotionImports(src);
     expect(fixed).toMatch(/import \{[^}]*\bm\b[^}]*\} from "motion\/react"/);
     expect(fixed.match(/from "motion\/react"/g)).toHaveLength(1);
-    // Nothing missing: the source stays as it was.
     const ok = 'import { m } from "motion/react";\nconst X = () => <m.div />;';
-    expect(autofixSection(ok)).toBe(ok);
+    expect(withMotionImports(ok)).toBe(ok);
+    expect(withMotionImports("const X = () => <m.div />;")).toBe(
+      'import { m } from "motion/react";\nconst X = () => <m.div />;',
+    );
   });
 
   test("an entrance starts visible: opacity 0 leaves initial and hidden, the shift stays", () => {

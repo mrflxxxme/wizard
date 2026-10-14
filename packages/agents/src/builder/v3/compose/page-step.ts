@@ -15,6 +15,7 @@ import type { CriticInspector, CriticShot, CriticShotRequest } from "../critic/t
 import { keepPhotoPlaces, siteFiles } from "./codegen.js";
 import type { SiteFacts } from "./facts.js";
 import { lintErrors } from "./lint.js";
+import { withMotionImports } from "./motion-imports.js";
 import {
   applyPageCode,
   CODE_RULES,
@@ -290,7 +291,7 @@ export async function pageSections(
         messages,
         tool: req.tool,
       });
-      if (r.ok) sources.set(item.id, r.value.source);
+      if (r.ok) sources.set(item.id, withMotionImports(r.value.source));
     } catch (e) {
       stopped ??= e;
     }
