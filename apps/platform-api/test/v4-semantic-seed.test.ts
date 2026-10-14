@@ -5,7 +5,7 @@
 // gynecologist's chair on the dental clinic's «Терапия».
 import type { AppSpec } from "@wizard/appspec";
 import { expect, test } from "vitest";
-import { isPersonEntity, pickerCardCheck } from "../src/builds-v3/card-photos.js";
+import { isPersonEntity, pickerCardCheck, rowNiches } from "../src/builds-v3/card-photos.js";
 import { photoSeedHints, planNiche, semanticSeedHints } from "../src/builds-v3/host.js";
 
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -178,4 +178,32 @@ test("people entities get no library photos: neither by name nor from the plan",
   expect(hints.map((h) => h.entity)).toEqual(["service"]);
   const plan = [{ slot: "gallery", file: uuid(5) }];
   expect(photoSeedHints(people, plan).map((h) => h.entity)).toEqual(["service"]);
+});
+
+// V4-28: a salon's site photos come from one shard (hair); its «Брови и ресницы» card searches the brows niche.
+test("a row naming another niche of the catalog searches that niche; a row of the site's own niche stays in it", async () => {
+  expect(rowNiches("Брови и ресницы")).toEqual(["brows"]);
+  expect(rowNiches("Маникюр и педикюр")).toContain("nails");
+  expect(rowNiches("Десерты")).toEqual([]);
+  const salon = {
+    ...spec,
+    entities: [spec.entities[0]],
+  } as unknown as AppSpec;
+  const lib = [
+    { file: uuid(1), width: 1600, height: 1000, niche: "hair" }, // the plan's photo
+    { file: uuid(2), width: 1600, height: 1000, niche: "hair" },
+    { file: uuid(3), width: 1600, height: 1000, niche: "brows" },
+  ];
+  const src = {
+    async search(_t: string, o: { filter?: (e: never) => boolean }) {
+      return lib
+        .filter((e) => (o.filter ? o.filter(e as never) : true))
+        .map((entry) => ({ entry: entry as never, score: 0.2 }));
+    },
+  };
+  const names = { entity: "service", field: "name", values: ["Брови и ресницы", "Стрижки"] };
+  const hints = await semanticSeedHints(salon, [names], new Set([uuid(1)]), new Set(), src, {
+    niche: "салон красоты",
+  });
+  expect(hints[0]?.values).toEqual([uuid(3), uuid(2)].map((f) => `/_wizard/photos/${f}/960`));
 });
