@@ -14,7 +14,7 @@ import {
   SECTION_CODE_TOOL,
   sectionIssues,
 } from "../src/builder/v3/compose/page-sections.js";
-import { anchorIssues, retargetAnchors } from "../src/builder/v3/compose/page-step.js";
+import { anchorIssues, heroToForm, retargetAnchors } from "../src/builder/v3/compose/page-step.js";
 import type { V3BuildContext, V3ComposeResult } from "../src/builder/v3/contract.js";
 import { BRIEF, composeContext, HERO_CODE, SIGNATURE_OK } from "./v3-compose-fixtures.js";
 
@@ -483,5 +483,174 @@ describe("V4-06 speed: the page by sections", () => {
     expect(sectionIssues(fixed, { id: "hero", hero: true }).map((i) => i.code)).not.toContain(
       "UNKNOWN_IMPORT",
     );
+  });
+});
+
+// Acceptance 14.10 (v3-13-coffee-house, DeepSeek): the first screen sent to /booking past the home's own request form
+// (GS-landing-1), and the hero's `photo` prop never got the owner's upload (GS-landing-2) while an invented
+// /_wizard/photos/grain-local.jpg under `photo` passed every check (a broken image of the section «grain»).
+describe("V4-06 acceptance: the first screen's form and the photos of code sections", () => {
+  const PHOTO = "/_wizard/photos/00000000-0000-4000-8000-000000000000/1600";
+  /** The hero as DeepSeek plans it: `cta` + `ctaHref`, the photo as its address alone in `photo` + `photoAlt`. */
+  const HERO_DS = {
+    props: {
+      title: HERO_CODE.props.title,
+      lead: HERO_CODE.props.lead,
+      cta: "Записаться на приём",
+      ctaHref: "/booking",
+      photo: PHOTO,
+      photoAlt: "Светлый кабинет клиники с креслом у окна",
+    },
+    source: HERO_CODE.source
+      .replace(
+        "type Action = { label: string; href: string };\ntype Image = { src: string; alt: string };\n\n",
+        "",
+      )
+      .replace(
+        "{ title, lead, action, image }: { title: string; lead: string; action: Action; image: Image }",
+        "{ title, lead, cta, ctaHref, photo, photoAlt }: { title: string; lead: string; cta: string; ctaHref: string; photo: string; photoAlt: string }",
+      )
+      .replace("<a href={action.href}", '<a href={ctaHref} data-testid="wz-hero-primary"')
+      .replace("{action.label}", "{cta}")
+      .replace("<img src={image.src} alt={image.alt}", "<img src={photo} alt={photoAlt}"),
+  };
+  const planWith = (hero: Record<string, unknown>, extra: PagePlan["sections"] = []): PagePlan => ({
+    ...PLAN,
+    sections: PLAN.sections.flatMap((x) =>
+      x.kind === "code" && x.id === "hero" ? [{ ...x, props: hero }, ...extra] : [x],
+    ),
+  });
+
+  const answer = (src: string, props: Record<string, unknown> = {}, form = true) =>
+    ({
+      seo: { title: "t", description: "d" },
+      sections: [
+        { kind: "code", id: "hero", title: "hero", source: src, props },
+        ...(form ? [{ kind: "keep", id: "form" }] : []),
+        { kind: "keep", id: "contacts" },
+      ],
+    }) as never;
+  const home = {
+    route: "/",
+    sections: [
+      { id: "header", type: "header" },
+      { id: "form", type: "form" },
+      { id: "contacts", type: "contacts" },
+      { id: "footer", type: "footer" },
+    ],
+  } as never;
+  const heroOf = (v: unknown) =>
+    (v as { sections: { id: string; source: string; props: Record<string, unknown> }[] }).sections[0];
+
+  test("a broken anchor goes to the page's own form, not to /booking; the issue names that form", () => {
+    expect(retargetAnchors(answer('<a href="#order">x</a>'), home, ["/", "/booking"]).get("hero")).toBe(
+      '<a href="#form">x</a>',
+    );
+    const [issue] = anchorIssues(answer('<a href="#order">x</a>'), home, ["/", "/booking"]);
+    expect(issue?.message).toContain("на форму этой страницы #form");
+    expect(issue?.message).not.toContain("/booking");
+    // Without a form on the page the main action is still /booking.
+    expect(
+      retargetAnchors(answer('<a href="#order">x</a>', {}, false), home, ["/", "/booking"]).get("hero"),
+    ).toBe('<a href="/booking">x</a>');
+  });
+
+  test("the first screen's main action leads to the page's form: by its prop, by its literal, any other target", () => {
+    const fixed = heroToForm(answer(HERO_DS.source, HERO_DS.props), home);
+    expect(heroOf(fixed)?.props.ctaHref).toBe("#form");
+    expect(heroOf(fixed)?.source).toBe(HERO_DS.source);
+    const nested = heroToForm(
+      answer('<a data-testid="wz-hero-primary" href={props.cta?.href}>x</a>', { cta: { href: "/#form" } }),
+      home,
+    );
+    expect(heroOf(nested)?.props).toEqual({ cta: { href: "#form" } });
+    const literal = heroToForm(
+      answer('<m.a onClick={() => n > 1} href="/booking"\n  data-testid="wz-hero-primary">x</m.a>'),
+      home,
+    );
+    expect(heroOf(literal)?.source).toBe(
+      '<m.a onClick={() => n > 1} href="#form"\n  data-testid="wz-hero-primary">x</m.a>',
+    );
+    const expr = heroToForm(
+      answer('<a href={go ?? "/booking"} data-testid="wz-hero-primary">x</a><a href="/menu">Меню</a>'),
+      home,
+    );
+    expect(heroOf(expr)?.source).toBe(
+      '<a href="#form" data-testid="wz-hero-primary">x</a><a href="/menu">Меню</a>',
+    );
+    // Already the form, no form on the page, no main action marked: the answer stays as it was.
+    for (const v of [
+      answer('<a href="#form" data-testid="wz-hero-primary">x</a>'),
+      answer('<a href="/booking" data-testid="wz-hero-primary">x</a>', {}, false),
+      answer('<a href="/booking">x</a>'),
+    ])
+      expect(heroToForm(v, home)).toBe(v);
+  });
+
+  test("a DeepSeek hero: the page passes `#form` and the owner's photo of the place to its `photo`", async () => {
+    const ctx = await prepared();
+    const before = (readSite(ctx.files) as SiteModel).pages[0];
+    const place = before?.sections.find((x) => x.id === "hero")?.photos?.image;
+    expect(place).toBeTruthy();
+    const plan = planWith(HERO_DS.props);
+    const m = model({ hero: [HERO_DS.source], "first-visit": [SIGNATURE_OK.source] });
+    const route: typeof m.route = async (input) =>
+      input.tools?.[0]?.name === PAGE_PLAN_TOOL ? out(PAGE_PLAN_TOOL, plan, 1) : m.route(input);
+    const r = await composer().scenario({ ...ctx, route }, LEAD);
+    const files = apply(ctx.files, r);
+    const page = (readSite(files) as SiteModel).pages[0];
+    const hero = page?.sections.find((x) => x.id === "hero");
+    expect(hero?.props.ctaHref).toBe("#form");
+    const pageFile = files.get(page?.file as string) as string;
+    const stock = { src: PHOTO, alt: HERO_DS.props.photoAlt };
+    expect(pageFile).toContain(`photo={photo.one(${JSON.stringify(place)}, ${JSON.stringify(stock)}).src}`);
+    // The prop the attribute sets is not spread too: one literal of the address in the page file.
+    expect(pageFile.split(PHOTO)).toHaveLength(2);
+    expect(pageFile).toContain('"ctaHref":"#form"');
+  });
+
+  test("a photo address not in the list «Фото» fails under any prop and in the code; the plan and the section mend it", async () => {
+    const ctx = await prepared();
+    const grain = (photo: string): PagePlan["sections"][number] => ({
+      kind: "code",
+      id: "grain",
+      title: "Что сейчас в ростере",
+      idea: "Фото слева, текст справа.",
+      props: { title: "Что сейчас в ростере", photo, photoAlt: "Свежеобжаренное зерно в ростере" },
+    });
+    const bad = planWith(HERO_DS.props, [grain("/_wizard/photos/grain-local.jpg")]);
+    const good = planWith(HERO_DS.props, [grain(PHOTO)]);
+    const grainSource = (src: string) =>
+      SIGNATURE_OK.source
+        .replace(
+          "FirstVisit({ title, steps }: { title: string; steps: Step[] })",
+          "Grain({ title, photo, photoAlt }: { title: string; photo: string; photoAlt: string })",
+        )
+        .replace(
+          /<ol[\s\S]*<\/ol>/,
+          `<img src={${src}} alt={photoAlt} className="mt-8 w-full rounded-lg" />`,
+        );
+    const m = model({
+      hero: [HERO_DS.source],
+      "first-visit": [SIGNATURE_OK.source],
+      grain: [grainSource('photo ?? "/_wizard/photos/grain-local.jpg"'), grainSource("photo")],
+    });
+    const plans: RouteInput[] = [];
+    const route: typeof m.route = async (input) => {
+      if (input.tools?.[0]?.name !== PAGE_PLAN_TOOL) return m.route(input);
+      plans.push(input);
+      return out(PAGE_PLAN_TOOL, plans.length === 1 ? bad : good, plans.length);
+    };
+    const r = await composer().scenario({ ...ctx, route }, LEAD);
+    expect(plans).toHaveLength(2);
+    expect(JSON.stringify(plans[1]?.messages)).toContain(
+      "/_wizard/photos/grain-local.jpg нет в списке «Фото»",
+    );
+    const grainCalls = m.calls.filter((c) => /## Твоя секция: grain/.test(String(c.messages[1]?.content)));
+    expect(grainCalls).toHaveLength(2);
+    expect(String(grainCalls[1]?.messages.at(-1)?.content)).toContain("grain-local.jpg нет в списке «Фото»");
+    const files = apply(ctx.files, r);
+    expect(files.get("ui/sections/home-grain.tsx")).toContain("src={photo}");
+    expect([...files.values()].some((f) => f.includes("grain-local"))).toBe(false);
   });
 });

@@ -7,7 +7,6 @@ import { photoGrade, photoGradeCss } from "../../../stock/grade.js";
 import { fitPhotos, siteRules } from "./content.js";
 import {
   SECTIONS_DIR,
-  type SectionPhotos,
   SITE_PAGES_DIR,
   SITE_PATH,
   type SiteModel,
@@ -75,45 +74,78 @@ export function keepPhotoPlaces(before: SitePage, after: SitePage): SitePage {
   return changed ? { ...after, sections } : after;
 }
 
+/** A prop name the page file can set as a JSX attribute. */
+const ATTR_RE = /^[A-Za-z_$][\w$]*$/;
+
+/** The prop of a code section a picture place fills: a usual name first (`names`), else the first prop that fits. */
+function propOf(
+  props: Record<string, unknown>,
+  names: readonly string[],
+  fits: (v: unknown) => boolean,
+): string | undefined {
+  const keys = Object.keys(props).filter((k) => ATTR_RE.test(k) && fits(props[k]));
+  return names.find((k) => keys.includes(k)) ?? keys[0];
+}
+
+/** A picture attribute of a section in its page file: the prop it sets and the expression of its value. */
+interface PhotoAttr {
+  key: string;
+  expr: string;
+}
+
+/** The one picture of a place: {src, alt} as it is, the address alone with its alt (`<key>Alt`, else `alt`). */
+function oneAttr(props: Record<string, unknown>, key: string, place: string): PhotoAttr {
+  const v = props[key];
+  if (!isPhotoPath(v))
+    return { key, expr: `photo.one(${json(place)}, ${v === undefined ? "undefined" : json(v)})` };
+  // The address alone: the owner's photo's address, the stock one otherwise (its alt stays in its own prop).
+  const alt = [props[`${key}Alt`], props.alt].find((x): x is string => typeof x === "string") ?? "";
+  return { key, expr: `photo.one(${json(place)}, ${json({ src: v, alt })}).src` };
+}
+
 /**
- * Places of a section written as code (V4-06): those of the section it replaced whose props it still takes in the
- * library's shape — `image` {src, alt} or its address alone, `images` [{src, alt}], `items` [{image}] (the prompt: props
- * carry the photos).
+ * Places of a section written as code (V4-06): those of the section it replaced, set on the props that carry its
+ * pictures whatever their name — the models write `photo` (+ `photoAlt`) as often as `image` (acceptance 14.10:
+ * DeepSeek's hero `photo` kept its place, but the page never passed the owner's upload, GS-landing-2): one picture
+ * {src, alt} or its address alone, a list [{src, alt}], `items` [{image}].
  */
-function codePhotos(s: SiteSection): SectionPhotos | undefined {
+function codePhotoAttrs(s: SiteSection): PhotoAttr[] {
   const p = s.photos;
-  if (!p) return undefined;
-  const out: SectionPhotos = {};
-  if (p.image && (isPhoto(s.props.image) || isPhotoPath(s.props.image))) out.image = p.image;
-  if (p.images && Array.isArray(s.props.images) && s.props.images.every(isPhoto)) out.images = p.images;
+  if (!p) return [];
+  const out: PhotoAttr[] = [];
+  const one = propOf(s.props, ["image", "photo"], (v) => isPhoto(v) || isPhotoPath(v));
+  if (p.image && one) out.push(oneAttr(s.props, one, p.image));
+  const list = propOf(
+    s.props,
+    ["images", "photos"],
+    (v) => Array.isArray(v) && v.length > 0 && v.every(isPhoto),
+  );
+  if (p.images && list)
+    out.push({ key: list, expr: `photo.list(${json(p.images)}, ${json(s.props[list])})` });
   if (
     p.items &&
     Array.isArray(s.props.items) &&
     s.props.items.some((i) => isPhoto((i as { image?: unknown } | null)?.image))
   )
-    out.items = p.items;
-  return Object.keys(out).length ? out : undefined;
+    out.push({ key: "items", expr: `photo.items(${json(s.props.items)}, ${json(p.items)})` });
+  return out;
 }
 
 /**
  * Attributes of a section's pictures the owner may replace (V3-18, «Фото сайта»): the place's photo of the owner,
  * else the stock picture of the props (useSitePhotos of the headless hooks).
  */
-function photoAttrs(s: SiteSection, patternOf: (id: string) => PatternMeta | undefined): string {
-  const places = s.type === "signature" ? codePhotos(s) : fitPhotos(patternOf(s.pattern), s.photos, s.props);
-  if (!places) return "";
-  const out: string[] = [];
-  if (places.image && isPhotoPath(s.props.image)) {
-    // The address alone: the owner's photo's address, the stock one otherwise (its alt stays in imageAlt).
-    const alt = typeof s.props.imageAlt === "string" ? s.props.imageAlt : "";
-    out.push(`image={photo.one(${json(places.image)}, ${json({ src: s.props.image, alt })}).src}`);
-  } else if (places.image) {
-    const stock = s.props.image === undefined ? "undefined" : json(s.props.image);
-    out.push(`image={photo.one(${json(places.image)}, ${stock})}`);
-  }
-  if (places.images) out.push(`images={photo.list(${json(places.images)}, ${json(s.props.images)})}`);
-  if (places.items) out.push(`items={photo.items(${json(s.props.items)}, ${json(places.items)})}`);
-  return out.length ? ` ${out.join(" ")}` : "";
+function photoAttrs(s: SiteSection, patternOf: (id: string) => PatternMeta | undefined): PhotoAttr[] {
+  if (s.type === "signature") return codePhotoAttrs(s);
+  const places = fitPhotos(patternOf(s.pattern), s.photos, s.props);
+  if (!places) return [];
+  const out: PhotoAttr[] = [];
+  if (places.image) out.push(oneAttr(s.props, "image", places.image));
+  if (places.images)
+    out.push({ key: "images", expr: `photo.list(${json(places.images)}, ${json(s.props.images)})` });
+  if (places.items)
+    out.push({ key: "items", expr: `photo.items(${json(s.props.items)}, ${json(places.items)})` });
+  return out;
 }
 
 /** The page file: header, the sections inside <main> with their anchors, footer. */
@@ -130,16 +162,16 @@ export function pageSource(
     imports.push(`import ${name} from ${json(importOf(s))};`);
   }
   const attrs = new Map(page.sections.map((s) => [s, photoAttrs(s, patternOf)]));
-  const photos = [...attrs.values()].some((a) => a !== "");
-  // V4-24: the props a photo attribute sets (image, images, items) are not spread too — the attribute wins anyway, and a
-  // second copy of the same photo address made the instant edit ambiguous (two literals, one picture shown).
+  const photos = [...attrs.values()].some((a) => a.length > 0);
+  // V4-24: the props a photo attribute sets (image, images, items, a code section's photo…) are not spread too — the
+  // attribute wins anyway, and a second copy of the same photo address made the instant edit ambiguous (two literals,
+  // one picture shown).
   const spread = (s: SiteSection) => {
-    const a = attrs.get(s) ?? "";
-    const set = new Set([...a.matchAll(/ (image|images|items)=\{/g)].map((m) => m[1] as string));
+    const set = new Set((attrs.get(s) ?? []).map((a) => a.key));
     return set.size ? Object.fromEntries(Object.entries(s.props).filter(([k]) => !set.has(k))) : s.props;
   };
   const el = (s: SiteSection, indent: string) =>
-    `${indent}<${sectionComponent(s)} {...${json(spread(s))}}${attrs.get(s) ?? ""} />`;
+    `${indent}<${sectionComponent(s)} {...${json(spread(s))}}${(attrs.get(s) ?? []).map((a) => ` ${a.key}={${a.expr}}`).join("")} />`;
   const header = page.sections.filter((s) => s.type === "header");
   const footer = page.sections.filter((s) => s.type === "footer");
   const body = page.sections.filter((s) => s.type !== "header" && s.type !== "footer");

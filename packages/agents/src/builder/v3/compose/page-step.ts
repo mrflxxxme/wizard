@@ -233,9 +233,39 @@ function anchorIds(v: PageCodeAnswer, page: Pick<SitePage, "sections">): Set<str
 }
 
 /**
- * Code links to an anchor the page lacks, sent by code to the main action: /booking when the site has it, else the
- * page's form, request or contacts section (probe «prices»: the hero's last fix round, mending a type error, wrote
- * `#request` — no round was left to hear of it). Returns the sources that changed; with no target nothing changes.
+ * The anchor of the page's own form: the SDK form section (type form — LeadForm or BookingForm, what GS-landing-1 takes
+ * for «the form on this page») the answer keeps. Undefined — the page has no form.
+ */
+export function formAnchor(
+  v: Pick<PageCodeAnswer, "sections">,
+  page: Pick<SitePage, "sections">,
+): string | undefined {
+  const kept = new Set(v.sections.flatMap((s) => (s.kind === "keep" ? [s.id] : [])));
+  return page.sections.find((s) => s.type === "form" && kept.has(s.id))?.id;
+}
+
+/**
+ * Where the main action of the page leads: its own form (`#<id>`), else /booking when the site has it (not on itself),
+ * else a request or contacts section of the page. Undefined — nowhere.
+ */
+function mainActionHref(
+  v: PageCodeAnswer,
+  page: Pick<SitePage, "route" | "sections">,
+  routes: readonly string[],
+): string | undefined {
+  const form = formAnchor(v, page);
+  if (form) return `#${form}`;
+  if (page.route !== "/booking" && routes.includes("/booking")) return "/booking";
+  const ids = anchorIds(v, page);
+  const section = ["form", "request", "contacts"].find((x) => ids.has(x));
+  return section && `#${section}`;
+}
+
+/**
+ * Code links to an anchor the page lacks, sent by code to the main action (mainActionHref): the page's own form first
+ * (acceptance 14.10, coffee: sent to /booking past the home's form, GS-landing-1 failed), else /booking, else a request
+ * or contacts section (probe «prices»: the hero's last fix round, mending a type error, wrote `#request` — no round was
+ * left to hear of it). Returns the sources that changed; with no target nothing changes.
  */
 export function retargetAnchors(
   v: PageCodeAnswer,
@@ -244,9 +274,7 @@ export function retargetAnchors(
 ): Map<string, string> {
   const ids = anchorIds(v, page);
   const out = new Map<string, string>();
-  const section = ["form", "request", "contacts"].find((x) => ids.has(x));
-  const href =
-    page.route !== "/booking" && routes.includes("/booking") ? "/booking" : section && `#${section}`;
+  const href = mainActionHref(v, page, routes);
   if (!href) return out;
   for (const s of v.sections) {
     if (s.kind !== "code") continue;
@@ -263,14 +291,25 @@ export function retargetAnchors(
 /**
  * Links of code sections to an anchor the page does not have (rehearsal №6, coffee: «#order» from the first screen,
  * critic P0 S01) — a hard issue at the source section: the visitor's main action must lead somewhere. Anchors are the
- * page's section ids and the ids the sections' code declares; «/#x» counts on the home page only.
+ * page's section ids and the ids the sections' code declares; «/#x» counts on the home page only. The message names
+ * where the main action leads (mainActionHref: the page's own form first).
  */
 export function anchorIssues(
   v: PageCodeAnswer,
   page: Pick<SitePage, "route" | "sections">,
+  routes: readonly string[] = [],
 ): { path: string; code: string; message: string }[] {
   const ids = anchorIds(v, page);
   const out: { path: string; code: string; message: string }[] = [];
+  const form = formAnchor(v, page);
+  const main = mainActionHref(v, page, routes);
+  const hint = form
+    ? `ссылка — на существующую секцию, главное действие — на форму этой страницы #${form}`
+    : main?.startsWith("#")
+      ? `ссылка — на существующую секцию, главное действие — на ${main}`
+      : main
+        ? `ссылка — на существующую секцию или на ${main}`
+        : "ссылка — на существующую секцию";
   v.sections.forEach((s, i) => {
     if (s.kind !== "code") return;
     const links = new Set<string>();
@@ -288,11 +327,182 @@ export function anchorIssues(
       out.push({
         path: `sections.${i}.source`,
         code: "BROKEN_ANCHOR",
-        message: `Якоря #${id} на странице нет: ссылка на существующую секцию или на /booking`,
+        message: `Якоря #${id} на странице нет: ${hint}`,
       });
     }
   });
   return out;
+}
+
+/** The span of the `href` value of the first screen's main action (`data-testid="wz-hero-primary"`, GS-landing-1). */
+interface PrimaryHref {
+  start: number;
+  end: number;
+  /** A literal value: `"x"`, `'x'`, `{"x"}`, `` {`x`} ``. */
+  literal?: string;
+  /** A value read from props: `{action.href}`, `{props.cta?.href}`, `{actions[0].href}`. */
+  path?: string[];
+}
+
+/** The end of a JSX value or tag from `i`: the first `stop` outside quotes and braces (-1 — none). */
+function scanTo(source: string, i: number, stop: string): number {
+  let depth = 0;
+  let quote = "";
+  for (let k = i; k < source.length; k++) {
+    const c = source[k] as string;
+    if (quote) {
+      if (c === quote) quote = "";
+    } else if (c === '"' || c === "'" || c === "`") quote = c;
+    else if (c === "{") depth++;
+    else if (c === "}") {
+      depth--;
+      if (depth === 0 && stop === "}") return k;
+    } else if (c === stop && depth === 0) return k;
+  }
+  return -1;
+}
+
+function primaryHref(source: string): PrimaryHref | undefined {
+  const at = source.indexOf("wz-hero-primary");
+  const open = at < 0 ? -1 : source.lastIndexOf("<", at);
+  const close = open < 0 ? -1 : scanTo(source, open, ">");
+  if (close < 0) return undefined;
+  const tag = source.slice(open, close);
+  let depth = 0;
+  let quote = "";
+  for (let k = 0; k < tag.length; k++) {
+    const c = tag[k] as string;
+    if (quote) {
+      if (c === quote) quote = "";
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") quote = c;
+    else if (c === "{") depth++;
+    else if (c === "}") depth--;
+    if (depth !== 0 || !/\s/.test(c)) continue;
+    const m = /^href\s*=\s*/.exec(tag.slice(k + 1));
+    if (!m) continue;
+    const start = open + k + 1 + m[0].length;
+    const first = source[start];
+    if (first === '"' || first === "'") {
+      const end = source.indexOf(first, start + 1) + 1;
+      return end > start ? { start, end, literal: source.slice(start + 1, end - 1) } : undefined;
+    }
+    if (first !== "{") return undefined;
+    const end = scanTo(source, start, "}") + 1;
+    if (end <= start) return undefined;
+    const expr = source.slice(start + 1, end - 1).trim();
+    const lit = /^(["'])([^"'\\]*)\1$/.exec(expr) ?? /^(`)([^`$\\]*)`$/.exec(expr);
+    if (lit) return { start, end, literal: lit[2] as string };
+    const path = /^(?:props\s*\??\.\s*)?([A-Za-z_$][\w$]*(?:\s*\??\.\s*[A-Za-z_$][\w$]*|\[\d+\])*)$/.exec(
+      expr,
+    );
+    return {
+      start,
+      end,
+      ...(path
+        ? { path: (path[1] as string).split(/\??\.|\[|\]/).flatMap((x) => (x.trim() ? [x.trim()] : [])) }
+        : {}),
+    };
+  }
+  return undefined;
+}
+
+const valueAt = (v: unknown, path: readonly string[]): unknown =>
+  path.reduce<unknown>(
+    (x, k) => (x && typeof x === "object" ? (x as Record<string, unknown>)[k] : undefined),
+    v,
+  );
+
+function withValueAt(v: unknown, path: readonly string[], value: string): unknown {
+  const [k, ...rest] = path;
+  if (k === undefined) return value;
+  if (Array.isArray(v)) return v.map((x, i) => (i === Number(k) ? withValueAt(x, rest, value) : x));
+  const o = v as Record<string, unknown>;
+  return { ...o, [k]: withValueAt(o[k], rest, value) };
+}
+
+/**
+ * GS-landing-1 by code: on a page with its own form the first screen's main action (`data-testid="wz-hero-primary"`)
+ * leads to that form — `#<id>`, never /booking, «/#form» or another section (acceptance 14.10, coffee: the hero sent
+ * to /booking while the home page held its request form; the goal takes only `#…` to a form of this page). The value is
+ * set where the code reads it: the prop of `href={action.href}`, else the literal of the attribute. Runs before every
+ * check — a link to another page is no issue the model would hear of. Unchanged — the same object.
+ */
+export function heroToForm(v: PageCodeAnswer, page: Pick<SitePage, "sections">): PageCodeAnswer {
+  const form = formAnchor(v, page);
+  if (!form) return v;
+  const to = `#${form}`;
+  let changed = false;
+  const sections = v.sections.map((s) => {
+    if (s.kind !== "code" || s.id !== "hero") return s;
+    const h = primaryHref(s.source);
+    if (!h) return s;
+    const read = h.path && valueAt(s.props, h.path);
+    if (h.path && typeof read === "string") {
+      if (read === to) return s;
+      changed = true;
+      return { ...s, props: withValueAt(s.props, h.path, to) as Record<string, unknown> };
+    }
+    if (h.literal === to) return s;
+    changed = true;
+    return { ...s, source: `${s.source.slice(0, h.start)}${JSON.stringify(to)}${s.source.slice(h.end)}` };
+  });
+  return changed ? ({ ...v, sections } as PageCodeAnswer) : v;
+}
+
+/**
+ * Library photo addresses (`/_wizard/photos/…`) the list «Фото» does not have, under any prop of a section and in the
+ * code of a code section — a hard issue (UNKNOWN_PHOTO). The page's shape check reads only `src` and `image`, but the
+ * models carry a picture as `photo` too (acceptance 14.10, coffee: an invented /_wizard/photos/grain-local.jpg under
+ * `photo` passed every check — a broken image on the home page).
+ */
+export function photoIssues(
+  v: { sections: readonly { props?: Record<string, unknown>; source?: string }[] },
+  facts: Pick<SiteFacts, "photos">,
+): ToolIssue[] {
+  const known = new Set(facts.photos.map((p) => p.src));
+  const out: ToolIssue[] = [];
+  v.sections.forEach((s, i) => {
+    const props = new Set(
+      [...JSON.stringify(s.props ?? {}).matchAll(/"(\/_wizard\/photos\/[^"]*)"/g)].map((m) => m[1] as string),
+    );
+    for (const src of props)
+      if (!known.has(src))
+        out.push({
+          path: `sections.${i}.props`,
+          code: "UNKNOWN_PHOTO",
+          message: `Фото ${src} нет в списке «Фото»`,
+        });
+    const code = new Set(
+      [...(s.source ?? "").matchAll(/\/_wizard\/photos\/[^\s"'`)}\]$]+/g)].map((m) => m[0]),
+    );
+    for (const src of code)
+      if (!known.has(src))
+        out.push({
+          path: `sections.${i}.source`,
+          code: "UNKNOWN_PHOTO",
+          message: `Фото ${src} нет в списке «Фото»: фото секции — только из props`,
+        });
+  });
+  return out;
+}
+
+/** The plan tool with photoIssues added to its checks (the same message is not repeated). */
+function withPhotoCheck(
+  tool: ReturnType<typeof pagePlanRequest>["tool"],
+  facts: SiteFacts,
+): ReturnType<typeof pagePlanRequest>["tool"] {
+  return defineTool({
+    name: tool.name,
+    description: tool.description,
+    input: tool.input,
+    ...(tool.normalize ? { normalize: tool.normalize } : {}),
+    check: (v: PagePlan) => {
+      const own = tool.check?.(v) ?? [];
+      return [...own, ...photoIssues(v, facts).filter((i) => !own.some((o) => o.message === i.message))];
+    },
+  });
 }
 
 /** What the section hears of a G0 error in the page file: its props type must take the props of the plan as they are. */
@@ -360,7 +570,7 @@ export async function pageSections(
       callType,
       stepName: `page_plan:${s.page.route}`,
       messages: planReq.messages,
-      tool: planReq.tool,
+      tool: withPhotoCheck(planReq.tool, s.facts),
     });
     if (!r.ok) {
       s.notes.push(`План страницы ${s.page.route} не прошёл проверки — страница осталась прежней.`);
@@ -412,6 +622,7 @@ export async function pageSections(
   await Promise.all(items.map((it) => write(it)));
   if (stopped) return s.stop(stopped) ? "stop" : null;
   const check = { site: s.site, page: s.page, facts: s.facts, library: s.library, signatures: s.signatures };
+  const routes = s.site.pages.map((p) => p.route);
   /**
    * The page without the sections that still fail (rehearsal №6: six written sections thrown away for one): kept when
    * the hero stays, the home page keeps HOME_MIN_SECTIONS, the hard lint passes and G0 builds it. Null — it does not.
@@ -426,9 +637,9 @@ export async function pageSections(
       sections: plan.sections.filter((x) => x.kind !== "code" || (!drop.has(x.id) && sources.has(x.id))),
     };
     if (s.page.route === "/" && kept.sections.length < HOME_MIN_SECTIONS) return null;
-    const answer = planAnswer(kept, sources);
+    const answer = heroToForm(planAnswer(kept, sources), s.page);
     if (pageLintIssues(answer, check).some((i) => HARD_ISSUES.has(i.code ?? ""))) return null;
-    if (anchorIssues(answer, s.page).length) return null;
+    if (anchorIssues(answer, s.page, routes).length || photoIssues(answer, s.facts).length) return null;
     const applied = codePage(s.page, answer, s.library);
     const sys = systemWith(ctx, s, applied.page, new Map([...s.signatures, ...applied.sources]));
     const g0 = await s.verify(sys.spec, sys.files, [...applied.sources.keys(), applied.page.file]);
@@ -451,19 +662,19 @@ export async function pageSections(
   }
   let last: { path?: string; message: string }[] = [];
   let lastSource: string | undefined;
-  const routes = s.site.pages.map((p) => p.route);
   for (let round = 0; round < SECTION_ROUNDS; round++) {
     // The model mends its own links first; on the last round the code sends what is left to the main action.
     if (round === SECTION_ROUNDS - 1)
       for (const [id, src] of retargetAnchors(planAnswer(plan, sources), s.page, routes))
         sources.set(id, src);
-    const answer = planAnswer(plan, sources);
+    const answer = heroToForm(planAnswer(plan, sources), s.page);
     // The last round keeps only the hard issues: soft ones never leave the page as it was (G0 still decides).
     const lint = [
       ...pageLintIssues(answer, check).filter(
         (i) => round < SECTION_ROUNDS - 1 || HARD_ISSUES.has(i.code ?? ""),
       ),
-      ...anchorIssues(answer, s.page),
+      ...anchorIssues(answer, s.page, routes),
+      ...photoIssues(answer, s.facts),
     ];
     let problems = lint.map((i) => ({ path: i.path, message: i.message }));
     lastSource = undefined;
@@ -510,13 +721,16 @@ export async function pageSections(
   return null;
 }
 
-/** The page with the model's code (applyPageCode); code sections keep the places of the owner's photos (V4-16). */
+/**
+ * The page with the model's code (applyPageCode): the first screen's action to the page's form (heroToForm), code
+ * sections keep the places of the owner's photos (V4-16).
+ */
 function codePage(
   page: SitePage,
   answer: Parameters<typeof applyPageCode>[1],
   library: readonly PatternMeta[],
 ): ReturnType<typeof applyPageCode> {
-  const code = applyPageCode(page, answer, library);
+  const code = applyPageCode(page, heroToForm(answer, page), library);
   return { ...code, page: keepPhotoPlaces(page, code.page) };
 }
 
@@ -546,6 +760,19 @@ const withHero = (page: SitePage, v: RivalAnswer): SitePage => ({
     x.id === "hero" && x.type === "signature" ? { ...x, props: v.props, title: v.title } : x,
   ),
 });
+
+/** The rival first screen with its main action to the page's form (heroToForm over the page as written). */
+function rivalToForm(page: SitePage, v: RivalAnswer): RivalAnswer {
+  const answer = {
+    seo: page.seo,
+    sections: [
+      { kind: "code", id: "hero", title: v.title, source: v.source, props: v.props },
+      ...page.sections.filter((x) => x.type === "form").map((x) => ({ kind: "keep", id: x.id })),
+    ],
+  } as PageCodeAnswer;
+  const hero = heroToForm(answer, page).sections[0];
+  return hero?.kind === "code" ? { ...v, source: hero.source, props: hero.props } : v;
+}
 
 /** The rival's prompt: the same facts and design, another author; the rest of the page as context. */
 export function rivalMessages(
@@ -656,8 +883,9 @@ async function firstScreen(
       signal: AbortSignal.any([late.signal, ...outer]),
     });
     if (r.ok) {
-      const page = withHero(a.page, r.value);
-      const sources = new Map([...a.sources, [heroFile, r.value.source]]);
+      const v = rivalToForm(a.page, r.value);
+      const page = withHero(a.page, v);
+      const sources = new Map([...a.sources, [heroFile, v.source]]);
       const sys = systemWith(ctx, s, page, new Map([...s.signatures, ...sources]));
       const check = await s.verify(sys.spec, sys.files, [heroFile, page.file]);
       if (check.ok) b = { page, sources };
