@@ -10,6 +10,7 @@ import { PATTERNS } from "@wizard/ui-kit/v3/patterns";
 import { describe, expect, test, vi } from "vitest";
 import {
   createPageComposer,
+  HOME_MIN_SECTIONS,
   lintErrors,
   lintSitePage,
   PAGE_CODE_TOOL,
@@ -172,6 +173,22 @@ describe("V4-06: the page as free code", () => {
     expect(user).toContain("## Что исправить");
     expect(user).toContain("- видит цены «от»");
     expect(user.indexOf("## Что исправить")).toBeLessThan(user.indexOf("## Задача"));
+  });
+
+  test("a thin home page (fewer than HOME_MIN_SECTIONS body sections) goes back; the promises are in the prompt", async () => {
+    const { ctx, site, facts } = await prepared();
+    const home = site.pages[0] as SitePage;
+    const req = pageCodeRequest({ facts, site, page: home, scenario: LEAD, design: ctx.design });
+    const thin = {
+      ...HOME,
+      sections: HOME.sections.filter((s) => s.id === "hero" || s.id === "catalog" || s.id === "form"),
+    };
+    expect(thin.sections.length).toBeLessThan(HOME_MIN_SECTIONS);
+    expect(((await req.tool.check?.(thin)) ?? []).map((i) => i.code)).toContain("THIN_PAGE");
+    expect(((await req.tool.check?.(HOME)) ?? []).map((i) => i.code)).not.toContain("THIN_PAGE");
+    const user = String(req.messages[1]?.content ?? "");
+    expect(user).toContain("## Что показать");
+    for (const t of LEAD.then) expect(user).toContain(`- ${t}`);
   });
 
   test("SDK gate: a removed component is refused and goes back to the model", async () => {

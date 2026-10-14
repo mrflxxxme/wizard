@@ -74,6 +74,7 @@ export {
   codeExamples,
   codeSectionFile,
   designBlock,
+  HOME_MIN_SECTIONS,
   isKeptSection,
   PAGE_CODE_TOOL,
   type PageCodeAnswer,
