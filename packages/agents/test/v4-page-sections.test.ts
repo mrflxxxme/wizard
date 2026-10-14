@@ -155,6 +155,43 @@ describe("V4-06 speed: the page by sections", () => {
     expect(apply(ctx.files, r).get("ui/sections/home-first-visit.tsx")).toBe(SIGNATURE_OK.source);
   });
 
+  test("a section that never passes is dropped: the page is assembled from the ones that did (not the skeleton)", async () => {
+    const ctx = await prepared();
+    const broken = SIGNATURE_OK.source.replace("export default function", "export default function /*x*/");
+    const verify = async (_s: unknown, f: ReadonlyMap<string, string>) =>
+      f.get("ui/sections/home-first-visit.tsx")?.includes("/*x*/")
+        ? { ok: false, problems: ["G0-TS-01: ошибка типов в ui/sections/home-first-visit.tsx"] }
+        : { ok: true, problems: [] };
+    const m = model({ hero: [HERO_CODE.source], "first-visit": [broken] });
+    const r = await composer({ verify }).scenario({ ...ctx, route: m.route }, LEAD);
+    const files = apply(ctx.files, r);
+    expect(files.get("ui/sections/home-hero.tsx")).toBe(HERO_CODE.source);
+    expect(files.has("ui/sections/home-first-visit.tsx")).toBe(false);
+    expect((readSite(files) as SiteModel).pages[0]?.sections.map((x) => x.id)).toEqual([
+      "header",
+      "hero",
+      "catalog",
+      "form",
+      "contacts",
+      "footer",
+    ]);
+    expect(r.notes.join(" ")).toMatch(/собрана без секций «[^»]+»: они не прошли проверки \(G0-TS-01/);
+  });
+
+  test("a hero that never passes keeps the page as it was; the note says why", async () => {
+    const ctx = await prepared();
+    const verify = async (_s: unknown, f: ReadonlyMap<string, string>) =>
+      f.has("ui/sections/home-hero.tsx")
+        ? { ok: false, problems: ["G0-TS-01: ошибка типов в ui/sections/home-hero.tsx"] }
+        : { ok: true, problems: [] };
+    const m = model({ hero: [HERO_CODE.source], "first-visit": [SIGNATURE_OK.source] });
+    const r = await composer({ verify }).scenario({ ...ctx, route: m.route }, LEAD);
+    expect(r.files.has("ui/sections/home-hero.tsx")).toBe(false);
+    expect(r.notes.join(" ")).toContain(
+      "не прошёл проверки (G0-TS-01: ошибка типов в ui/sections/home-hero.tsx)",
+    );
+  });
+
   test("mechanical slips are fixed by code, not by a call", () => {
     const slip = HERO_CODE.source
       .replace("export default function Hero", "export function Hero")
@@ -265,6 +302,29 @@ describe("V4-06 speed: the page by sections", () => {
     // A link already tall enough keeps its classes.
     const tall = '<a href="tel:+7" className="inline-flex min-h-12 items-center text-primary">x</a>';
     expect(autofixSection(tall)).toBe(tall);
+  });
+
+  test("motion names used but not imported join the import: <m.x> inside its own LazyMotion (DeepSeek)", () => {
+    const src = [
+      'import { LazyMotion, domAnimation, motion, useReducedMotion } from "motion/react";',
+      "export default function Steps() {",
+      "  const reduce = useReducedMotion();",
+      "  return (",
+      "    <LazyMotion features={domAnimation}>",
+      '      <section className="bg-background px-gutter py-section text-foreground">',
+      '        <m.h2 className="font-display text-h2">Как проходит запись</m.h2>',
+      "      </section>",
+      "    </LazyMotion>",
+      "  );",
+      "}",
+      "",
+    ].join("\n");
+    const fixed = autofixSection(src);
+    expect(fixed).toMatch(/import \{[^}]*\bm\b[^}]*\} from "motion\/react"/);
+    expect(fixed.match(/from "motion\/react"/g)).toHaveLength(1);
+    // Nothing missing: the source stays as it was.
+    const ok = 'import { m } from "motion/react";\nconst X = () => <m.div />;';
+    expect(autofixSection(ok)).toBe(ok);
   });
 
   test("an entrance starts visible: opacity 0 leaves initial and hidden, the shift stays", () => {

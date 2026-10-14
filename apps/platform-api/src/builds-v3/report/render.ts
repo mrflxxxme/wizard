@@ -29,6 +29,7 @@ export function renderReportMd(r: BuildReport, base: string): string {
   for (const s of r.scenarios) {
     out.push(`- **${s.id}** — ${s.status}${s.problems.length ? `: ${s.problems.join("; ")}` : ""}`);
     if (s.timing) out.push(`  - время: ${timingLine(s.timing)}`);
+    for (const n of s.notes ?? []) out.push(`  - ${n}`);
     for (const h of s.http.filter((x) => x.status >= 400 || x.failure).slice(0, 10))
       out.push(`  - ${h.method} ${h.url} → ${h.failure ?? h.status}${h.body ? ` \`${cell(h.body)}\`` : ""}`);
     const ok = s.http.filter((x) => x.status > 0 && x.status < 400).length;

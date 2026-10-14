@@ -30,6 +30,8 @@ export interface ReportScenario {
   status: string;
   problems: string[];
   http: ScenarioHttp[];
+  /** The composer's notes (why a page stayed as it was, what the checks refused), at most eight. */
+  notes?: string[];
   /** Where its time went (ms): composing, the check (G0, G1, promises) and the repair round; absent — not recorded. */
   timing?: ScenarioTiming;
 }

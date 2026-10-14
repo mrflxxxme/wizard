@@ -1220,7 +1220,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
         await save({
           key,
           fingerprint: fp,
-          data: { status: "failed", problems: check.problems.slice(0, 5), timing },
+          data: { status: "failed", problems: check.problems.slice(0, 5), notes: r.notes, timing },
           costMilli,
           durationMs,
         });

@@ -21,6 +21,7 @@ import {
   codeSectionFile,
   designBlock,
   HARD_ISSUES,
+  HOME_MIN_SECTIONS,
   type PageCodeAnswer,
   pageCodeRequest,
   pageLintIssues,
@@ -296,11 +297,44 @@ export async function pageSections(
   };
   await Promise.all(items.map((it) => write(it)));
   if (stopped) return s.stop(stopped) ? "stop" : null;
+  const check = { site: s.site, page: s.page, facts: s.facts, library: s.library, signatures: s.signatures };
+  /**
+   * The page without the sections that still fail (rehearsal №6: six written sections thrown away for one): kept when
+   * the hero stays, the home page keeps HOME_MIN_SECTIONS, the hard lint passes and G0 builds it. Null — it does not.
+   */
+  const partial = async (
+    drop: ReadonlySet<string>,
+    why: readonly string[],
+  ): Promise<PageStepResult | null> => {
+    if (!drop.size || drop.has("hero")) return null;
+    const kept: PagePlan = {
+      ...plan,
+      sections: plan.sections.filter((x) => x.kind !== "code" || (!drop.has(x.id) && sources.has(x.id))),
+    };
+    if (s.page.route === "/" && kept.sections.length < HOME_MIN_SECTIONS) return null;
+    const answer = planAnswer(kept, sources);
+    if (pageLintIssues(answer, check).some((i) => HARD_ISSUES.has(i.code ?? ""))) return null;
+    const applied = codePage(s.page, answer, s.library);
+    const sys = systemWith(ctx, s, applied.page, new Map([...s.signatures, ...applied.sources]));
+    const g0 = await s.verify(sys.spec, sys.files, [...applied.sources.keys(), applied.page.file]);
+    if (!g0.ok) return null;
+    const names = plan.sections
+      .filter((x) => x.kind === "code" && drop.has(x.id))
+      .map((x) => `«${(x as PlanCodeItem).title}»`);
+    s.notes.push(
+      `Страница ${s.page.route} «${s.page.title}» собрана без секций ${names.join(", ")}: они не прошли проверки (${why.slice(0, 2).join("; ").slice(0, 300)}).`,
+    );
+    const model = author.model();
+    return { page: model ? { ...applied.page, author: model } : applied.page, sources: applied.sources };
+  };
   if (items.some((it) => !sources.has(it.id))) {
+    const missing = new Set(items.filter((it) => !sources.has(it.id)).map((it) => it.id));
+    const p = await partial(missing, ["секция не написана по форме"]);
+    if (p) return p;
     s.notes.push(`Секции страницы ${s.page.route} не прошли проверки — страница осталась прежней.`);
     return null;
   }
-  const check = { site: s.site, page: s.page, facts: s.facts, library: s.library, signatures: s.signatures };
+  let last: { path?: string; message: string }[] = [];
   for (let round = 0; round < SECTION_ROUNDS; round++) {
     const answer = planAnswer(plan, sources);
     // The last round keeps only the hard issues: soft ones never leave the page as it was (G0 still decides).
@@ -325,6 +359,7 @@ export async function pageSections(
       }
       problems = g0.problems.map((m) => ({ path: "", message: m }));
     }
+    last = problems;
     if (round === SECTION_ROUNDS - 1) break;
     const failing = failingSections(plan, s.page, problems);
     if (!failing.size) break;
@@ -332,7 +367,20 @@ export async function pageSections(
     if (stopped) return s.stop(stopped) ? "stop" : null;
     applied = codePage(s.page, planAnswer(plan, sources), s.library);
   }
-  s.notes.push(`Код страницы ${s.page.route} не прошёл проверки — страница осталась прежней.`);
+  const failing = failingSections(plan, s.page, last);
+  const p = await partial(
+    new Set(failing.keys()),
+    last.map((x) => x.message),
+  );
+  if (p) return p;
+  const why = last
+    .slice(0, 2)
+    .map((x) => x.message)
+    .join("; ")
+    .slice(0, 300);
+  s.notes.push(
+    `Код страницы ${s.page.route} не прошёл проверки${why ? ` (${why})` : ""} — страница осталась прежней.`,
+  );
   return null;
 }
 
