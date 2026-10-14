@@ -2699,6 +2699,44 @@ tasks:
       - "Вердикт сохраняется и попадает в засев; те же строки не проверяются повторно (тест с базой)"
       - "Превью ждёт проверку, но не дольше CARD_CHECK_WAIT_MS (тесты харнесса)"
       - "Живая проба карточек стоматологии: ≤ 2 ₽ и ≤ 15 с на glm-5v-turbo, фото строк по теме"
+  - id: V4-29
+    title: "Демо-цены черновика — по нише сайта (как фото), а не по названию: кофе не за 1 800 ₽"
+    milestone: V4
+    deps: [V4-26]
+    specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D49_no_fabrication"]
+    owner: platform
+    parallel_group: v4-c
+    estimate_days: 0.3
+    status: done
+    claimed_by: session_01HWKT1m6cHQBBtUV7d9pQhf
+    owns: ["packages/gates/src/g1/realistic.ts (moneyValue, nichePrices)", "packages/gates/src/g1/seed.ts (SeedOptions.niche)", "packages/gates/test/seed-plausible.test.ts", "apps/platform-api/src/agents/draft.ts (seedDraft niche)", "apps/platform-api/src/agents/executors.ts (onG0Passed)", "apps/platform-api/src/builds-v3/critic.ts (draftDemoRows niche)", "apps/platform-api/src/builds-v3/host.ts (draftNiche)", "apps/platform-api/test/v3-seed-hints.test.ts"]
+    description: >
+      Поток Б, по пробе А (прогон 38506789162): каталог кофейни «Зерно и пар» показывал «Кофе 1 800 ₽» — цены ниши
+      брались по названию и описанию приложения, а в «Зерно и пар» ниши нет. Генератор засева получает нишу сайта
+      (SeedOptions.niche: чекпоинт «design», иначе ниша фото сайта) и берёт цены её ниши; необязательная цена без
+      словаря по-прежнему пустая («по запросу»), обязательная цена неизвестной ниши — круглая по умолчанию (пустой быть
+      не может).
+    acceptance:
+      - "Цены обязательного поля по нише: кофейня 300–900, стоматология 1 500–7 000, салон 1 200–4 500 при названии «Зерно и пар» (тест)"
+      - "Ниша черновика: из «design», иначе из подписи фото, иначе нет (тест с базой)"
+  - id: V4-28
+    title: "Живая проба фото сайтов: снимок фото героя, галереи и карточек по нишам (действие sites)"
+    milestone: V4
+    deps: [V4-27]
+    specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4"]
+    owner: platform
+    parallel_group: v4-c
+    estimate_days: 0.25
+    status: done
+    claimed_by: session_01HWKT1m6cHQBBtUV7d9pQhf
+    owns: ["tools/stock/sites.mjs", ".github/workflows/stock-library.yml (sites)"]
+    description: >
+      Поток Б: проба собирает фото сайта (semanticPhotos) и карточек (semanticSeedHints + pickerCardCheck, шаг photo_cards)
+      живыми моделями. Превью 480 px и таблица (место, файл, шард, запрос) выгружаются артефактом site-photos.
+      Наборы сайтов: acceptance (кофейня, салон) или survey (15 ниш пяти групп), --set=id,id.
+    acceptance:
+      - "Проба приёмки: карточки кофейни и салона с фото по теме, шарды сайта верные (38511868096)"
+      - "Обзор 15 ниш: список ниш, где герой или карточки — люди крупно, текст или чужая ниша"
   - id: V4-19
     title: "Записи e2e v3 по этапам и частичная перезапись record-stale"
     milestone: V4
@@ -2752,7 +2790,7 @@ tasks:
     estimate_days: 1
     status: done
     claimed_by: session_01X8jgGUBZgh2j9RwccJpmf6
-    owns: ["packages/agents/src/interview-v3/place.ts (новый)", "packages/agents/src/interview-v3/interview.ts", "packages/agents/src/interview-v3/index.ts", "packages/agents/src/builder/v3/compose/facts.ts", "packages/agents/src/builder/v3/compose/seed-hints.ts", "packages/agents/src/builder/v3/compose/page-code.ts", "packages/agents/test/v4-place-facts.test.ts (новый)", "packages/agents/test/interview-v3/**", "apps/platform-api/test/v3-interview.test.ts", "packages/e2e/specs/v3/owner.spec.ts"]
+    owns: ["packages/agents/src/interview-v3/place.ts (новый)", "packages/agents/src/interview-v3/interview.ts", "packages/agents/src/interview-v3/index.ts", "packages/agents/src/builder/v3/compose/facts.ts", "packages/agents/src/builder/v3/compose/seed-hints.ts", "packages/agents/src/builder/v3/compose/page-code.ts", "packages/agents/test/v4-place-facts.test.ts (новый)", "packages/agents/test/interview-v3/**", "apps/platform-api/test/v3-interview.test.ts", "packages/e2e/specs/v3/owner.spec.ts", "packages/agents/src/builder/v3/compose/page-sections.ts", "packages/agents/test/v3-compose-scenario.test.ts", "packages/gates/src/g1/seed.ts", "packages/gates/src/g1/types.ts", "packages/gates/test/seed-hints.test.ts"]
     description: >
       Поток В. Репетиция №2 (клиника): на сайте нет контактов, врачей и «как проходит запись» — в брифе не было фактов,
       интервью задало 1 вопрос. Теперь блокирующие вопросы первых экранов собирают факты, без которых сайт пустой, кодом
@@ -2764,6 +2802,7 @@ tasks:
       - "Сценарий «показывает врачей» без списка врачей — вопрос о специалистах; их специализации становятся демо-строками каталога"
       - "Интернет-магазин и бриф, где адрес уже есть, — без вопроса; не больше BLOCKING_QUESTIONS_CAP вопросов"
       - "Бизнес с услугами или меню без цен в брифе — вопрос «Цены «от»» своим текстом: цены ложатся в демо-строки каталога по названию, факты сайта знают о ценах; кнопка «Добавлю потом» — без цен; магазин с товарами — без вопроса"
+      - "D79 (3): специалисты из своего ответа владельца — демо-строки сущности specialist (имя — name с source owner, гейт сида пропускает только имя; специализация — description) и строка «Специалисты» в фактах страницы; секция специалистов только по ней, без фото людей; без ответа — секции нет"
   - id: M4-01
     title: "Лендинг под финальным именем, самостоятельная регистрация, нагрузочный тест 200 одновременных прогонов"
     milestone: M4
