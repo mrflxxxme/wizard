@@ -7,7 +7,7 @@
 // from WIZARD_PROBE_MODELS, businesses from WIZARD_PROBE_CASES).
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { chromium } from "@playwright/test";
-import { CRITIC_VIEWPORTS, seedHintsFromBrief } from "@wizard/agents/builder";
+import { CRITIC_VIEWPORTS, seedHintsFromBrief, withSitePages } from "@wizard/agents/builder";
 import {
   createRegistry,
   createRouter,
@@ -100,7 +100,7 @@ describe.skipIf(!ON || !hasChromium)("V4-06: the inner pages (/services, /bookin
               const site = readSite(files) as SiteModel;
               const page = site.pages.find((p) => p.route === route);
               const out = await inspect({
-                spec: base.spec,
+                spec: withSitePages(base.spec, site),
                 files,
                 routes: [route],
                 viewports: CRITIC_VIEWPORTS,
