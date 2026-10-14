@@ -289,6 +289,10 @@ describe("siteRules: the places of the owner's photos stay on the page (V3-18, G
     const withPhoto = code({ title: "Лечим зубы", image });
     expect(withPhoto.sections[0]?.photos).toEqual({ image: "top" });
     expect(pageSource(withPhoto)).toContain(`image={photo.one("top", ${JSON.stringify(image)})}`);
+    // The page-by-sections hero gives the address alone (alt in imageAlt): the owner's photo replaces the address.
+    const byPath = code({ title: "Лечим зубы", image: image.src, imageAlt: image.alt });
+    expect(byPath.sections[0]?.photos).toEqual({ image: "top" });
+    expect(pageSource(byPath)).toContain(`image={photo.one("top", ${JSON.stringify(image)}).src}`);
     // A code section that takes no photo in props: nothing to replace, the page does not ask for the place.
     expect(pageSource(code({ title: "Лечим зубы" }))).not.toContain("photo.one");
   });

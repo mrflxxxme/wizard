@@ -33,7 +33,8 @@ export interface Step {
 export interface SeedHint {
   entity: string;
   field: string;
-  values: (string | number | boolean)[];
+  /** V4-27: null — no value for that row (an optional photo the vision check found nothing for). */
+  values: (string | number | boolean | null)[];
 }
 
 export interface Scenario {

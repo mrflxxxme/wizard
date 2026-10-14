@@ -67,10 +67,14 @@ const norm = (s) =>
     .toLowerCase()
     .replace(/ё/g, "е");
 
-/** V4-24 content questions by the start of their text (agents PLACE_QUESTION_TEXT, STAFF_QUESTION_TEXT) → brief.answers key. */
+/**
+ * V4-24 content questions by the start of their text (agents PLACE_QUESTION_TEXT, STAFF_QUESTION_TEXT,
+ * PRICE_QUESTION_TEXT) → brief.answers key.
+ */
 export const CONTENT_QUESTIONS = [
   { start: "Где вас найти", key: "place" },
   { start: "Кого из специалистов", key: "staff" },
+  { start: "Цены «от»", key: "prices" },
 ];
 
 /**

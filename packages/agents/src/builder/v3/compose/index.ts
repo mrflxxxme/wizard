@@ -74,6 +74,7 @@ export {
   codeExamples,
   codeSectionFile,
   designBlock,
+  HARD_ISSUES,
   HOME_MIN_SECTIONS,
   isKeptSection,
   PAGE_CODE_TOOL,
@@ -86,7 +87,10 @@ export {
   SDK_TYPES,
   sdkGate,
   sdkSections,
+  softOnLastAttempt,
+  stripPricePromises,
   TASTE_RULES,
+  withoutPricePromise,
 } from "./page-code.js";
 /** V4-06: the page step — the page author, the rival first screen of another family and the judge by screenshots. */
 export {
