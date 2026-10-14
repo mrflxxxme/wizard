@@ -160,7 +160,13 @@ export const TEAM_PATTERNS: readonly PatternMeta[] = [
     layout: "typographic",
     title: "Титры без фото: роль мелко справа от оси, имя крупно слева, по центру страницы",
     archetypes: ["*"],
-    slots: base.extend({ people: z.array(personSlot).min(2).max(12) }),
+    // V4-29: the only variant for people the owner gave by role only (no names): one column of roles.
+    slots: base.extend({
+      people: z
+        .array(personSlot.extend({ name: line(60).optional() }))
+        .min(2)
+        .max(12),
+    }),
     needs: null,
     license: "own",
     origin: "own",
