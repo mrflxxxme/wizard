@@ -55,7 +55,10 @@ export interface ComposeScenarioOptions extends ComposeLibrary {
   inspect?: CriticInspector;
   /** false — no rival first screen and no judge (default: on the home page). */
   firstScreen?: boolean;
-  /** V4-06 speed: pages by sections (a plan call, then the code sections at once); default — one call per page. */
+  /**
+   * V4-06: pages by sections (a plan call, then the code sections at once) — the default since the quality probe of the
+   * three acceptance businesses (critic 65–71 vs 38–69, 41–52 s vs 52–267 s); false — one call per page.
+   */
   sections?: boolean;
 }
 
@@ -196,7 +199,7 @@ export async function composeScenario(
     targets.map(async (target) => {
       const page = site.pages.find((p) => p.route === target.route) as SitePage;
       const own: string[] = [];
-      const step = opts.sections ? pageSections : pageCode;
+      const step = opts.sections === false ? pageCode : pageSections;
       const done = await step(ctx, base, {
         site,
         page,
