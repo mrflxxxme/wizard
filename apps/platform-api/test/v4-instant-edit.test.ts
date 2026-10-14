@@ -344,4 +344,29 @@ describe("V4-15: instant edits without a model", () => {
       .executeTakeFirstOrThrow();
     expect(after.draft_revision).toBe(sys.draft_revision);
   }, 120_000);
+
+  test("V4-24: «Собрать» after manual edits asks first — 409 REBUILD_REPLACES_EDITS with their number, no build", async () => {
+    const brief = (await api.req("GET", `/systems/${systemId}/brief`)).body.brief as { version: number };
+    const runs = async () =>
+      (
+        await api.deps.db
+          .selectFrom("platform.runs")
+          .select("id")
+          .where("system_id", "=", systemId)
+          .where("kind", "=", "build")
+          .execute()
+      ).length;
+    const before = await runs();
+    const r = await api.req("POST", `/systems/${systemId}/brief/approve`, {
+      body: { version: brief.version },
+    });
+    expect(r.status).toBe(409);
+    expect(r.body.code).toBe("REBUILD_REPLACES_EDITS");
+    // The text and the photo, the sliders, the point edit of the tests above.
+    expect(r.body.details.edits).toBeGreaterThanOrEqual(3);
+    expect(r.body.message_ru).toBe(
+      `Пересборка заменит ваши правки (${r.body.details.edits}). Пересобрать или выбрать блок и поправить его?`,
+    );
+    expect(await runs()).toBe(before);
+  });
 });

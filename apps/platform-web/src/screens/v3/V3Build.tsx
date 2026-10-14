@@ -44,6 +44,8 @@ export interface V3BuildCardProps {
   onStyle(): void;
   /** A stale brief (412): the canvas re-reads it. */
   onStale(): void;
+  /** V4-24 «Выбрать блок» instead of a rebuild that would replace the manual edits: the canvas opens its edit panel. */
+  onPickBlock?(): void;
 }
 
 /** The chat card before «Собрать» of a v3 system: the style of the site and the start of the build. */
@@ -55,10 +57,13 @@ export function V3BuildCard({
   onStarted,
   onStyle,
   onStale,
+  onPickBlock,
 }: V3BuildCardProps): ReactNode {
   const { api } = usePlatform();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** V4-24: the rebuild would replace the owner's manual edits — his question, until he chooses. */
+  const [replace, setReplace] = useState<string | null>(null);
   const archetype = brief.design.archetype;
   const styleText = archetype
     ? brief.design.pinned
@@ -66,17 +71,19 @@ export function V3BuildCard({
       : T.styleAuto(archetypeName(archetype))
     : T.styleNone;
 
-  async function start() {
+  async function start(replaceEdits = false) {
     setBusy(true);
     setError(null);
+    setReplace(null);
     try {
-      const r = await api.approveBrief(systemId, version);
+      const r = await api.approveBrief(systemId, version, replaceEdits ? { replaceEdits: true } : {});
       onStarted(r.run);
     } catch (e) {
       if (e instanceof ApiError && e.code === "VERSION_CONFLICT") {
         setError(T.stale);
         onStale();
-      } else setError(e instanceof Error ? e.message : String(e));
+      } else if (e instanceof ApiError && e.code === "REBUILD_REPLACES_EDITS") setReplace(e.message);
+      else setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -111,6 +118,26 @@ export function V3BuildCard({
           </ActionButton>
         )}
       </div>
+      {replace && (
+        <div className={s.go} role="alert" data-testid="canvas-v3-replace">
+          <p className={s.note}>{replace}</p>
+          <ActionButton testId="canvas-v3-rebuild" disabled={busy} onClick={() => void start(true)}>
+            {T.rebuild}
+          </ActionButton>
+          {onPickBlock && (
+            <ActionButton
+              variant="create"
+              testId="canvas-v3-pick-block"
+              onClick={() => {
+                setReplace(null);
+                onPickBlock();
+              }}
+            >
+              {T.pickBlock}
+            </ActionButton>
+          )}
+        </div>
+      )}
       {error && (
         <p className={s.error} role="alert" data-testid="canvas-v3-error">
           {error}

@@ -682,6 +682,7 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
           editable={editable}
           onStyle={() => setStyleOpen(true)}
           onStale={brief.reload}
+          onPickBlock={() => setPanel("edit")}
           onStarted={(run) => {
             started(run.id);
             void reload().catch(() => {});

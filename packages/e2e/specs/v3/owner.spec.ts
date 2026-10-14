@@ -209,8 +209,14 @@ test("v3: интервью → бриф → три направления → «
   await page.getByTestId("p-brief-close").click();
 
   // …and «Собрать» rebuilds by the new brief version: the scenarios the edit did not touch come from the checkpoints
-  // of the first build (not paid twice), the second ready notice, the preview stays.
+  // of the first build (not paid twice), the second ready notice, the preview stays. V4-24: the heading edited above
+  // would be replaced — the owner is asked first and chooses «Пересобрать».
   await page.getByTestId("canvas-v3-approve").click();
+  await expect(page.getByTestId("canvas-v3-replace")).toContainText(
+    "Пересборка заменит ваши правки (1). Пересобрать или выбрать блок и поправить его?",
+  );
+  await expect(page.getByTestId("canvas-v3-pick-block")).toBeVisible();
+  await page.getByTestId("canvas-v3-rebuild").click();
   await expect
     .poll(() => letters(email).filter((l) => l.kind === "notice").length, { timeout: 150_000 * SLOW })
     .toBe(2);
