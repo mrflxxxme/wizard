@@ -438,6 +438,68 @@ describe("harness v3: browser check, stop rules, «Запросы на разв�
     expect(lines.some((t) => t.includes("Не всё обещанное показано"))).toBe(true);
   });
 
+  test("promises the facts cannot keep (doctors, reviews): no repair round, straight to the requests", async () => {
+    const sys = newSys();
+    const DOCTORS = "Обещано в сценарии «видит врачей»: в секции специалистов нет настоящих имён.";
+    const { out, rec, composer } = await build(sys, {
+      check: (c) =>
+        c.scenario.id === "s_prices"
+          ? { ok: true, problems: [], browser: true, unkept: [DOCTORS], repairable: [] }
+          : { ok: true, problems: [], browser: true },
+    });
+    const r = ok(out);
+    expect(composer.log.filter((l) => l.id === "s_prices")).toHaveLength(1);
+    expect(rec.calls).toHaveLength(6);
+    expect(r.scenarios.find((s) => s.id === "s_prices")).toMatchObject({
+      status: "passed",
+      unkept: [DOCTORS],
+    });
+    expect(sys.requests).toEqual([
+      expect.objectContaining({ quote: expect.stringContaining("нет настоящих имён") }),
+    ]);
+  });
+
+  test("the repair round gets only the promises the facts keep", async () => {
+    const sys = newSys();
+    const DOCTORS = "Обещано в сценарии «видит врачей»: в секции специалистов нет настоящих имён.";
+    let n = 0;
+    const { composer } = await build(sys, {
+      check: (c) =>
+        c.scenario.id === "s_prices" && n++ === 0
+          ? { ok: true, problems: [], browser: true, unkept: [PRICES, DOCTORS], repairable: [PRICES] }
+          : { ok: true, problems: [], browser: true },
+    });
+    expect(composer.log.filter((l) => l.id === "s_prices").map((l) => l.repair ?? null)).toEqual([
+      null,
+      [PRICES],
+    ]);
+  });
+
+  test("a repair that changes nothing (the composer returns no files): the first layer stays, not the skeleton", async () => {
+    const sys = newSys();
+    let n = 0;
+    const { out, rec } = await build(sys, {
+      composer: { repairChangesNothing: true },
+      check: (c) =>
+        c.scenario.id === "s_prices" && n++ === 0
+          ? { ok: true, problems: [], browser: true, unkept: [PRICES] }
+          : { ok: true, problems: [], browser: true },
+    });
+    const r = ok(out);
+    // Rehearsal №4: the empty repair layer replaced the first one and the skeleton home came back; now it is not even
+    // checked again, and the scenario's page stays.
+    expect(rec.checks.filter((c) => c.scenario.id === "s_prices")).toHaveLength(1);
+    expect(r.scenarios.find((s) => s.id === "s_prices")).toMatchObject({
+      status: "passed",
+      unkept: [PRICES],
+    });
+    expect(Object.values(sys.files).some((src) => src.includes("показывает услуги с ценами"))).toBe(true);
+    // The promises of the first check are not lost: they go to «Запросы на развитие».
+    expect(sys.requests).toEqual([
+      expect.objectContaining({ quote: expect.stringContaining("цены не показаны — нужны цены у услуг") }),
+    ]);
+  });
+
   test("a repair that breaks the gates: the first layer is put back, its promises go to the requests", async () => {
     const sys = newSys();
     let n = 0;

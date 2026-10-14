@@ -212,6 +212,11 @@ export interface FakeComposerOptions {
   fail?: (scenarioId: string, attempt: number) => Error | null;
   /** The skeleton calls a model (a breach of the contract). */
   skeletonCallsModel?: boolean;
+  /**
+   * V4-21: a repair (a second composition of a scenario) that changes nothing — the real composer returns only the files
+   * that differ from the system, so it returns none.
+   */
+  repairChangesNothing?: boolean;
 }
 
 /** A call of the fake composer; `repair` — V4-21: the reasons of a scenario composed again. */
@@ -271,6 +276,8 @@ export function fakeComposer(o: FakeComposerOptions = {}): PageComposer & {
       });
       const err = o.fail?.(s.id, n);
       if (err) throw err;
+      if (o.repairChangesNothing && ctx.repair)
+        return { files: new Map(), pages: [], notes: [`Сценарий ${s.id}: без изменений`], spentRub: 0 };
       let headline = s.when;
       for (let i = 0; i < (o.calls ?? 1); i++) {
         const out = await ctx.route({

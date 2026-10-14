@@ -1088,18 +1088,31 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
       // V4-21: the gates passed but promises of its «видит …» steps are not shown — one repair with the reasons, then
       // the better of the two layers (fewer promises not kept); never more than one round per scenario.
       const unkept = check.ok ? (check.unkept ?? []) : [];
-      if (unkept.length) {
+      // Only what the facts can keep is worth a model's round (specialists without facts, reviews, prices go to the
+      // requests as they are).
+      const repair = check.ok ? (check.repairable ?? unkept) : [];
+      if (repair.length) {
         const first = { r, check };
         let again: V3ComposeResult | null = null;
         try {
           again = await host.runStep(`v3:${key}:repair`, () =>
-            host.composer.scenario({ ...ctxFor(wallet), repair: unkept }, next.scenario),
+            host.composer.scenario({ ...ctxFor(wallet), repair }, next.scenario),
           );
         } catch (e) {
           if (!(e instanceof V3BudgetError)) throw e;
         }
-        if (again) {
+        // The repair is composed on the system with the first layer, so its files are only what it changed: it goes on
+        // top of the first layer, never in its place (a repair that kept a page as it was must not bring the skeleton
+        // back). A repair that changed nothing is not checked again.
+        if (again && again.files.size === 0) composedRub += again.spentRub;
+        else if (again) {
           composedRub += again.spentRub;
+          const routes = new Set(again.pages.map((pg) => pg.route));
+          again = {
+            ...again,
+            files: new Map([...first.r.files, ...again.files]),
+            pages: [...first.r.pages.filter((pg) => !routes.has(pg.route)), ...again.pages],
+          };
           scenarioLayers.set(next.id, again.files);
           revision = await commit(`Сценарий: ${next.title} (исправление)`);
           const second = await checkLayer(again, `v3:check:${next.id}:repair`);
