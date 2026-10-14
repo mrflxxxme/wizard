@@ -72,6 +72,19 @@ export interface CollectInput {
 }
 
 /** The report of run `runId` (a v3 build); null — no such run. */
+/** The main findings of the critic's last cycle in words («P1 · L13 … · /@390#hero»), without repeats, ≤ 5. */
+export function criticTop(cycle: unknown): string[] {
+  const top = cycle && typeof cycle === "object" ? (cycle as { top?: unknown }).top : undefined;
+  return (
+    (Array.isArray(top) ? top : [])
+      .map(obj)
+      .map((f) => [str(f.severity), str(f.sign), str(f.where)].filter(Boolean).join(" · "))
+      // The same finding twice in one cycle (the model repeats itself) is one line of the table.
+      .filter((line, i, all) => line && all.indexOf(line) === i)
+      .slice(0, 5)
+  );
+}
+
 export async function collectBuildReport(pg: postgres.Sql, o: CollectInput): Promise<BuildReport | null> {
   const [run] = await pg<
     {
@@ -192,14 +205,7 @@ export async function collectBuildReport(pg: postgres.Sql, o: CollectInput): Pro
           scores: cycles.map((c) => num(c.score)).filter((s) => s > 0),
           stop: str(review.stop),
           note: str(critic.note) ?? strs(critic.notes)[0] ?? null,
-          top: (Array.isArray(cycles.at(-1)?.top)
-            ? ((cycles.at(-1) as { top: unknown[] }).top as unknown[])
-            : []
-          )
-            .map(obj)
-            .map((f) => [str(f.severity), str(f.sign), str(f.where)].filter(Boolean).join(" · "))
-            .filter(Boolean)
-            .slice(0, 5),
+          top: criticTop(cycles.at(-1)),
           left: (Array.isArray(review.left) ? (review.left as unknown[]).map(obj) : [])
             .map((p) => ({
               code: str(p.code) ?? "",
