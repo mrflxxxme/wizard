@@ -11,6 +11,16 @@ import { LIBRARY_PHOTO_HINT, SEED_HINT_MAX_VALUES, type SeedHint } from "@wizard
 /** @wizard/modules SITE_PHOTO.entity: one row per place the owner replaced — never a demo row with a photo. */
 export const SITE_PHOTO_ENTITY = "site_photo";
 
+/**
+ * D49: entities of people — the owner's doctors, masters, team. A stock photo on their card would pass strangers off as
+ * the staff: these cards keep no photo (the site shows initials), never a library one.
+ */
+const PERSON_ENTITY =
+  /^(specialist|staff|doctor|master|employee|team|member|trainer|teacher|coach|tutor|stylist|barber|instructor|expert|person|people|author)(s|_.*)?$/;
+
+/** true — `entity` holds people (D49): no stock photo ever goes on its cards. */
+export const isPersonEntity = (entity: string): boolean => PERSON_ENTITY.test(entity);
+
 /** Rows a field without name hints gets photos for. */
 const UNNAMED_ROWS = 6;
 
@@ -25,7 +35,7 @@ export function publicImageFields(spec: AppSpec): { entity: string; field: strin
   const publicRoles = new Set(spec.roles.filter((r) => r.access === "public").map((r) => r.name));
   const fields: { entity: string; field: string }[] = [];
   for (const e of spec.entities) {
-    if (e.name === SITE_PHOTO_ENTITY) continue;
+    if (e.name === SITE_PHOTO_ENTITY || isPersonEntity(e.name)) continue;
     const readable = spec.permissions.some(
       (p) => p.entity === e.name && publicRoles.has(p.role) && p.ops.includes("read"),
     );

@@ -5,8 +5,8 @@
 // gynecologist's chair on the dental clinic's «Терапия».
 import type { AppSpec } from "@wizard/appspec";
 import { expect, test } from "vitest";
-import { pickerCardCheck } from "../src/builds-v3/card-photos.js";
-import { planNiche, semanticSeedHints } from "../src/builds-v3/host.js";
+import { isPersonEntity, pickerCardCheck } from "../src/builds-v3/card-photos.js";
+import { photoSeedHints, planNiche, semanticSeedHints } from "../src/builds-v3/host.js";
 
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const spec = {
@@ -147,4 +147,35 @@ test("the card check: one call for every row, the model's photo or the row's oth
     }),
   });
   expect(failed[0]?.values).toEqual([uuid(22), uuid(24), uuid(26)].map((f) => `/_wizard/photos/${f}/960`));
+});
+
+// D49: the owner's people (doctors, masters, team) never get a stock photo — that would pass strangers off as the staff.
+test("people entities get no library photos: neither by name nor from the plan", async () => {
+  const people = {
+    ...spec,
+    entities: [
+      ...spec.entities,
+      {
+        name: "specialist",
+        fields: [
+          { name: "name", type: "string" },
+          { name: "photo", type: "image" },
+        ],
+      },
+      { name: "team_member", fields: [{ name: "photo", type: "image" }] },
+    ],
+    permissions: [
+      ...spec.permissions,
+      { role: "visitor", entity: "specialist", ops: ["read"] },
+      { role: "visitor", entity: "team_member", ops: ["read"] },
+    ],
+  } as unknown as AppSpec;
+  expect(["specialist", "team_member", "doctors", "master"].every(isPersonEntity)).toBe(true);
+  expect(["service", "membership", "product"].some(isPersonEntity)).toBe(false);
+  queries.length = 0;
+  const names = { entity: "specialist", field: "name", values: ["Иванова Анна", "Петров Олег"] };
+  const hints = await semanticSeedHints(people, [names], new Set(), new Set(), source);
+  expect(hints.map((h) => h.entity)).toEqual(["service"]);
+  const plan = [{ slot: "gallery", file: uuid(5) }];
+  expect(photoSeedHints(people, plan).map((h) => h.entity)).toEqual(["service"]);
 });

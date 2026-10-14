@@ -59,6 +59,7 @@ import { withKeyWindow } from "../secrets-v3/agent.js";
 import { loadBrief } from "../services/plans.js";
 import {
   cardPhotosKey,
+  isPersonEntity,
   pickerCardCheck,
   planNiche,
   SITE_PHOTO_ENTITY,
@@ -309,7 +310,7 @@ export function photoSeedHints(
   const fields: { entity: string; field: string }[] = [];
   for (const e of spec.entities) {
     // The owner's replacements of the site's own photos (landing «Фото сайта») keep the plan's photos in their places.
-    if (e.name === SITE_PHOTO_ENTITY || skip.has(e.name)) continue;
+    if (e.name === SITE_PHOTO_ENTITY || isPersonEntity(e.name) || skip.has(e.name)) continue;
     const readable = spec.permissions.some(
       (p) => p.entity === e.name && publicRoles.has(p.role) && p.ops.includes("read"),
     );
