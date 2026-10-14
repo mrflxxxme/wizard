@@ -14,6 +14,8 @@ export interface QualityCase {
   ctx: V3BuildContext;
   /** The scenario whose page is the home page. */
   scenario: BriefScenario;
+  /** Scenarios of the inner pages (the catalog /services, the booking /booking) with the route each writes. */
+  inner: { route: string; scenario: BriefScenario }[];
 }
 
 const photo = (i: number, alt: string) => ({
@@ -182,6 +184,27 @@ const SALON_BRIEF = systemBriefSchema.parse({
       goalId: "booking",
     },
     {
+      id: "prices",
+      actor: "visitor",
+      when: "клиентка смотрит услуги и цены",
+      // biome-ignore lint/suspicious/noThenProperty: field name fixed by builder-v3.md §3 C1
+      then: ["показывает услуги с длительностью: стрижки и окрашивание, маникюр и педикюр, брови и ресницы"],
+      goalId: "offer",
+      moduleHint: "catalog",
+    },
+    {
+      id: "book",
+      actor: "visitor",
+      when: "клиентка записывается",
+      // biome-ignore lint/suspicious/noThenProperty: field name fixed by builder-v3.md §3 C1
+      then: [
+        "даёт выбрать услугу, мастера и свободное окно",
+        "отменить или перенести можно не позже чем за 6 часов",
+      ],
+      goalId: "booking",
+      moduleHint: "booking",
+    },
+    {
       id: "remind",
       actor: "visitor",
       when: "до визита остался день",
@@ -233,7 +256,12 @@ const SALON_PLAN: SystemPlan = {
 /** The three businesses of the V4 acceptance for the page quality probe: clinic, coffee house, beauty salon. */
 export function qualityCases(o: { contact?: string } = {}): QualityCase[] {
   return [
-    { id: "clinic", ctx: composeContext(o), scenario: CLINIC_BRIEF.scenarios[0] as BriefScenario },
+    {
+      id: "clinic",
+      ctx: composeContext(o),
+      scenario: CLINIC_BRIEF.scenarios[0] as BriefScenario,
+      inner: [{ route: "/services", scenario: CLINIC_BRIEF.scenarios[1] as BriefScenario }],
+    },
     {
       id: "coffee",
       ctx: caseContext({
@@ -257,6 +285,7 @@ export function qualityCases(o: { contact?: string } = {}): QualityCase[] {
         brandColor: "#8a4b2a",
       }),
       scenario: COFFEE_BRIEF.scenarios[0] as BriefScenario,
+      inner: [{ route: "/services", scenario: COFFEE_BRIEF.scenarios[1] as BriefScenario }],
     },
     {
       id: "salon",
@@ -281,6 +310,10 @@ export function qualityCases(o: { contact?: string } = {}): QualityCase[] {
         brandColor: "#7a5c9e",
       }),
       scenario: SALON_BRIEF.scenarios[0] as BriefScenario,
+      inner: [
+        { route: "/services", scenario: SALON_BRIEF.scenarios[1] as BriefScenario },
+        { route: "/booking", scenario: SALON_BRIEF.scenarios[2] as BriefScenario },
+      ],
     },
   ];
 }
