@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // V4-10 (D79 (6)): fills the semantic photo library from a GitHub runner (the stocks are closed for the server in RF).
 //   node tools/stock/fill.mjs model                    — the SigLIP text tower into the storage (the platform reads it there)
-//   node tools/stock/fill.mjs fill [--minutes=N] [--max-photos=N] [--niches=a,b]
-//                                                      — catalog niches in priority order, one shard each
+//   node tools/stock/fill.mjs fill [--minutes=N] [--max-photos=N] [--niches=a,b] [--prune]
+//                                                      — catalog niches in priority order, one shard each; --prune
+//                                                        drops the photos of queries the catalog no longer has
 //   node tools/stock/fill.mjs backfill [--minutes=N]   — niches the builds asked for (their Russian text, lang=ru)
 // Per photo: download from the stock, a copy into the platform photo library (runtime storeLibraryPhoto: WebP, no EXIF,
 // idempotent by provider:id), the SigLIP image embedding and the mean colour; the shard of the niche is rewritten every
@@ -67,6 +68,7 @@ export async function runFill({
   const stats = {
     niches: niches.length,
     full: 0,
+    pruned: 0,
     filled: 0,
     added: 0,
     searches: { pexels: 0, pixabay: 0 },
@@ -110,13 +112,19 @@ export async function runFill({
       entries: [],
       vectors: S.quantize([]),
     };
-    const rows = cur.entries.map((_, i) => dequantRow(cur.vectors, i));
-    const entries = [...cur.entries];
+    // V4-30: --prune drops the photos of queries the niche no longer has (the shard then refills with the new ones).
+    const keep = cur.entries.flatMap((e, i) =>
+      !limits.prune || niche.queries.some((q) => q.slice(0, 100) === e.query) ? [i] : [],
+    );
+    const rows = keep.map((i) => dequantRow(cur.vectors, i));
+    const entries = keep.map((i) => cur.entries[i]);
+    const pruned = cur.entries.length - entries.length;
+    stats.pruned += pruned;
     if (entries.length >= niche.target) {
       stats.full++;
       continue;
     }
-    let dirty = 0;
+    let dirty = pruned;
     const flush = async () => {
       if (dirty === 0) return;
       const sh = { slug: niche.slug, name: niche.name, entries: [...entries], vectors: S.quantize(rows) };
@@ -276,7 +284,9 @@ export function fillAnnotation(s) {
   return annotation(
     level,
     TITLE,
-    `ниш: ${s.niches} (заполнено ${s.filled}, уже полных ${s.full}); добавлено фото: ${s.added}, всего в библиотеке: ${s.total}; ` +
+    `ниш: ${s.niches} (заполнено ${s.filled}, уже полных ${s.full}); добавлено фото: ${s.added}, ` +
+      (s.pruned ? `удалено фото старых запросов: ${s.pruned}, ` : "") +
+      `всего в библиотеке: ${s.total}; ` +
       `поисков Pexels ${s.searches.pexels}, Pixabay ${s.searches.pixabay}; скачиваний ${s.downloads}` +
       (s.stopped ? `; остановка: ${why[s.stopped]}` : "") +
       (kinds.length ? `; ошибки (${s.errors.length}): ${kinds.join("; ")}` : ""),
@@ -363,7 +373,7 @@ export async function main(argv, { env = process.env, fetch: f = fetch, log = co
   const out = (line) => log(scrubKeys(line, secrets));
   const [action, ...rest] = argv;
   if (!["model", "fill", "backfill", "status"].includes(action)) {
-    out(annotation("error", TITLE, "действие: model | fill | backfill | status [--minutes=N] [--max-photos=N] [--niches=a,b]"));
+    out(annotation("error", TITLE, "действие: model | fill | backfill | status [--minutes=N] [--max-photos=N] [--niches=a,b] [--prune]"));
     return 2;
   }
   const minutes = argOf(rest, "minutes");
@@ -444,6 +454,7 @@ export async function main(argv, { env = process.env, fetch: f = fetch, log = co
       ...FILL_LIMITS,
       ...(minutes ? { minutes: Number(minutes) } : {}),
       ...(maxPhotos ? { photos: Number(maxPhotos) } : {}),
+      ...(rest.includes("--prune") ? { prune: true } : {}),
     };
     const s = await runFill({
       S,

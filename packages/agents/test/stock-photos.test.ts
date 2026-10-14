@@ -16,6 +16,7 @@ import {
 } from "../src/builder/index.js";
 import {
   BACKFILL_MIN_LIBRARY,
+  CATALOG,
   type Candidate,
   createSemanticSource,
   EMBED_DIM,
@@ -25,6 +26,7 @@ import {
   type LibraryPhotoEntry,
   modelPhotoPicker,
   normalize,
+  ownNiches,
   PHOTO_PICK_CALL_TYPE,
   type PhotoPicker,
   PICK_CANDIDATES,
@@ -230,6 +232,51 @@ describe("semanticPhotos", () => {
     expect(r.photos.length).toBeGreaterThan(0);
     for (const ph of r.photos) expect(mixed.find((e) => e.file === ph.file)?.niche).toBe("cafe");
     expect([...(siteShards([]) ?? [])]).toEqual([]);
+  });
+
+  test("V4-30: a niche the catalog names takes its own shard, not the neighbour SigLIP ranks first", async () => {
+    // A human clinic's photos rank first for «ветеринарная клиника»; the vet shard is further down.
+    const lib = [
+      ...Array.from({ length: 20 }, () => photo("landscape", { niche: "medical" })),
+      ...Array.from({ length: 12 }, () => photo("landscape", { niche: "vet" })),
+      ...Array.from({ length: 4 }, () => photo("portrait", { niche: "vet" })),
+      ...Array.from({ length: 4 }, () => photo("square", { niche: "vet" })),
+    ];
+    const { source } = fakeSource(lib);
+    const r = await semanticPhotos({
+      plan: plan("ветеринарная клиника"),
+      slots,
+      source,
+      pickedAt: "2026-10-14",
+    });
+    expect(r.photos.length).toBeGreaterThan(0);
+    for (const ph of r.photos) expect(lib.find((e) => e.file === ph.file)?.niche).toBe("vet");
+  });
+
+  test("V4-30: shards of the site — own niche by name, neighbours of one catalog group only, generic when off topic", () => {
+    expect(ownNiches("ветеринарная клиника").map((c) => c.slug)).toEqual(["vet"]);
+    expect(ownNiches("Клининг квартир и офисов").map((c) => c.slug)).toEqual(["cleaning"]);
+    expect(ownNiches("клиника")).toEqual([]);
+    expect(new Set(CATALOG.map((c) => c.group)).has("")).toBe(false);
+    const cand = (niche: string, score = GOOD_SCORE + 0.05): Candidate => ({
+      entry: photo("landscape", { niche }),
+      score,
+    });
+    // An optician's first screen: two printing-house photos among the best do not make that shard the site's.
+    const optics = [
+      ...Array.from({ length: 6 }, () => cand("optics")),
+      cand("printing"),
+      cand("printing"),
+      cand("lab"),
+      cand("lab"),
+    ];
+    expect([...(siteShards(optics, "салон очков") ?? [])].sort()).toEqual(["lab", "optics"]);
+    expect([...(siteShards(optics, "оптика") ?? [])]).toEqual(["optics"]);
+    // Most of the best candidates off the topic: neutral generic photos, not the neighbour's.
+    const weak = Array.from({ length: 10 }, () => cand("medical", GOOD_SCORE / 2));
+    expect([...(siteShards(weak, "ветклиника") ?? [])]).toEqual(
+      CATALOG.filter((c) => c.group === "generic").map((c) => c.slug),
+    );
   });
 
   test("V4-27: one photo per author on a site — one shoot, one person", async () => {

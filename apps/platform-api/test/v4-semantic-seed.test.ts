@@ -108,7 +108,12 @@ const rowsSource = () => {
       const entries = [
         { file: uuid(1), width: 1600, height: 1000, niche: "dental" },
         { file: uuid(900 + i), width: 1600, height: 1000, niche: "medical-center" },
-        ...[1, 2, 3, 4].map((n) => ({ file: uuid(i * 10 + n), width: 1600, height: 1000, niche: "dental" })),
+        ...[1, 2, 3, 4, 5, 6, 7].map((n) => ({
+          file: uuid(i * 10 + n),
+          width: 1600,
+          height: 1000,
+          niche: "dental",
+        })),
       ];
       return entries
         .filter((e) => (o.filter ? o.filter(e as never) : true))
@@ -134,7 +139,7 @@ test("the card check: one call, the model's photo; an empty row's second round; 
       calls.push({ slots: input.slots.map((s) => s.label), candidates: files, niche: input.niche });
       const at = (f: string) => files.indexOf(f);
       // Round 1 — row 1 (21, 22): its second; row 2 (31, 32): nothing fits; row 3 (41, 42): 41 has a sign and the
-      // model still puts it there. Round 2 — row 2 (33, 34) and row 3 (43, 44): their first.
+      // model still puts it there. Round 2 — row 2 (33–36) and row 3 (43–46): their first.
       if (calls.length === 1)
         return [
           { slot: "card-1", index: at(uuid(22)) },
@@ -166,7 +171,8 @@ test("the card check: one call, the model's photo; an empty row's second round; 
   ]);
   expect(calls[0]?.candidates).toEqual([21, 22, 31, 32, 41, 42].map(uuid));
   expect(calls[1]?.slots).toEqual(["Карточка каталога «Хирургия»", "Карточка каталога «Ортодонтия»"]);
-  expect(calls[1]?.candidates).toEqual([33, 34, 43, 44].map(uuid));
+  // V4-30: the second round goes four candidates deeper (photos with text are flagged out of the library meanwhile).
+  expect(calls[1]?.candidates).toEqual([33, 34, 35, 36, 43, 44, 45, 46].map(uuid));
   expect(flagged).toEqual([uuid(41)]);
   expect(hints[0]?.values).toEqual([photoOf(22), photoOf(33), photoOf(43)]);
 });
