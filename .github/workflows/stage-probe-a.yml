@@ -17,6 +17,14 @@ on:
         description: "Модели одна за другой на маршрутах страницы (проба page), через запятую"
         type: string
         default: ""
+      modes:
+        description: "Режимы пробы quality через запятую: sections, page (пусто — оба)"
+        type: string
+        default: ""
+      cases:
+        description: "Бизнесы проб quality через запятую: clinic, coffee, salon (пусто — все)"
+        type: string
+        default: ""
   push:
     branches: ["task/V4-0*"]
     paths:
@@ -52,6 +60,8 @@ jobs:
           WIZARD_LLM_MODE: live
           WIZARD_PROBE_SECTIONS: ${{ inputs.sections && '1' || '' }}
           WIZARD_PROBE_MODELS: ${{ inputs.models || '' }}
+          WIZARD_PROBE_MODES: ${{ inputs.modes || '' }}
+          WIZARD_PROBE_CASES: ${{ inputs.cases || '' }}
           KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
           # The RF chains (Cloud.ru FM): the T0 reserve of every route and the models measured on T0.
