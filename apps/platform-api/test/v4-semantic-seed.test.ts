@@ -94,12 +94,33 @@ test("the niche of the plan comes from its photos' alt", () => {
   expect(planNiche([{ slot: "top", alt: "Фото" }, {}])).toBeNull();
 });
 
-// V4-27: the build checks the card rows with the vision model in one call — two candidates a row, the model's photo,
-// else the row's other candidate without text; photos with text are flagged in the library; a failed call changes
-// nothing (first candidates).
-test("the card check: one call for every row, the model's photo or none, text flagged", async () => {
-  queries.length = 0;
-  const names = { entity: "service", field: "name", values: ["Терапия", "Хирургия", "Ортодонтия"] };
+// V4-27: the build checks the card rows with the vision model in one call — two candidates a row, the model's photo or
+// none; the rows left empty get one more round with their next two; a catalog still with an empty card shows no photos
+// (uniformly, never 3 of 4); photos with text are flagged in the library.
+/** A library where query i answers four dental photos of its own (i·10+1…4), a medical one first, the plan's hero. */
+const rowsSource = () => {
+  const qs: string[] = [];
+  return {
+    qs,
+    async search(text: string, o: { filter?: (e: never) => boolean }) {
+      qs.push(text);
+      const i = qs.length;
+      const entries = [
+        { file: uuid(1), width: 1600, height: 1000, niche: "dental" },
+        { file: uuid(900 + i), width: 1600, height: 1000, niche: "medical-center" },
+        ...[1, 2, 3, 4].map((n) => ({ file: uuid(i * 10 + n), width: 1600, height: 1000, niche: "dental" })),
+      ];
+      return entries
+        .filter((e) => (o.filter ? o.filter(e as never) : true))
+        .map((entry, k) => ({ entry: entry as never, score: 0.2 - k / 100 }));
+    },
+  };
+};
+const names3 = { entity: "service", field: "name", values: ["Терапия", "Хирургия", "Ортодонтия"] };
+const photoOf = (n: number) => `/_wizard/photos/${uuid(n)}/960`;
+
+test("the card check: one call, the model's photo; an empty row's second round; text flagged", async () => {
+  const src = rowsSource();
   const calls: { slots: string[]; candidates: string[]; niche: string }[] = [];
   const flagged: string[] = [];
   const check = pickerCardCheck({
@@ -112,34 +133,54 @@ test("the card check: one call for every row, the model's photo or none, text fl
       const files = input.candidates.map((c) => c.entry.file);
       calls.push({ slots: input.slots.map((s) => s.label), candidates: files, niche: input.niche });
       const at = (f: string) => files.indexOf(f);
-      // Row 1 (22, 23): its second; row 2 (24, 25): nothing fits; row 3 (26, 27): 26 has a sign and the model still
-      // puts it there.
+      // Round 1 — row 1 (21, 22): its second; row 2 (31, 32): nothing fits; row 3 (41, 42): 41 has a sign and the
+      // model still puts it there. Round 2 — row 2 (33, 34) and row 3 (43, 44): their first.
+      if (calls.length === 1)
+        return [
+          { slot: "card-1", index: at(uuid(22)) },
+          { text: at(uuid(41)) },
+          { slot: "card-3", index: at(uuid(41)) },
+        ];
       return [
-        { slot: "card-1", index: at(uuid(23)) },
-        { text: at(uuid(26)) },
-        { slot: "card-3", index: at(uuid(26)) },
+        { slot: "card-1", index: at(uuid(33)) },
+        { slot: "card-2", index: at(uuid(43)) },
       ];
     },
   });
-  const hints = await semanticSeedHints(spec, [names], new Set([uuid(1)]), new Set(), source, {
+  const hints = await semanticSeedHints(spec, [names3], new Set([uuid(1)]), new Set(), src, {
     niche: "стоматология",
     check,
   });
-  expect(calls).toHaveLength(1);
-  expect(calls[0]?.niche).toBe("стоматология");
+  // The first search finds the shard of the plan's photo; the rows are searched by the niche, in the dental shard only.
+  expect(src.qs).toEqual([
+    "стоматология",
+    "стоматология, Терапия",
+    "стоматология, Хирургия",
+    "стоматология, Ортодонтия",
+  ]);
+  expect(calls).toHaveLength(2);
   expect(calls[0]?.slots).toEqual([
     "Карточка каталога «Терапия»",
     "Карточка каталога «Хирургия»",
     "Карточка каталога «Ортодонтия»",
   ]);
-  // Two dental candidates a row, never the other shard's.
-  expect(calls[0]?.candidates).toEqual([22, 23, 24, 25, 26, 27].map(uuid));
-  expect(flagged).toEqual([uuid(26)]);
-  // Row 1 the model's photo; row 2 (left empty) and row 3 (a photo with text) none — the trailing empties dropped.
-  expect(hints[0]?.values).toEqual([`/_wizard/photos/${uuid(23)}/960`]);
-  // A failed call: the rows take their first candidates.
-  queries.length = 0;
-  const failed = await semanticSeedHints(spec, [names], new Set([uuid(1)]), new Set(), source, {
+  expect(calls[0]?.candidates).toEqual([21, 22, 31, 32, 41, 42].map(uuid));
+  expect(calls[1]?.slots).toEqual(["Карточка каталога «Хирургия»", "Карточка каталога «Ортодонтия»"]);
+  expect(calls[1]?.candidates).toEqual([33, 34, 43, 44].map(uuid));
+  expect(flagged).toEqual([uuid(41)]);
+  expect(hints[0]?.values).toEqual([photoOf(22), photoOf(33), photoOf(43)]);
+});
+
+test("a card still empty after the second round leaves the whole catalog without photos; a failed call takes the first", async () => {
+  const empty = async (rows: readonly { candidates: { file: string }[] }[]) =>
+    rows.map((r, i) => (rows.length === 3 && i !== 1 ? r.candidates[0] : null)) as never;
+  expect(
+    await semanticSeedHints(spec, [names3], new Set([uuid(1)]), new Set(), rowsSource(), {
+      niche: "стоматология",
+      check: empty,
+    }),
+  ).toEqual([]);
+  const failed = await semanticSeedHints(spec, [names3], new Set([uuid(1)]), new Set(), rowsSource(), {
     niche: "стоматология",
     check: pickerCardCheck({
       niche: "стоматология",
@@ -147,7 +188,7 @@ test("the card check: one call for every row, the model's photo or none, text fl
       picker: async () => null,
     }),
   });
-  expect(failed[0]?.values).toEqual([uuid(22), uuid(24), uuid(26)].map((f) => `/_wizard/photos/${f}/960`));
+  expect(failed[0]?.values).toEqual([photoOf(21), photoOf(31), photoOf(41)]);
 });
 
 // D49: the owner's people (doctors, masters, team) never get a stock photo — that would pass strangers off as the staff.
@@ -181,6 +222,7 @@ test("people entities get no library photos: neither by name nor from the plan",
       "works",
       "review",
       "testimonials",
+      "project",
     ].every(isPersonEntity),
   ).toBe(true);
   expect(["service", "membership", "product"].some(isPersonEntity)).toBe(false);
@@ -218,21 +260,4 @@ test("a row naming another niche of the catalog searches that niche; a row of th
     niche: "салон красоты",
   });
   expect(hints[0]?.values).toEqual([uuid(3), uuid(2)].map((f) => `/_wizard/photos/${f}/960`));
-});
-
-// V4-27: a row the check rejects keeps its place without a photo (null), the rows after it keep theirs.
-test("a rejected row in the middle stays empty, not shifted", async () => {
-  queries.length = 0;
-  const names = { entity: "service", field: "name", values: ["Терапия", "Хирургия", "Ортодонтия"] };
-  const check = async (rows: readonly { candidates: { file: string }[] }[]) =>
-    rows.map((r, i) => (i === 1 ? null : r.candidates[0])) as never;
-  const hints = await semanticSeedHints(spec, [names], new Set([uuid(1)]), new Set(), source, {
-    niche: "стоматология",
-    check,
-  });
-  expect(hints[0]?.values).toEqual([
-    `/_wizard/photos/${uuid(22)}/960`,
-    null,
-    `/_wizard/photos/${uuid(26)}/960`,
-  ]);
 });

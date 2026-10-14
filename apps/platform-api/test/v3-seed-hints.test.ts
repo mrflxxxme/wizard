@@ -103,10 +103,10 @@ describe("the card check of the build and the seed", () => {
       query: "interior",
       niche: "interior",
     }) as const;
-  /** Every query answers the plan's photo and four more, best first (a row takes from what is not taken yet). */
+  /** Every query answers the plan's photo and twenty more, best first (a row takes from what is not taken yet). */
   const source = {
     search: async (_q: string, o: { filter?: (e: never) => boolean }) =>
-      [1, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+      [1, ...Array.from({ length: 20 }, (_, i) => 11 + i)]
         .map(entry)
         .filter((e) => !o.filter || o.filter(e as never))
         .map((e) => ({ entry: e as never, score: 0.2 })),
@@ -155,7 +155,8 @@ describe("the card check of the build and the seed", () => {
     expect(calls).toBe(1);
     const hints = await draftSeedHints(api.deps.db, id, spec, storage, () => source);
     const photos = hints.find((h) => h.field !== "name");
-    expect(photos?.values).toEqual([12, 14, 16, 18].map((n) => `/_wizard/photos/${uuid(n)}/960`));
+    // Two candidates a row and two more for a second round: rows (11, 12 | 13, 14), (15, 16 | …), …
+    expect(photos?.values).toEqual([12, 16, 20, 24].map((n) => `/_wizard/photos/${uuid(n)}/960`));
     await checkCardPhotos(o);
     expect(calls).toBe(1);
   });
