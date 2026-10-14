@@ -2,7 +2,8 @@
 // 480 px copies of up to 20 library candidates, the slots with their orientation, the niche, the photo style and the
 // direction's colours → one photo per slot by meaning (it shows this business, people and places that fit) and by
 // palette (it sits with the colours, the photos look like one shoot). Stock photos carry no personal data. Any failure
-// returns null: the photos stage then takes the candidates in rank order.
+// returns null: the photos stage then takes the candidates in rank order. V4-26: the model also lists the candidates
+// with readable text in the frame (a foreign sign, a logo): they go to no slot, and the library remembers them.
 import type { LlmAttachment, LlmMessage, OrgPolicy, RouteContext } from "@wizard/llm";
 import { z } from "zod";
 import type { RunStepFn } from "../core/events.js";
@@ -21,10 +22,11 @@ const ORIENTATION_RU = {
 const SYSTEM = [
   "Ты фоторедактор сайта малого бизнеса. Тебе показывают пронумерованные фото-кандидаты и места на сайте.",
   "Для каждого места выбери одно фото:",
-  "1) по смыслу — на фото именно этот бизнес, его место, люди за работой или результат; без случайных сюжетов (деньги у клининга, офис у кондиционеров);",
+  "1) по смыслу — на фото именно этот бизнес, его место, люди за работой или результат; оборудование и кабинет именно этой ниши, а не соседней (у стоматологии — стоматологическое кресло, не гинекологическое и не больничная палата); без случайных сюжетов (деньги у клининга, офис у кондиционеров);",
   "2) по палитре — фото сочетается с цветами направления, все фото сайта выглядят как одна съёмка;",
   "3) ориентация фото совпадает с местом; одно фото — на одно место;",
   "4) без надписей, вывесок, логотипов и водяных знаков в кадре; не учебный класс, не выставка и не ряд одинаковых рабочих мест — нужен один кабинет, мастер или результат, как у этого бизнеса.",
+  "Отдельно перечисли в text номера всех кандидатов, на которых в кадре есть читаемый текст: вывеска, надпись на стене или витрине, логотип, водяной знак. Такие фото не ставь ни на одно место.",
   "Если подходящего фото для места нет, не выбирай ничего для него. Ответ — вызов инструмента submit_photos.",
 ].join("\n");
 
@@ -61,19 +63,28 @@ export function photoPickMessages(input: PickInput): LlmMessage[] {
   ];
 }
 
+/** Candidates the model may list (photos.ts PICK_CANDIDATES, with room for a model that repeats one). */
+const PICK_MAX = 40;
+
 const pickSchema = z.object({
   choices: z
     .array(z.object({ slot: z.string().min(1).max(40), photo: z.number().int().min(1).max(99) }))
     .max(20),
+  /** V4-26: candidates with readable text in the frame (a sign, a caption, a logo, a watermark). */
+  text: z.array(z.number().int().min(1).max(99)).max(PICK_MAX).optional(),
 });
 
-/** submit_photos: slot → candidate number; unknown slots and numbers, and a photo twice, are issues for the model. */
+/**
+ * submit_photos: slot → candidate number and the numbers with text; unknown slots and numbers, a photo twice and a
+ * photo with text on a slot are issues for the model.
+ */
 export function photoPickTool(input: Pick<PickInput, "slots" | "candidates">) {
   const slots = new Set(input.slots.map((s) => s.slot));
   return defineTool({
     name: "submit_photos",
     description:
-      "One candidate photo (1-based number) per site slot; a slot without a fitting photo is left out.",
+      "One candidate photo (1-based number) per site slot; a slot without a fitting photo is left out. " +
+      "text: the numbers of every candidate with readable text in the frame (sign, caption, logo, watermark).",
     input: pickSchema,
     check: (v): ToolIssue[] => {
       const issues: ToolIssue[] = [];
@@ -90,6 +101,16 @@ export function photoPickTool(input: Pick<PickInput, "slots" | "candidates">) {
             message: `Фото ${c.photo} уже выбрано.`,
           });
         seen.add(c.photo);
+        if (v.text?.includes(c.photo))
+          issues.push({
+            path: `choices.${i}.photo`,
+            code: "TEXT_IN_FRAME",
+            message: `На фото ${c.photo} есть текст — его нельзя ставить на место.`,
+          });
+      });
+      v.text?.forEach((n, i) => {
+        if (n > input.candidates.length)
+          issues.push({ path: `text.${i}`, code: "UNKNOWN_PHOTO", message: `Нет фото ${n}.` });
       });
       return issues;
     },
@@ -120,7 +141,10 @@ export function modelPhotoPicker(o: {
         maxRepairs: 1,
       });
       if (!r.ok) return null;
-      return r.value.choices.map((c) => ({ slot: c.slot, index: c.photo - 1 }));
+      return [
+        ...r.value.choices.map((c) => ({ slot: c.slot, index: c.photo - 1 })),
+        ...[...new Set(r.value.text ?? [])].map((n) => ({ text: n - 1 })),
+      ];
     } catch (e) {
       if (o.signal?.aborted) throw e;
       return null;

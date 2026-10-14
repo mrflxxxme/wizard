@@ -61,6 +61,7 @@ export function storageObjects(
 export const SEMANTIC_OBJECTS = {
   manifest: "semantic:v2:manifest",
   requests: "semantic:v2:requests",
+  flags: "semantic:v2:flags",
   meta: (slug: string) => `semantic:v2:shard:${slug}:meta`,
   vectors: (slug: string) => `semantic:v2:shard:${slug}:vectors`,
   model: (file: string) => `semantic:v2:model:${file}`,
@@ -435,6 +436,39 @@ export async function requestBackfill(
     version: SEMANTIC_VERSION,
     requests: [...rest, { text: key, count: (old?.count ?? 0) + 1, at: now.toISOString() }],
   });
+}
+
+const flagsSchema = z.object({
+  version: z.literal(SEMANTIC_VERSION),
+  /** Library photo ids with readable text in the frame (a sign, a caption, a logo, a watermark). */
+  text: z.array(z.string().regex(/^[0-9a-f-]{36}$/)),
+});
+
+/** Flags of the library photos, filled lazily by the vision pick (photo_pick sees the photo first). */
+export type PhotoFlags = z.infer<typeof flagsSchema>;
+
+/** Flagged photos kept at most (the oldest dropped). */
+export const MAX_FLAGS = 20_000;
+
+export async function readFlags(objects: LibraryObjects): Promise<PhotoFlags> {
+  const raw = await objects.get(SEMANTIC_OBJECTS.flags);
+  const r = raw ? flagsSchema.safeParse(parse(raw)) : null;
+  return r?.success ? r.data : { version: SEMANTIC_VERSION, text: [] };
+}
+
+/**
+ * V4-26: marks photos with readable text (a foreign sign or logo never goes to the first screen or a card).
+ * Read–modify–write like the backfill requests: two builds at once may lose a flag, the next pick sets it again.
+ */
+export async function flagTextPhotos(objects: LibraryObjects, files: readonly string[]): Promise<void> {
+  const cur = await readFlags(objects);
+  const fresh = files.filter((f) => !cur.text.includes(f));
+  if (fresh.length === 0) return;
+  await objects.put(
+    SEMANTIC_OBJECTS.flags,
+    json({ version: SEMANTIC_VERSION, text: [...cur.text, ...fresh].slice(-MAX_FLAGS) }),
+    "application/json",
+  );
 }
 
 const json = (v: unknown) => new TextEncoder().encode(`${JSON.stringify(v)}\n`);

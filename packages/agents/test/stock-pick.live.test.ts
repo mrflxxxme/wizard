@@ -1,8 +1,8 @@
 // V4-10 live probe of photo_pick (plan v4 §5.2, D79 (10)): glm-5v-turbo and kimi-k3 pick a site's photos among 8
-// candidates — 4 on the niche's topic, 4 from other niches — on 3 niches, through the real gateway (live mode,
+// candidates — 4 on the niche's topic, 4 from other niches, V4-26 one storefront with a sign — on 3 niches, through the real gateway (live mode,
 // platform keys from env). Skipped unless WIZARD_STAGE_PROBE=1: it runs only in GitHub Actions (stock-library.yml,
 // action probe). Candidates are Openverse thumbnails fetched for the run (never stored). Prints one record per call
-// (choices, share on topic, ₽, ms; never keys) and the summary table.
+// (choices, share on topic, the sign listed as text and kept off the slots, ₽, ms; never keys) and the summary table.
 import { createRegistry, createRouter, MemoryUsageSink, type Registry } from "@wizard/llm";
 import { describe, expect, test } from "vitest";
 import { type LibraryPhotoEntry, modelPhotoPicker, type PickInput } from "../src/stock/index.js";
@@ -25,6 +25,8 @@ const NICHES = [
   { niche: "стоматология", q: "dentist patient" },
 ];
 const OFF = ["office money calculator", "city street night", "food market", "laptop desk"];
+/** V4-26: photos with a readable sign — the model should list them in text and put them on no slot. */
+const SIGNS = "clinic storefront sign";
 
 async function thumbs(q: string, n: number): Promise<{ bytes: Uint8Array; width: number; height: number }[]> {
   const url = `https://api.openverse.org/v1/images/?q=${encodeURIComponent(q)}&page_size=${n + 6}&license_type=commercial&extension=jpg&aspect_ratio=wide`;
@@ -63,13 +65,16 @@ describe.skipIf(!ON)("V4-10 live probe of photo_pick", () => {
     "the vision models pick the on-topic photos, one per slot",
     async () => {
       const off = (await Promise.all(OFF.map((q) => thumbs(q, 1)))).flat();
+      const signs = await thumbs(SIGNS, NICHES.length);
       const records: Record<string, unknown>[] = [];
       for (const n of NICHES) {
         const on = await thumbs(n.q, 4);
         // On-topic and off-topic interleaved, so the order says nothing.
+        const sign = signs[NICHES.indexOf(n)];
         const pool = on.flatMap((x, i) => [
-          { ...x, on: true },
-          ...(off[i] ? [{ ...off[i], on: false }] : []),
+          { ...x, on: true, sign: false },
+          ...(off[i] ? [{ ...off[i], on: false, sign: false }] : []),
+          ...(i === 1 && sign ? [{ ...sign, on: false, sign: true }] : []),
         ]);
         const input: PickInput = {
           niche: n.niche,
@@ -91,7 +96,9 @@ describe.skipIf(!ON)("V4-10 live probe of photo_pick", () => {
             orgPolicy: OPEN,
             ctx: { orgId: "00000000-0000-4000-8000-0000000000f5" },
           });
-          const choices = await picker(input);
+          const answer = await picker(input);
+          const choices = answer?.flatMap((a) => ("slot" in a ? [a] : [])) ?? null;
+          const text = answer?.flatMap((a) => ("text" in a ? [a.text] : [])) ?? [];
           const onTopic = choices?.filter((c) => pool[c.index]?.on).length ?? 0;
           records.push({
             id: `photo_pick:${model}:${n.niche}`,
@@ -99,6 +106,9 @@ describe.skipIf(!ON)("V4-10 live probe of photo_pick", () => {
             candidates: pool.length,
             choices,
             onTopic: choices?.length ? onTopic / choices.length : null,
+            text,
+            signFlagged: pool.some((x) => x.sign) ? text.some((i) => pool[i]?.sign) : null,
+            signPlaced: choices?.some((c) => pool[c.index]?.sign) ?? false,
             rub: sink.records.reduce((s, r) => s + r.costRub, 0),
             ms: Date.now() - t0,
             attempts: sink.records.map((r) => `${r.modelId}:${r.status}:${r.errorCode ?? ""}`),
@@ -109,9 +119,9 @@ describe.skipIf(!ON)("V4-10 live probe of photo_pick", () => {
       const rub = records.reduce((s, r) => s + Number(r.rub ?? 0), 0);
       const table = records.map(
         (r) =>
-          `| ${r.id} | ${r.status === "ok" ? "✅" : "❌"} | ${r.onTopic ?? "—"} | ${r.ms} | ${Number(r.rub).toFixed(3)} | ${JSON.stringify(r.choices ?? r.attempts)} |`,
+          `| ${r.id} | ${r.status === "ok" ? "✅" : "❌"} | ${r.onTopic ?? "—"} | ${r.signFlagged ?? "—"} | ${r.signPlaced} | ${r.ms} | ${Number(r.rub).toFixed(3)} | ${JSON.stringify(r.choices ?? r.attempts)} |`,
       );
-      const summary = `## Живая проба photo_pick (V4-10)\n\nИтого ${rub.toFixed(2)} ₽\n\n| Проба | Статус | Доля по теме | мс | ₽ | Выбор |\n|---|---|---|---|---|---|\n${table.join("\n")}\n`;
+      const summary = `## Живая проба photo_pick (V4-10)\n\nИтого ${rub.toFixed(2)} ₽\n\n| Проба | Статус | Доля по теме | Вывеска найдена | Вывеска на месте | мс | ₽ | Выбор |\n|---|---|---|---|---|---|---|---|\n${table.join("\n")}\n`;
       console.log(summary);
       if (process.env.GITHUB_STEP_SUMMARY) {
         const { appendFileSync } = await import("node:fs");
