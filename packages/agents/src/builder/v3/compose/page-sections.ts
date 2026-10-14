@@ -18,6 +18,8 @@ import {
   type PageCodeAnswer,
   pageShapeIssues,
   sdkSections,
+  softOnLastAttempt,
+  stripPricePromises,
   TASTE_RULES,
 } from "./page-code.js";
 import type { SiteModel, SitePage } from "./site.js";
@@ -126,8 +128,8 @@ function withoutUnknownHeadless(source: string): string {
 
 /**
  * Deterministic fixes of the slips models make most (code, never a model call): framer-motion → motion/react,
- * class → className, a named default export, `motion.x` → `m.x` inside LazyMotion. Returns the source unchanged when
- * nothing applies.
+ * class → className, a named default export, `motion.x` → `m.x` inside LazyMotion, MotionConfig for reduced motion,
+ * entrances without opacity 0, phone links of a finger's height. Returns the source unchanged when nothing applies.
  */
 export function autofixSection(source: string): string {
   let s = source
@@ -150,7 +152,7 @@ export function autofixSection(source: string): string {
     /\b(fitWords|useFitWords|srcSetOf|safeHref|richInline|richPlain)(<[^<>()]*>)?\(([^(),]+),[^()]*\)/g,
     "$1$2($3)",
   );
-  return withLinkColor(withoutUnknownHeadless(s));
+  return withPhoneTargets(withReducedMotion(withVisibleStart(withLinkColor(withoutUnknownHeadless(s)))));
 }
 
 /**
@@ -189,15 +191,73 @@ function withLinkColor(source: string): string {
  * export returns gets the wrapper and the import. The source is left as it was when the return cannot be found.
  */
 function withLazyMotion(input: string): string {
+  return wrapReturn(input, "<LazyMotion features={domAnimation}>", "</LazyMotion>", [
+    "domAnimation",
+    "LazyMotion",
+  ]);
+}
+
+/**
+ * Motion without prefers-reduced-motion (the linter's REDUCED_MOTION): the JSX the default export returns gets
+ * <MotionConfig reducedMotion="user"> — the animations follow the visitor's setting.
+ */
+function withReducedMotion(source: string): string {
+  if (!/from\s*["']motion\/react["']/.test(source) || /\buseReducedMotion\b|\bMotionConfig\b/.test(source))
+    return source;
+  return wrapReturn(source, '<MotionConfig reducedMotion="user">', "</MotionConfig>", ["MotionConfig"]);
+}
+
+/**
+ * The start state of an entrance (`initial` / variants `hidden`) without opacity 0: a section shown on scroll
+ * (whileInView) is blank in a whole-page shot and before its scroll (M05 of the critic); the shift stays, the text is
+ * visible from the start.
+ */
+function withVisibleStart(source: string): string {
+  return source.replace(
+    /\b(initial|hidden)(\s*[:=]\s*\{?[^{}]*?\{)([^{}]*)\}/g,
+    (all, key, head, body: string) => {
+      const kept = body.replace(/\bopacity:\s*0(?:\.0+)?(?![.\d])\s*,?\s*/g, "");
+      return kept === body ? all : `${key}${head}${kept.trim() ? ` ${kept.trim()} ` : ""}}`;
+    },
+  );
+}
+
+/**
+ * A phone link (tel:) shorter than a finger (A01 of the critic: 308×29) or spaced digit by digit (tracking-widest
+ * reads «+7  343  200-30-40»): it gets inline-flex min-h-11 items-center and loses its letter spacing.
+ */
+function withPhoneTargets(source: string): string {
+  return source.replace(/<a\b[^>]*?href=(?:"tel:|\{`tel:)[^>]*>/g, (tag) => {
+    const cls = /\sclassName="([^"]*)"/.exec(tag);
+    const fix = (c: string) => {
+      const words = c.split(/\s+/).filter((w) => w && !/^tracking-/.test(w));
+      const tall = words.some((w) =>
+        /^(?:min-h-(?:1[1-9]|[2-9]\d|\[)|h-(?:1[1-9]|[2-9]\d)|py-(?:[3-9]|1\d))/.test(w),
+      );
+      if (!tall) {
+        if (!words.some((w) => /^(?:inline-)?(?:flex|grid)$/.test(w)))
+          words.unshift("inline-flex", "items-center");
+        words.push("min-h-11");
+      }
+      return words.join(" ");
+    };
+    if (cls) return tag.replace(cls[0], ` className="${fix(cls[1] as string)}"`);
+    if (/\sclassName=/.test(tag)) return tag;
+    return tag.replace(/^<a\b/, `<a className="${fix("")}"`);
+  });
+}
+
+/** The JSX the default export returns, inside `open`…`close`; `names` join the motion/react import. */
+function wrapReturn(input: string, open: string, close: string, names: readonly string[]): string {
   let source = input;
   const start = source.search(/export\s+default\s+function/);
   if (start >= 0 && source.indexOf("return (", start) < 0) {
     // `return <section>…</section>;` without parentheses: the last statement of the default export gets them.
     const bare = source.indexOf("return <", start);
-    const close = source.lastIndexOf("}");
-    const semi = source.lastIndexOf(";", close);
-    const end = semi > bare ? semi : source.lastIndexOf(">", close) + 1;
-    if (bare < 0 || close < bare || end <= bare) return source;
+    const last = source.lastIndexOf("}");
+    const semi = source.lastIndexOf(";", last);
+    const end = semi > bare ? semi : source.lastIndexOf(">", last) + 1;
+    if (bare < 0 || last < bare || end <= bare) return source;
     source = `${source.slice(0, bare)}return (${source.slice(bare + "return ".length, end)});${source.slice(semi > bare ? end + 1 : end)}`;
   }
   const ret = start < 0 ? -1 : source.indexOf("return (", start);
@@ -216,21 +276,20 @@ function withLazyMotion(input: string): string {
     }
   }
   if (end < 0) return source;
-  const open = ret + "return (".length;
-  const body = source.slice(open, end);
-  let out = `${source.slice(0, open)}\n<LazyMotion features={domAnimation}>${body}</LazyMotion>\n${source.slice(end)}`;
+  const at = ret + "return (".length;
+  const body = source.slice(at, end);
+  let out = `${source.slice(0, at)}\n${open}${body}${close}\n${source.slice(end)}`;
   const imp = /import\s*\{([^}]*)\}\s*from\s*["']motion\/react["'];?/.exec(out);
   if (imp) {
-    const names = new Set(
+    const all = new Set(
       (imp[1] as string)
         .split(",")
         .map((x) => x.trim())
         .filter(Boolean),
     );
-    names.add("LazyMotion");
-    names.add("domAnimation");
-    out = out.replace(imp[0], `import { ${[...names].join(", ")} } from "motion/react";`);
-  } else out = `import { domAnimation, LazyMotion } from "motion/react";\n${out}`;
+    for (const n of names) all.add(n);
+    out = out.replace(imp[0], `import { ${[...all].join(", ")} } from "motion/react";`);
+  } else out = `import { ${names.join(", ")} } from "motion/react";\n${out}`;
   return out;
 }
 
@@ -262,6 +321,7 @@ const PLAN_RULES = [
   "У секции кодом: id (латиница через дефис), title (что показывает), idea — 1–2 предложения о раскладке и приёме (что крупно, где фото, как читается на телефоне), props — все тексты и фото секции ровно в том виде, в каком их получит код.",
   "Первая секция — первый экран (kind code, id hero). Шапку и подвал не пиши. Соседние секции — разных раскладок; у страницы одна сильная идея.",
   "Первый экран — заголовок-оффер с фактом из брифа (до 90 знаков), одна строка пояснения, одна главная кнопка и фото; без подписи над заголовком (eyebrow), второй кнопки и сносок; телефон, часы и адрес — не в первом экране.",
+  "На внутренней странице первый экран говорит, что на этой странице (её название и строка о ней), а не повторяет заголовок первого экрана главной.",
   "Каталог (услуги, меню, прайс) на главной — компонент SDK: ставь его сразу после первого экрана; заголовок — словами брифа; «цены» в заголовке — только если цены есть в фактах.",
   "Без подпорок: секции из одного фото без текста нет; преимущества — только 3+ конкретных пункта из фактов, иначе блока нет.",
   `Главная — полная страница: 5–8 секций (не меньше ${HOME_MIN_SECTIONS}). Каждое обещание сценария — своя секция: компонент SDK, если есть, иначе код по фактам; контакты и «как проходит запись» по фактам — обязательно. Врачи и отзывы — только компонентом SDK с данными; нет ни фактов, ни компонента — секции нет.`,
@@ -285,6 +345,9 @@ function factsBlock(f: SiteFacts, site: SiteModel): string {
     f.description ? `Описание: ${f.description}` : "",
     f.audience ? `Аудитория: ${f.audience}` : "",
     `Цели: ${f.goals.join("; ") || "не указаны"}`,
+    f.prices
+      ? ""
+      : "Цены: в фактах их нет — не пиши «цены», «прайс», «стоимость» ни в заголовках, ни в текстах (D49).",
     f.phone || f.email || f.address
       ? `Контакты: ${[f.phone, f.email, f.address].filter(Boolean).join(", ")}`
       : "",
@@ -438,8 +501,8 @@ export function pagePlanRequest(o: {
     description:
       "The plan of the public page: code sections with their idea and props, the kept SDK components, SEO.",
     input: pagePlanSchema(sdkSections(o.page).map((s) => s.id)),
-    normalize: normalizePlan,
-    check: (v) => pageShapeIssues(v, o),
+    normalize: (args: unknown) => stripPricePromises(normalizePlan(args), o.facts.prices),
+    check: softOnLastAttempt((v: PagePlan) => pageShapeIssues(v, o)),
   });
   return { tool, messages: pagePlanMessages(o) };
 }
@@ -454,7 +517,9 @@ export function sectionRequest(o: Parameters<typeof sectionMessages>[0]) {
       args && typeof args === "object" && typeof (args as { source?: unknown }).source === "string"
         ? { ...(args as object), source: autofixSection((args as { source: string }).source) }
         : args,
-    check: (v) => sectionIssues(v.source, { id: o.item.id, hero: o.item.id === "hero" }),
+    check: softOnLastAttempt((v: { source: string }) =>
+      sectionIssues(v.source, { id: o.item.id, hero: o.item.id === "hero" }),
+    ),
   });
   return { tool, messages: sectionMessages(o) };
 }
