@@ -89,7 +89,11 @@ export function pageOutline(page: SitePage, library: readonly PatternMeta[]): st
   for (const s of page.sections) {
     const meta = library.find((p) => p.id === s.pattern);
     const parts = [
-      `- ${s.id} · ${s.type === "signature" ? `фирменная секция «${s.title ?? s.id}»` : s.pattern}`,
+      `- ${s.id} · ${
+        s.type === "signature"
+          ? `секция кодом «${s.title ?? s.id}»${s.file ? ` (${s.file}): вариантов и путей текста нет — правится только patch этого файла` : ""}`
+          : s.pattern
+      }`,
     ];
     if (meta?.needs) parts.push(`данные: ${meta.needs}`);
     const texts =
