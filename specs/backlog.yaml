@@ -2685,7 +2685,7 @@ tasks:
     owner: platform
     parallel_group: v4-c
     estimate_days: 0.3
-    status: in_progress
+    status: done
     claimed_by: session_01HWKT1m6cHQBBtUV7d9pQhf
     owns: ["packages/gates/src/g1/realistic.ts (moneyValue, nichePrices)", "packages/gates/src/g1/seed.ts (SeedOptions.niche)", "packages/gates/test/seed-plausible.test.ts", "apps/platform-api/src/agents/draft.ts (seedDraft niche)", "apps/platform-api/src/agents/executors.ts (onG0Passed)", "apps/platform-api/src/builds-v3/critic.ts (draftDemoRows niche)", "apps/platform-api/src/builds-v3/host.ts (draftNiche)", "apps/platform-api/test/v3-seed-hints.test.ts"]
     description: >
