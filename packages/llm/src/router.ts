@@ -27,9 +27,11 @@ import {
 } from "./policy.js";
 import { type Env, LiveCallError, liveCall, providerBaseUrl } from "./providers.js";
 import {
+  CALL_RUB_CAP,
   createRegistry,
   HIGH_REASONING,
   isBuildCallType,
+  MIN_CAPPED_TOKENS,
   type ModelDef,
   modelFamily,
   type ProviderId,
@@ -37,6 +39,7 @@ import {
   type Registry,
   type RouteDef,
 } from "./registry.js";
+import { estimateTokens } from "./tokens.js";
 import type {
   CallType,
   LlmEvent,
@@ -533,6 +536,26 @@ export function createRouter(opts: RouterOptions = {}): Router {
 
       // T1 gets the outbound messages (scrubbed outside the build stages, D79 (3)); T0 may receive the original ones.
       const messages = model.tier === "T1" ? decision.outboundMessages : input.messages;
+      // V4-06: the ₽ ceiling of the call bounds its output budget (CALL_RUB_CAP); no room for an answer — next model.
+      let maxTokens = routeDef.maxTokens;
+      const capRub = CALL_RUB_CAP[callType as CallType];
+      if (capRub !== undefined && model.price.output > 0) {
+        const inputRub =
+          ((estimateTokens(messages) + (input.tools ? estimateTokens(input.tools) : 0)) * model.price.input) /
+          1e6;
+        const room = Math.floor(((capRub - inputRub) * 1e6) / model.price.output);
+        if (room < MIN_CAPPED_TOKENS && next) {
+          opts.onEvent?.({
+            type: "model_switched",
+            fromModel: model.id,
+            toModel: next.id,
+            reason: "fallback_error",
+          });
+          switchTo(model, "fallback_error");
+          continue;
+        }
+        maxTokens = Math.max(MIN_CAPPED_TOKENS, Math.min(maxTokens, room));
+      }
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
         // The breaker may open (or the provider run dry) during our own retries: stop hitting this model.
         if (attempt > 1 && (circuit.providerBlocked(model.provider) || !circuit.allow(cKey))) break;
@@ -555,7 +578,7 @@ export function createRouter(opts: RouterOptions = {}): Router {
             toolChoice: input.toolChoice ?? "auto",
             // A model with a fixed temperature (kimi-k3: 1) gets it; the request key keeps the route's one.
             temperature: model.temperature ?? routeDef.temperature,
-            maxTokens: routeDef.maxTokens,
+            maxTokens,
             signal,
             env,
             ...(opts.fetch ? { fetch: opts.fetch } : {}),

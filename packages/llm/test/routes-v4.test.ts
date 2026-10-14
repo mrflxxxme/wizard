@@ -12,6 +12,7 @@ import {
   isBuildCallType,
   type LlmMessage,
   MemoryUsageSink,
+  MIN_CAPPED_TOKENS,
   modelFamily,
   modelFamilyOf,
   ollamaFromEnv,
@@ -120,6 +121,34 @@ describe("plan v4 §3: every role on its model with a reserve", () => {
     expect(stub.requests.some((r) => r.provider === "moonshot")).toBe(false);
     expect(stub.requests.find((r) => r.provider === "zai")?.body.temperature).toBe(0.2);
   });
+  test("V4-06: the ₽ ceiling of a page call bounds max_tokens; no room for an answer — the next model", async () => {
+    const { router } = mk();
+    const reg = router.registry;
+    const avoid = [modelFamilyOf(reg, "glm-5.3"), modelFamilyOf(reg, "deepseek-v4-pro-0813")];
+    // ≈ 31 thousand input tokens: K3 (348/1739 ₽ per million) has room for ≈ 8 thousand output tokens under 25 ₽.
+    const big = "Факты бизнеса. ".repeat(6700);
+    const out = await router.route({
+      callType: "page_compose",
+      messages: msgs(big),
+      avoidFamilies: avoid,
+      orgPolicy: OPEN,
+      ctx,
+    });
+    expect(out.model).toBe("kimi-k3");
+    const sent = stub.requests.filter((r) => r.provider === "moonshot").at(-1)?.body.max_tokens as number;
+    expect(sent).toBeGreaterThanOrEqual(MIN_CAPPED_TOKENS);
+    expect(sent).toBeLessThan(10_000);
+    // ≈ 95 thousand tokens: the input alone is past the ceiling — K3 is skipped, the chain goes on.
+    const huge = await router.route({
+      callType: "page_compose",
+      messages: msgs("Факты бизнеса. ".repeat(20000)),
+      avoidFamilies: avoid,
+      orgPolicy: OPEN,
+      ctx,
+    });
+    expect(huge.model).not.toBe("kimi-k3");
+  });
+
   test("art direction with images (a logo, references) skips the models that do not see them", async () => {
     const { router } = mk();
     const plain = await router.route({
