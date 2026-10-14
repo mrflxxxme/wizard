@@ -297,6 +297,26 @@ describe("fallback, retries, circuit breaker", () => {
     ]);
   });
 
+  test("V4-06: a 5xx after SLOW_FAILURE_MS is the gateway giving up — the model is not tried again, the next one at once", async () => {
+    stub.respond.zai = fail500;
+    // Every reading of the clock moves it a minute and a half: each failed attempt took longer than SLOW_FAILURE_MS.
+    let t = 0;
+    const { router, sink } = mk({ now: () => (t += 90_000) });
+    const out = await router.route({
+      callType: "plan",
+      messages: msgs("План сборки"),
+      tools: TOOLS,
+      orgPolicy: OPEN,
+      ctx,
+    });
+    expect(out.model).toBe("glm-5.1");
+    expect(stub.requests.filter((r) => r.provider === "zai").length).toBe(1);
+    expect(sink.records.map((r) => [r.modelId, r.status, r.attempt])).toEqual([
+      ["glm-5.3", "error", 1],
+      ["glm-5.1", "ok", 1],
+    ]);
+  });
+
   test("400 is not retried", async () => {
     stub.respond.zai = () => ({ status: 400, body: { error: { message: "bad request" } } });
     const { router, sink } = mk();

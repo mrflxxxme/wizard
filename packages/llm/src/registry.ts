@@ -310,7 +310,17 @@ const r = (
 const ORCH_T0 = ["glm-5.1", "kimi-k2.6", "deepseek-v4-pro", "yandex-qwen3-235b"];
 const CODE_T0 = ["deepseek-v4-pro", "glm-5.1", "kimi-k2.6", "qwen3-coder-next"];
 const ORCH_V4_T0 = ["kimi-k2.6", "glm-5.1", "deepseek-v4-pro", "yandex-qwen3-235b"];
-const PAGE_T1 = ["glm-5.3", "kimi-k3", "deepseek-v4-pro-0813"];
+/**
+ * V4-06: the ceiling of one call in ₽ (rehearsal №4: one page call of Kimi K3 cost 97 ₽). Before the call the router
+ * bounds max_tokens so that the input (estimated) and the whole output fit it; a model with no room for an answer is
+ * skipped for the next one. Output beyond it (reasoning a provider does not count in max_tokens) is billed by fact.
+ */
+export const CALL_RUB_CAP: Partial<Record<CallType, number>> = { page_compose: 25, signature_section: 25 };
+/** The fewest output tokens a capped call still gets (below it the model is skipped while the chain has another). */
+export const MIN_CAPPED_TOKENS = 4000;
+
+// V4-06: DeepSeek V4-Pro before Kimi K3 — rehearsal №4: one K3 call of page_compose cost 97 ₽ of the build's 141 ₽.
+const PAGE_T1 = ["glm-5.3", "deepseek-v4-pro-0813", "kimi-k3"];
 const PAGE_T0 = ["kimi-k2.6", "deepseek-v4-pro", "glm-5.1", "qwen3-coder-next", "yandex-deepseek-v4-flash"];
 
 /**
@@ -417,14 +427,7 @@ export const ROUTES: Record<CallType, RouteDef> = {
   ),
   page_compose: r("builder", "T1", { T1: PAGE_T1, T0: PAGE_T0 }, 0.2, 16000, 480000),
   // The second candidate of the first screen: another family heads it (the caller also passes avoidFamilies).
-  signature_section: r(
-    "builder",
-    "T1",
-    { T1: ["glm-5.3", "kimi-k3", "deepseek-v4-pro-0813"], T0: PAGE_T0 },
-    0.4,
-    16000,
-    480000,
-  ),
+  signature_section: r("builder", "T1", { T1: PAGE_T1, T0: PAGE_T0 }, 0.4, 16000, 480000),
   page_edit: r(
     "editor",
     "T1",
