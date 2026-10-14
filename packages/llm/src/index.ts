@@ -131,6 +131,8 @@ export {
   BUILD_TIER_ENV,
   buildDefaultTierFromEnv,
   buildModelLabel,
+  /** V4-06: the ₽ ceiling of one call by call type (page_compose, signature_section); the router bounds max_tokens. */
+  CALL_RUB_CAP,
   /** V3-32: call types carrying a client's repository code — T0 only (RF inference), never T1, the reserve or BYOK. */
   CLIENT_CODE_CALL_TYPES,
   createRegistry,
@@ -139,6 +141,8 @@ export {
   HIGH_REASONING,
   /** V4-05 (D79 (3)): build stages — everything but end clients' data and client code; no scrub, signal filter only. */
   isBuildCallType,
+  /** V4-06: MIN_CAPPED_TOKENS — the fewest output tokens a call under the ₽ ceiling (CALL_RUB_CAP) still gets. */
+  MIN_CAPPED_TOKENS,
   MODELS,
   type ModelDef,
   /** Model family from the provider's model name (glm, kimi, deepseek…): RouteInput.avoidFamilies. */
