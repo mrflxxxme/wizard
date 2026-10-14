@@ -3,7 +3,7 @@
 // marked as an example («Пример: …») are dropped. Every number a page shows must be found here (fabricated check).
 import type { SystemBrief, SystemPlan } from "@wizard/appspec";
 import { type PhotoSectionType, PROVIDER_LABEL, photoSlots, photoSrc, SITE_PHOTO } from "@wizard/modules";
-import { placeFacts } from "../../../interview-v3/place.js";
+import { placeFacts, priceFacts } from "../../../interview-v3/place.js";
 import { isKeywordNiche } from "../../../planner/fallback.js";
 import type { V3BuildContext } from "../contract.js";
 import { type BriefCopy, briefCopy } from "./copy.js";
@@ -213,7 +213,8 @@ export function siteFacts(ctx: Pick<V3BuildContext, "brief" | "plan" | "spec" | 
       "new",
     year,
     numbers,
-    prices: corpus.some((t) => PRICE_RE.test(t)),
+    // V4-24: the prices «от» the owner gave in the interview count even without «₽».
+    prices: corpus.some((t) => PRICE_RE.test(t)) || priceFacts(brief).length > 0,
   };
 }
 

@@ -105,6 +105,9 @@ test("v3: интервью → бриф → три направления → «
   // V4-24: a clinic is a place — where to find it, asked by code; the owner writes it himself.
   await expect(question).toContainText("Где вас найти", { timeout: 30_000 });
   await say(page, "Казань, ул. Баумана, 12; пн–пт 9:00–20:00");
+  // Its prices «от», by code too: the owner adds them later (the button keeps the site without prices).
+  await expect(question).toContainText("Цены «от»", { timeout: 30_000 });
+  await page.getByTestId("p-question-option-later").click();
 
   // The brief is ready: the short brief in the chat and «Собрать» with its cap; no question left.
   const build = page.getByTestId("canvas-v3-build");
