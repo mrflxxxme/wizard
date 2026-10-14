@@ -47,7 +47,7 @@ const PLAN: PagePlan = {
       idea: "Три шага первого визита крупными цифрами.",
       props: SIGNATURE_OK.props,
     },
-    { kind: "keep", id: "catalog", props: { title: "Услуги и цены" } },
+    { kind: "keep", id: "catalog", props: { title: "Услуги" } },
     { kind: "keep", id: "form" },
     { kind: "keep", id: "contacts" },
   ],

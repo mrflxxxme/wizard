@@ -62,7 +62,7 @@ const HOME: PageCodeAnswer = {
       source: SIGNATURE_OK.source,
       props: SIGNATURE_OK.props,
     },
-    { kind: "keep", id: "catalog", props: { title: "Услуги и цены" } },
+    { kind: "keep", id: "catalog", props: { title: "Услуги" } },
     { kind: "keep", id: "form" },
     { kind: "keep", id: "contacts" },
   ],
@@ -146,7 +146,7 @@ describe("V4-06: the page as free code", () => {
       "contacts:contacts-cards",
       "footer:footer-contact-first",
     ]);
-    expect(home.sections.find((s) => s.id === "catalog")?.props.title).toBe("Услуги и цены");
+    expect(home.sections.find((s) => s.id === "catalog")?.props.title).toBe("Услуги");
     expect(home.seo.title).toBe(HOME.seo.title);
     expect(files.get(home.file)).toContain('from "../../sections/home-hero"');
     expect(lintErrors(lintSitePage(site, home, facts, PATTERNS, files))).toEqual([]);
@@ -180,6 +180,29 @@ describe("V4-06: the page as free code", () => {
     expect(user).toContain("## Что исправить");
     expect(user).toContain("- видит цены «от»");
     expect(user.indexOf("## Что исправить")).toBeLessThan(user.indexOf("## Задача"));
+  });
+
+  test("D49: «цены» in the props go back when the facts name no price; with a price in the facts they stay", async () => {
+    const { ctx, site, facts } = await prepared();
+    const home = site.pages[0] as SitePage;
+    expect(facts.prices).toBe(false);
+    const priced = {
+      ...HOME,
+      sections: HOME.sections.map((s) =>
+        s.id === "catalog" ? { ...s, props: { title: "Услуги и цены" } } : s,
+      ),
+    };
+    const check = (f: typeof facts) =>
+      pageCodeRequest({ facts: f, site, page: home, scenario: LEAD, design: ctx.design }).tool.check?.(
+        priced,
+      );
+    expect(((await check(facts)) ?? []).map((i) => i.code)).toContain("NO_PRICES");
+    expect(((await check({ ...facts, prices: true })) ?? []).map((i) => i.code)).not.toContain("NO_PRICES");
+    const withPrice = siteFacts({
+      ...ctx,
+      spec: { ...ctx.spec, app: { ...ctx.spec.app, description: "Чистка от 2 500 ₽" } },
+    });
+    expect(withPrice.prices).toBe(true);
   });
 
   test("a thin home page (fewer than HOME_MIN_SECTIONS body sections) goes back; the promises are in the prompt", async () => {
