@@ -107,8 +107,13 @@ const rowsSource = () => {
       const i = qs.length;
       const entries = [
         { file: uuid(1), width: 1600, height: 1000, niche: "dental" },
-        { file: uuid(900 + i), width: 1600, height: 1000, niche: "medical-center" },
-        ...[1, 2, 3, 4].map((n) => ({ file: uuid(i * 10 + n), width: 1600, height: 1000, niche: "dental" })),
+        { file: uuid(900 + i), width: 1600, height: 1000, niche: "medical" },
+        ...[1, 2, 3, 4, 5, 6, 7].map((n) => ({
+          file: uuid(i * 10 + n),
+          width: 1600,
+          height: 1000,
+          niche: "dental",
+        })),
       ];
       return entries
         .filter((e) => (o.filter ? o.filter(e as never) : true))
@@ -133,17 +138,18 @@ test("the card check: one call, the model's photo; an empty row's second round; 
       const files = input.candidates.map((c) => c.entry.file);
       calls.push({ slots: input.slots.map((s) => s.label), candidates: files, niche: input.niche });
       const at = (f: string) => files.indexOf(f);
-      // Round 1 — row 1 (21, 22): its second; row 2 (31, 32): nothing fits; row 3 (41, 42): 41 has a sign and the
-      // model still puts it there. Round 2 — row 2 (33, 34) and row 3 (43, 44): their first.
+      // Round 1 — row 1 (21, 22): its second; row 2 (41, 42): nothing fits; row 3 (61, 62): 61 has a sign and the
+      // model still puts it there. Round 2 — row 2 (43, 44 and 905 of a neighbour shard): its first; row 3 (63, 64,
+      // 907): the neighbour's.
       if (calls.length === 1)
         return [
           { slot: "card-1", index: at(uuid(22)) },
-          { text: at(uuid(41)) },
-          { slot: "card-3", index: at(uuid(41)) },
+          { text: at(uuid(61)) },
+          { slot: "card-3", index: at(uuid(61)) },
         ];
       return [
-        { slot: "card-1", index: at(uuid(33)) },
-        { slot: "card-2", index: at(uuid(43)) },
+        { slot: "card-1", index: at(uuid(43)) },
+        { slot: "card-2", index: at(uuid(907)) },
       ];
     },
   });
@@ -151,11 +157,15 @@ test("the card check: one call, the model's photo; an empty row's second round; 
     niche: "стоматология",
     check,
   });
-  // The first search finds the shard of the plan's photo; the rows are searched by the niche, in the dental shard only.
+  // The first search finds the shard of the plan's photo; the rows are searched by the niche, in the dental shard, and
+  // V4-31 once more in the other niches of its catalog group (for the second round).
   expect(src.qs).toEqual([
     "стоматология",
     "стоматология, Терапия",
+    "стоматология, Терапия",
     "стоматология, Хирургия",
+    "стоматология, Хирургия",
+    "стоматология, Ортодонтия",
     "стоматология, Ортодонтия",
   ]);
   expect(calls).toHaveLength(2);
@@ -164,11 +174,13 @@ test("the card check: one call, the model's photo; an empty row's second round; 
     "Карточка каталога «Хирургия»",
     "Карточка каталога «Ортодонтия»",
   ]);
-  expect(calls[0]?.candidates).toEqual([21, 22, 31, 32, 41, 42].map(uuid));
+  expect(calls[0]?.candidates).toEqual([21, 22, 41, 42, 61, 62].map(uuid));
   expect(calls[1]?.slots).toEqual(["Карточка каталога «Хирургия»", "Карточка каталога «Ортодонтия»"]);
-  expect(calls[1]?.candidates).toEqual([33, 34, 43, 44].map(uuid));
-  expect(flagged).toEqual([uuid(41)]);
-  expect(hints[0]?.values).toEqual([photoOf(22), photoOf(33), photoOf(43)]);
+  // V4-30: the second round goes four candidates deeper (photos with text are flagged out of the library meanwhile);
+  // V4-31: the last of them from the neighbour niches of the site's catalog group (one photo each here).
+  expect(calls[1]?.candidates).toEqual([43, 44, 45, 905, 63, 64, 65, 907].map(uuid));
+  expect(flagged).toEqual([uuid(61)]);
+  expect(hints[0]?.values).toEqual([photoOf(22), photoOf(43), photoOf(907)]);
 });
 
 test("the model may give a row another row's candidate of the call, once", async () => {
@@ -178,11 +190,11 @@ test("the model may give a row another row's candidate of the call, once", async
     source: { thumbnail: async () => new Uint8Array([1]) },
     picker: async (input) => {
       const at = (f: string) => input.candidates.findIndex((c) => c.entry.file === f);
-      // Row 2 takes row 3's 41; row 3 takes its own 42; row 1 its 21.
+      // Row 2 takes row 3's 61; row 3 takes its own 62; row 1 its 21.
       return [
         { slot: "card-1", index: at(uuid(21)) },
-        { slot: "card-2", index: at(uuid(41)) },
-        { slot: "card-3", index: at(uuid(42)) },
+        { slot: "card-2", index: at(uuid(61)) },
+        { slot: "card-3", index: at(uuid(62)) },
       ];
     },
   });
@@ -190,7 +202,7 @@ test("the model may give a row another row's candidate of the call, once", async
     niche: "стоматология",
     check,
   });
-  expect(hints[0]?.values).toEqual([photoOf(21), photoOf(41), photoOf(42)]);
+  expect(hints[0]?.values).toEqual([photoOf(21), photoOf(61), photoOf(62)]);
 });
 
 test("a card still empty after the second round leaves the whole catalog without photos; a failed call takes the first", async () => {
@@ -210,7 +222,7 @@ test("a card still empty after the second round leaves the whole catalog without
       picker: async () => null,
     }),
   });
-  expect(failed[0]?.values).toEqual([photoOf(21), photoOf(31), photoOf(41)]);
+  expect(failed[0]?.values).toEqual([photoOf(21), photoOf(41), photoOf(61)]);
 });
 
 // D49: the owner's people (doctors, masters, team) never get a stock photo — that would pass strangers off as the staff.

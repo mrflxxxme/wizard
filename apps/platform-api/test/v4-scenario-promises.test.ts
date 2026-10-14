@@ -191,6 +191,14 @@ describe("V4-21 scenario promises", () => {
     ]);
     // The repair round is only for what the facts keep: contacts; doctors, reviews, prices go to the requests.
     expect(kinds(r.repairable)).toEqual(["в контактах нет телефона или адреса"]);
+    // #207: the specialists the owner named are facts — their section goes to the repair round (not photos, experience).
+    const named = checkPromises(s2, files, new Map([["/", [catalog, how, footer]]]), undefined, [
+      "Анна Смирнова — терапевт",
+    ]);
+    expect(kinds(named.repairable)).toEqual([
+      "в секции специалистов нет настоящих имён",
+      "в контактах нет телефона или адреса",
+    ]);
     // Without the browser the code section keeps none of them either.
     expect(checkPromises(s2, files, null).problems.length).toBeGreaterThanOrEqual(4);
   });
@@ -246,6 +254,18 @@ describe("V4-21 checkScenario with promises", () => {
     expect(r.unkept?.some((p) => p.includes("на сайте нет отзывов"))).toBe(true);
   });
 
+  test("#207: the staff the owner named reach the check — the missing specialists become repairable", async () => {
+    const h = host(site(["header", "hero", "services", "footer"]));
+    const doctors = steps("Посетитель видит врачей");
+    const without = await scenarioPromiseCheck(h, null, { contacts })(input(doctors.then));
+    expect(without.repairable).toEqual([]);
+    const named = await scenarioPromiseCheck(h, null, {
+      contacts,
+      staff: async () => ["Анна Смирнова — терапевт"],
+    })(input(doctors.then));
+    expect(named.repairable).toEqual([expect.stringContaining("на сайте нет специалистов")]);
+  });
+
   test("no promises, or all kept: as before", async () => {
     const h = host(site(["header", "hero", "services", "team", "testimonials", "contacts", "footer"]));
     const check = scenarioPromiseCheck(h, null, { contacts });
@@ -253,6 +273,8 @@ describe("V4-21 checkScenario with promises", () => {
       ok: true,
       problems: [],
       browser: false,
+      // V4-04: the durations of the checks for the build report.
+      timing: { g0Ms: expect.any(Number), g1Ms: expect.any(Number), promisesMs: expect.any(Number) },
     });
     expect((await checkScenario(h, null, false, input(S1.then), check)).ok).toBe(true);
   });

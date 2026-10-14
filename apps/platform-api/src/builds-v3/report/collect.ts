@@ -8,6 +8,7 @@ import type {
   ReportScenario,
   ReportStage,
   ScenarioHttp,
+  ScenarioTiming,
 } from "./types.js";
 
 const num = (v: unknown): number => (typeof v === "number" ? v : Number(v) || 0);
@@ -142,11 +143,15 @@ export async function collectBuildReport(pg: postgres.Sql, o: CollectInput): Pro
     .map((c) => {
       const id = c.key.slice("scenario:".length);
       const d = obj(obj(c.checkpoint).data);
+      const timing = scenarioTiming(d.timing);
       return {
         id,
         status: str(d.status) ?? "unknown",
         problems: strs(d.problems).slice(0, 5),
         http: http.filter((h) => h.scenario === id),
+        ...(strs(d.unkept).length ? { unkept: strs(d.unkept).slice(0, 8) } : {}),
+        ...(strs(d.withdrawn).length ? { withdrawn: strs(d.withdrawn).slice(0, 8) } : {}),
+        ...(timing ? { timing } : {}),
       };
     })
     .sort((a, b) => a.id.localeCompare(b.id));
@@ -178,9 +183,14 @@ export async function collectBuildReport(pg: postgres.Sql, o: CollectInput): Pro
       error_code: string | null;
       cost_rub: string;
       latency_ms: number | null;
+      input_tokens: number;
+      cached_tokens: number;
+      output_tokens: number;
+      reasoning_tokens: number;
     }[]
   >`
-    select c.step, c.call_type, c.model_id, c.tier, c.status, c.error_code, c.cost_rub, c.latency_ms
+    select c.step, c.call_type, c.model_id, c.tier, c.status, c.error_code, c.cost_rub, c.latency_ms,
+      c.input_tokens, c.cached_tokens, c.output_tokens, c.reasoning_tokens
     from platform.llm_calls c where c.run_id = ${o.runId} order by c.created_at limit 500`;
   const calls: ReportCall[] = callRows.map((c) => ({
     step: c.step,
@@ -191,6 +201,12 @@ export async function collectBuildReport(pg: postgres.Sql, o: CollectInput): Pro
     errorCode: c.error_code,
     rub: rub(num(c.cost_rub)),
     latencyMs: c.latency_ms,
+    tokens: {
+      input: c.input_tokens,
+      cached: c.cached_tokens,
+      output: c.output_tokens,
+      reasoning: c.reasoning_tokens,
+    },
   }));
 
   const started = run.started_at?.getTime() ?? null;
@@ -243,4 +259,25 @@ export async function collectBuildReport(pg: postgres.Sql, o: CollectInput): Pro
     gaps: o.gaps ?? [],
     createdAt: (o.now ?? (() => new Date()))().toISOString(),
   };
+}
+
+const TIMING_KEYS = [
+  "totalMs",
+  "composeMs",
+  "checkMs",
+  "g0Ms",
+  "g1Ms",
+  "promisesMs",
+  "repairMs",
+  "repairCheckMs",
+] as const;
+
+/** A scenario checkpoint's timing (V4-04); null — none recorded (an older build). */
+function scenarioTiming(v: unknown): ScenarioTiming | null {
+  const t = obj(v);
+  if (typeof t.totalMs !== "number") return null;
+  const out = {} as ScenarioTiming;
+  for (const k of TIMING_KEYS)
+    out[k] = typeof t[k] === "number" && Number.isFinite(t[k]) ? Math.round(t[k] as number) : 0;
+  return out;
 }

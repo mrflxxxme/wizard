@@ -20,6 +20,7 @@ import type { DesignSystemV3 } from "@wizard/ui-kit/v3/design";
 import { hash32, PATTERNS, type PatternMeta } from "@wizard/ui-kit/v3/patterns";
 import type { RunStepFn } from "../../../core/events.js";
 import { callTool, type RouteFn } from "../../../core/loop.js";
+import { defineTool } from "../../../core/tool.js";
 import { upperBoundCredits } from "../../budget.js";
 import { siteFiles } from "../compose/codegen.js";
 import { type SiteFacts, siteFacts } from "../compose/facts.js";
@@ -160,6 +161,46 @@ export interface CriticReport {
   /** The design system after token edits (absent — the critic kept ctx.design); the harness applies it (V3-14 seam). */
   design?: DesignSystemV3;
 }
+
+/**
+ * qwen3.6-35b now and then puts a finding's code patch in `edit` ({op: "patch", file, find, replace}, probe critic_cycle
+ * 14.10.2026): the closed edits drop it and the finding is left without one (rehearsal №5: «P1 · L13 … · /@390#hero»,
+ * stop no_edits). Such an edit is the finding's patch.
+ */
+export function editPatches(args: unknown): unknown {
+  if (!args || typeof args !== "object") return args;
+  const a = args as { findings?: unknown };
+  let findings = a.findings;
+  if (typeof findings === "string") {
+    try {
+      findings = JSON.parse(findings);
+    } catch {
+      return args;
+    }
+  }
+  if (!Array.isArray(findings)) return args;
+  return {
+    ...a,
+    findings: findings.map((f: unknown) => {
+      if (!f || typeof f !== "object") return f;
+      const { edit, patch } = f as { edit?: unknown; patch?: unknown };
+      if (patch != null || !edit || typeof edit !== "object") return f;
+      const e = edit as Record<string, unknown>;
+      if (e.op !== undefined && e.op !== "patch") return f;
+      if (typeof e.file !== "string" || typeof e.find !== "string" || typeof e.replace !== "string") return f;
+      return { ...f, edit: null, patch: { file: e.file, find: e.find, replace: e.replace } };
+    }),
+  };
+}
+
+/** The critique tool with the patches of `edit` moved to `patch` first (same schema: same records, same price). */
+const criticTool = defineTool({
+  name: critiqueTool.name,
+  description: critiqueTool.description,
+  input: critiqueTool.input,
+  normalize: (a) => (critiqueTool.normalize ? critiqueTool.normalize(editPatches(a)) : editPatches(a)),
+  ...(critiqueTool.check ? { check: critiqueTool.check } : {}),
+});
 
 /** The route over ctx.route would pass the stage's cap (checked by the upper bound before each call). */
 class CriticBudgetStop extends Error {
@@ -712,7 +753,7 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
         callType: CRITIC_CALL_TYPE,
         stepName: `critic_visual:${n}`,
         messages,
-        tool: critiqueTool,
+        tool: criticTool,
       });
       if (!r.ok) {
         report.stop = "model";

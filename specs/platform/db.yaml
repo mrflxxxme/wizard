@@ -331,6 +331,7 @@ tables:
       input_tokens: "integer not null default 0"
       cached_tokens: "integer not null default 0"
       output_tokens: "integer not null default 0"
+      reasoning_tokens: "integer not null default 0"  # V4-04: часть output_tokens (миграция 0046)
       tool_calls: "integer not null default 0"
       latency_ms: "integer"
       ttft_ms: "integer"

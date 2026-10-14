@@ -40,7 +40,8 @@ import type { V3BuildContext } from "../../../packages/agents/src/builder/v3/con
 import { siteFacts } from "../../../packages/agents/src/builder/v3/compose/index.ts";
 import { readSite } from "../../../packages/agents/src/builder/v3/compose/site.ts";
 import { callTool } from "../../../packages/agents/src/core/loop.ts";
-import { defaultAuthorFamilies } from "../../../packages/agents/src/builder/v3/critic/hook.ts";
+import { defaultAuthorFamilies, runCritic } from "../../../packages/agents/src/builder/v3/critic/hook.ts";
+import { siteFiles } from "../../../packages/agents/src/builder/v3/compose/codegen.ts";
 import type { Critique } from "../../../packages/agents/src/builder/v3/critic/rubric.ts";
 import type { CriticShot } from "../../../packages/agents/src/builder/v3/critic/types.ts";
 import { chromiumProvider } from "../../../apps/platform-api/src/agents/goal-browser.ts";
@@ -112,6 +113,46 @@ async function builtClinic(
     else files.set(p, v);
   }
   return { ...base, files };
+}
+
+/**
+ * The clinic with its home hero written as code (the page-by-sections composer, rehearsal №5): the source of
+ * tools/fixtures/probe/heroes/<name>.tsx in ui/sections/home-hero.tsx, the photo given by its address (codePhotos).
+ */
+function withCodeHero(built: V3BuildContext, name: string): V3BuildContext {
+  const site = readSite(built.files);
+  const home = site?.pages.find((p) => p.route === "/");
+  const hero = home?.sections.find((x) => x.type === "hero");
+  if (!site || !home || !hero) throw new Error("в клинике нет первого экрана главной");
+  const file = "ui/sections/home-hero.tsx";
+  const photo = hero.props.image as { src?: string; alt?: string } | undefined;
+  const code = {
+    id: hero.id,
+    type: "signature",
+    pattern: "signature",
+    title: "Первый экран",
+    file,
+    props: {
+      title: hero.props.title,
+      lead: hero.props.lead,
+      action: hero.props.action,
+      ...(photo?.src ? { image: photo.src, imageAlt: photo.alt ?? "" } : {}),
+    },
+    ...(hero.photos ? { photos: hero.photos } : {}),
+  } as typeof hero;
+  const next = {
+    ...site,
+    pages: site.pages.map((p) =>
+      p === home ? { ...p, sections: p.sections.map((x) => (x === hero ? code : x)) } : p,
+    ),
+  };
+  const source = readFileSync(join(REPO_ROOT, "tools", "fixtures", "probe", "heroes", `${name}.tsx`), "utf8");
+  const files = new Map(built.files);
+  for (const [p, v] of siteFiles(next, siteFacts(built).copy.site, built.design, built.files, new Map([[file, source]]), PATTERNS)) {
+    if (v === null) files.delete(p);
+    else files.set(p, v);
+  }
+  return { ...built, files };
 }
 
 /** A saved screenshot of a real build (the acceptance rehearsal): the critic judges it instead of the probe clinic. */
@@ -363,6 +404,44 @@ export const STAGES: Record<string, Stage> = {
         return {
           fallback: answers.length < repeats || main.length < 2 || spread > CRITIC_SPREAD || median > 90_000,
           summary: `оценки ${scores || "—"} (разброс у одной модели ${spread}); вызов: медиана ${Math.round(median / 1000)} с, самый долгий ${Math.round(slowest / 1000)} с${seen.length ? `; ${seen.join(" | ")}` : ""}`,
+        };
+      } finally {
+        await browser.close();
+      }
+    },
+  },
+  // V4-09: the whole critic stage (checks, the model, its edits applied and checked in the browser) on the clinic whose
+  // home hero is written as code — what became of each finding: applied, rejected (and why) or without an edit.
+  critic_cycle: {
+    callTypes: ["critic_visual"],
+    async run(input, route, ctx) {
+      const clinic = await builtClinic(route, ctx.systemId, input.photos !== false);
+      const coded = input.hero ? withCodeHero(clinic, String(input.hero)) : clinic;
+      const site = readSite(coded.files);
+      if (!site) throw new Error("в клинике нет модели сайта");
+      // As the harness: the spec routes the site's pages (without them every route is «не найдена»).
+      const built = { ...coded, spec: withSitePages(coded.spec, site) };
+      const browser = chromiumProvider({ slots: 1 });
+      try {
+        const r = await runCritic(built, {
+          inspect: criticInspector({ browser }),
+          verify: null,
+          maxCycles: Number(input.cycles ?? 2),
+          budgetRub: Number(input.budgetRub ?? 8),
+          orgPolicy: OPEN,
+          routeCtx: ctx,
+        });
+        const list = (xs: readonly string[]) => (xs.length ? xs.join("; ") : "—");
+        const cycles = r.cycles.map(
+          (c) =>
+            `цикл ${c.n} (${c.model ?? "?"}): ${c.score}, находок ${c.findings}; применены: ${list(c.applied)}; отклонены: ${list(c.rejected.map((x) => `${x.edit} — ${x.reason_ru}`))}; без правки: ${list(c.noEdit ?? [])}`,
+        );
+        const scores = r.cycles.map((c) => c.score);
+        const left = [...new Set(r.left.map((x) => `${x.code} ${x.route}#${x.section ?? "—"}`))].slice(0, 6);
+        return {
+          // The stage reached the model and applied at least one of its edits.
+          fallback: r.status !== "done" || !r.cycles.length || r.cycles.every((c) => !c.applied.length),
+          summary: `оценки ${scores.join(" → ") || "—"}, стоп ${r.stop}; проверки: штраф ${r.before.penalty} → ${r.after.penalty}, осталось ${list(left)}; правки без модели: ${list(r.fixes)}; ${cycles.join(" | ")}; ${r.spentRub.toFixed(2)} ₽`,
         };
       } finally {
         await browser.close();

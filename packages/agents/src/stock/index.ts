@@ -1,14 +1,18 @@
 // @wizard/agents/stock (V4-10, D79 (6)): the semantic photo library — niche catalog, shards with SigLIP embeddings,
 // search by the meaning of a Russian query, backfill requests, the SigLIP encoders and the photo grade of a direction.
 
-/** Niches CI fills, in priority order; shard slugs of requested niches. */
+/** Niches CI fills, in priority order; shard slugs of requested niches; the niches a site's niche names (V4-30). */
 export {
   CATALOG,
   type CatalogNiche,
   catalogNiche,
+  GENERIC_GROUP,
   NICHE_TARGET,
+  nicheStems,
   normalizeNicheText,
+  ownNiches,
   requestSlug,
+  shardNamesNiche,
 } from "./catalog.js";
 /** One CSS filter for every photo of a site from the direction's treatment and accent. */
 export { GRADED_PHOTOS, type PhotoGrade, photoGrade, photoGradeCss } from "./grade.js";

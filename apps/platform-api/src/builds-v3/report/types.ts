@@ -30,6 +30,24 @@ export interface ReportScenario {
   status: string;
   problems: string[];
   http: ScenarioHttp[];
+  /** V4-21: promises of its «видит …» steps the site does not show (they went to «Запросы на развитие»). */
+  unkept?: string[];
+  /** Of `unkept`, those withdrawn for want of the owner's facts (specialists, reviews, prices — D49), not repaired. */
+  withdrawn?: string[];
+  /** Where its time went (ms): composing, the check (G0, G1, promises) and the repair round; absent — not recorded. */
+  timing?: ScenarioTiming;
+}
+
+/** The durations of a scenario (ms), from its checkpoint. */
+export interface ScenarioTiming {
+  totalMs: number;
+  composeMs: number;
+  checkMs: number;
+  g0Ms: number;
+  g1Ms: number;
+  promisesMs: number;
+  repairMs: number;
+  repairCheckMs: number;
 }
 
 export interface ReportGate {
@@ -49,6 +67,8 @@ export interface ReportCall {
   errorCode: string | null;
   rub: number;
   latencyMs: number | null;
+  /** Tokens of the call: all input (cached included), cached input, output, reasoning (part of output). */
+  tokens: { input: number; cached: number; output: number; reasoning: number };
 }
 
 export interface ReportShot {

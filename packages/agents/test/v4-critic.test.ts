@@ -6,7 +6,13 @@ import type { RouteInput } from "@wizard/llm";
 import { PATTERNS } from "@wizard/ui-kit/v3/patterns";
 import { describe, expect, test } from "vitest";
 import { siteFacts } from "../src/builder/v3/compose/index.js";
-import { defaultAuthorFamilies, runCritic, shotPlan, withCode } from "../src/builder/v3/critic/hook.js";
+import {
+  defaultAuthorFamilies,
+  editPatches,
+  runCritic,
+  shotPlan,
+  withCode,
+} from "../src/builder/v3/critic/hook.js";
 import { critiqueMessages } from "../src/builder/v3/critic/prompt.js";
 import {
   criticContext,
@@ -111,6 +117,48 @@ describe("V4-09: code edits of the critic", () => {
     expect(r2.cycles[0]?.applied).toEqual([]);
     expect(r2.rolledBack.join(" ")).toContain("правка кода");
     expect(r2.files.get(homeFile) ?? "").not.toContain("BROKEN_MARK");
+  });
+
+  test("qwen's patch in `edit` ({op: patch, file, find, replace}) is the finding's patch: applied, not «без правки»", async () => {
+    const t = title?.title as string;
+    const good = { file: homeFile, find: JSON.stringify(t), replace: JSON.stringify("Лечим зубы без боли") };
+    // As recorded by the probe critic_cycle (14.10.2026): the patch in `edit`, `patch` null.
+    const inEdit = { ...finding(null), edit: { op: "patch", ...good } };
+    expect(editPatches({ findings: JSON.stringify([inEdit]) })).toEqual({
+      findings: [{ ...inEdit, edit: null, patch: good }],
+    });
+    // A closed edit and a finding with its own patch stay as they are.
+    const op = { ...finding(null), edit: { op: "token", token: "display_size", value: "smaller" } };
+    expect(editPatches({ findings: [op, finding(good)] })).toEqual({ findings: [op, finding(good)] });
+    const fx = fixtureRoute(critiqueLines(prompt, [critique(2, [inEdit])]));
+    const r = await runCritic(
+      { ...ctx, route: fx.route },
+      { inspect: fakeInspector([]), verify: null, registry, maxCycles: 1 },
+    );
+    expect(r.cycles[0]?.noEdit).toBeUndefined();
+    expect(r.cycles[0]?.applied).toEqual([expect.stringContaining("правка кода")]);
+    expect(r.files.get(homeFile)).toContain("Лечим зубы без боли");
+  });
+
+  test("rehearsal №6: on a short home page a dropped block is refused, its reason in the cycle's rejected", async () => {
+    const drop = {
+      ...finding(null, "P2"),
+      sign: "лишний блок",
+      edit: { op: "drop_section", route: "/", section: "services" },
+    };
+    const fx = fixtureRoute(critiqueLines(prompt, [critique(2, [drop])]));
+    const r = await runCritic(
+      { ...ctx, route: fx.route },
+      { inspect: fakeInspector([]), verify: null, registry, maxCycles: 1 },
+    );
+    expect(r.cycles[0]?.applied).toEqual([]);
+    expect(r.cycles[0]?.rejected).toEqual([
+      {
+        edit: expect.stringContaining("services"),
+        reason_ru: expect.stringContaining("на главной останется меньше"),
+      },
+    ]);
+    expect(r.files.get(homeFile) ?? homeSrc).toContain("services");
   });
 
   test("the critic is never of the pages' author's family: the route gets avoidFamilies", async () => {

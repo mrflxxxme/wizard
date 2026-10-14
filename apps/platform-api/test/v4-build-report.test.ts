@@ -26,6 +26,7 @@ import { totpCode } from "../src/auth/totp.js";
 import { saveBriefVersion } from "../src/briefs/store.js";
 import { criticTop, criticWhy } from "../src/builds-v3/report/collect.js";
 import { loadBuildReport, renderReportMd, reportFile, reportStorage } from "../src/builds-v3/report/index.js";
+import { promiseLines } from "../src/builds-v3/report/render.js";
 import { startV3Build } from "../src/builds-v3/start.js";
 import { DEFAULT_ORG_ID, DEV_USER_ID, json } from "../src/db/index.js";
 import { createTestDb, startApi, type TestApi, waitRun } from "./helpers.js";
@@ -139,8 +140,21 @@ describe("V4-04: the build report", () => {
     expect(report.rub).toBeGreaterThan(0);
     expect(report.scenarios.map((s) => s.id).sort()).toEqual(["s_book", "s_lead"]);
     expect(report.scenarios.every((s) => s.status === "passed")).toBe(true);
+    // V4-04: where each scenario's time went — composing, the check (G0, G1, promises), the repair round.
+    for (const s of report.scenarios) {
+      expect(s.timing).toBeDefined();
+      const t = s.timing as NonNullable<typeof s.timing>;
+      expect(t.totalMs).toBeGreaterThanOrEqual(t.composeMs);
+      expect(t.checkMs).toBeGreaterThanOrEqual(t.g0Ms + t.g1Ms + t.promisesMs - 5);
+    }
     expect(report.gates.map((g) => g.level).sort()).toEqual(["G0", "G1", "G2"]);
     expect(report.calls.length).toBeGreaterThan(0);
+    // Tokens per call (input with cached, output with reasoning) from llm_calls.
+    for (const c of report.calls) {
+      expect(c.tokens.cached).toBeLessThanOrEqual(c.tokens.input);
+      expect(c.tokens.reasoning).toBeLessThanOrEqual(c.tokens.output);
+    }
+    expect(report.calls.some((c) => c.status === "ok" && c.tokens.input > 0)).toBe(true);
     expect(report.techreview?.status).toBeTruthy();
     // No browser in this build: the report names what it could not collect.
     expect(report.shots).toEqual([]);
@@ -162,6 +176,10 @@ describe("V4-04: the build report", () => {
     expect(md).toContain("### Этапы");
     expect(md).toContain("s_book");
     expect(md).toContain("Записи вызовов");
+    expect(md).toContain("| Токены |");
+    expect(md).toMatch(
+      /время: всего \d+ с: сборка \d+ с, проверка \d+ с \(G0 \d+ с, G1 \d+ с, обещания \d+ с\)/,
+    );
 
     // Staff with MFA reads the report (JSON, Markdown) and its files; a client gets 404.
     const r = await staff.req("GET", `/admin/runs/${run.id}/report`);
@@ -215,5 +233,18 @@ describe("V4-09: why the critic applied nothing", () => {
       rejected: ["патч ui/sections/home-hero.tsx: фрагмент не найден в файле ровно один раз"],
     });
     expect(criticWhy(undefined)).toEqual({ noEdit: [], rejected: [] });
+  });
+});
+
+describe("V4-21: promises of a passed scenario in the report", () => {
+  const DOCTORS =
+    "Обещано в сценарии «видит врачей»: на сайте нет специалистов — нужна секция специалистов с их именами";
+  const PRICES = "Обещано в сценарии «видит цены»: цены не показаны";
+  test("withdrawn for want of the owner's facts — said so, not «выполнено»; the rest — not kept", () => {
+    expect(promiseLines({ unkept: [DOCTORS, PRICES], withdrawn: [DOCTORS] })).toEqual([
+      `обещания сняты — нет фактов владельца: ${DOCTORS}`,
+      `обещания не выполнены: ${PRICES}`,
+    ]);
+    expect(promiseLines({})).toEqual([]);
   });
 });

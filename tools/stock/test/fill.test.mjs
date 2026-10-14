@@ -3,7 +3,16 @@
 // niches searched by their Russian text, and the files bucket found by the account key.
 import { describe, expect, test } from "vitest";
 import * as S from "../../../packages/agents/src/stock/index.ts";
-import { bigEnough, MAX_FAILURES, REQUEST_TARGET, requestNiches, runFill, storageEnv } from "../fill.mjs";
+import {
+  bigEnough,
+  catalogNiches,
+  FILL_LIMITS,
+  MAX_FAILURES,
+  REQUEST_TARGET,
+  requestNiches,
+  runFill,
+  storageEnv,
+} from "../fill.mjs";
 
 const memory = () => {
   const map = new Map();
@@ -74,6 +83,31 @@ describe("runFill", () => {
     expect(again.log.downloads).toBe(0);
   });
 
+  test("V4-30: --prune drops the photos of queries the niche no longer has and refills it with the new ones", async () => {
+    const objects = memory();
+    await runFill({ S, stock: fakeStock(), objects, store, embed, niches: [niche("dance", 12, ["a", "b"])], ...fast });
+    const now = [niche("dance", 12, ["a", "c"])];
+    // Without --prune a full shard stays as it is.
+    expect(await runFill({ S, stock: fakeStock(), objects, store, embed, niches: now, ...fast })).toMatchObject({
+      full: 1,
+      pruned: 0,
+    });
+    const s = await runFill({
+      S,
+      stock: fakeStock(),
+      objects,
+      store,
+      embed,
+      niches: now,
+      limits: { ...FILL_LIMITS, prune: true },
+      ...fast,
+    });
+    expect(s).toMatchObject({ pruned: 6, added: 6, filled: 1 });
+    const dance = await S.readShard(objects, "dance");
+    expect(dance.entries.map((e) => e.query).sort()).toEqual([...Array(6).fill("a"), ...Array(6).fill("c")]);
+    expect(dance.vectors.scales).toHaveLength(12);
+  });
+
   test("a photo already in another shard is not fetched again", async () => {
     const objects = memory();
     await runFill({ S, stock: fakeStock({ perSearch: 4 }), objects, store, embed, niches: [niche("a", 4, ["q"])], ...fast });
@@ -123,6 +157,13 @@ describe("runFill", () => {
     expect(s.searches).toEqual({ pexels: 1, pixabay: 1 });
     expect(s.added).toBe(0);
   });
+});
+
+test("V4-32: a niche whose catalog rows needed more queries fills past NICHE_TARGET", () => {
+  const all = catalogNiches(S);
+  expect(all.find((c) => c.slug === "optics")?.target).toBeGreaterThan(S.NICHE_TARGET);
+  expect(all.find((c) => c.slug === "optics")?.queries).toContain("contact lenses");
+  expect(all.find((c) => c.slug === "dental")?.target).toBe(S.NICHE_TARGET);
 });
 
 describe("requested niches", () => {
