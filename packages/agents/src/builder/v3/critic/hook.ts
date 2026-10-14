@@ -187,14 +187,17 @@ export function criticRoutes(site: SiteModel): string[] {
 export const CRITIC_MAX_IMAGES = 2;
 
 /**
- * Screenshots of a cycle (≤ CRITIC_MAX_IMAGES): the home page's first screen at 390 (as is) and the whole home page at
- * 1440 (a quarter: the rhythm «при прищуре»). The other pages and widths are covered by the in-page checks.
+ * Screenshots of a cycle (≤ CRITIC_MAX_IMAGES): the whole home page at 390 as is (the first screen on top, the texts
+ * and the data sections readable) and at 1440 (a quarter: the rhythm «при прищуре»). The other pages and widths are
+ * covered by the in-page checks.
  */
 export function shotPlan(site: SiteModel): CriticShotRequest[] {
   const home = site.pages.find((p) => p.route === "/") ?? site.pages[0];
   if (!home) return [];
   const plan: CriticShotRequest[] = [
-    { route: home.route, width: 390, kind: "screen", maxWidth: 390, maxHeight: 844 },
+    // V4-09: the whole phone page at its own size (its top 844 px are the first screen) — the texts and the data
+    // sections readable («Услуга 1», no prices); two images, as the reserve vision models take (qwen3.6-35b ≤ 2).
+    { route: home.route, width: 390, kind: "page", maxWidth: 390, maxHeight: 2400 },
     { route: home.route, width: 1440, kind: "page", maxWidth: 360, maxHeight: 2400 },
   ];
   return plan.slice(0, CRITIC_MAX_IMAGES);

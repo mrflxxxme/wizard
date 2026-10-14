@@ -28,6 +28,7 @@ import { loadBriefs } from "../lib/briefs.mjs";
 import { platformClient } from "../server/client.mjs";
 import { evalCredits, evalIdentity, newEvalSession, newRunId, parseSeedOutput, seedSql } from "../server/seed.mjs";
 import { runV3Eval } from "../server/v3.mjs";
+import { storageEnv } from "../../stock/fill.mjs";
 
 /** The platform's origin as the cabinet sends it (the session's CSRF checks the Origin). */
 const ORIGIN = "http://localhost:5173";
@@ -100,6 +101,22 @@ export class ReadThroughStorage implements FileStorage {
   }
 }
 
+/** The outcome of a brief for the table: ready, or not ready with the build's status and its failed must scenarios. */
+export function rowStatus(r: {
+  ready?: boolean;
+  status: string;
+  build?: { status?: string; scenarios?: { list?: { id: string; priority?: string; status?: string }[] } } | null;
+}): string {
+  if (r.ready === true) return "готова";
+  const failed = (r.build?.scenarios?.list ?? [])
+    .filter((s) => s.priority === "must" && s.status === "failed")
+    .map((s) => s.id);
+  const why = [r.build?.status ? `сборка ${r.build.status}` : "", failed.length ? `must ✗ ${failed.join(", ")}` : ""]
+    .filter(Boolean)
+    .join("; ");
+  return `не готова (${r.status}${why ? `; ${why}` : ""})`;
+}
+
 interface Row {
   brief: string;
   status: string;
@@ -138,8 +155,8 @@ export function renderSummary(rows: readonly Row[], meta: { runUrl: string; shot
     "",
     `Цели: три экрана ≤ ${V4_TARGETS.screensSec} с, система ≤ ${V4_TARGETS.systemMin} мин, ≤ ${V4_TARGETS.rub} ₽. Прогон: ${meta.runUrl}`,
     "",
-    "| бриф | итог | три экрана, с | система, мин | ₽ | критик | гейты | снимки |",
-    "|---|---|---|---|---|---|---|---|",
+    "| бриф | итог | три экрана, с | система, мин | ₽ | критик | главное у критика | гейты | снимки |",
+    "|---|---|---|---|---|---|---|---|---|",
   ];
   for (const r of rows) {
     const rep = r.report;
@@ -159,9 +176,15 @@ export function renderSummary(rows: readonly Row[], meta: { runUrl: string; shot
     const critic = rep?.critic?.scores.length
       ? `${rep.critic.scores.join(" → ")} (${STOP_RU[rep.critic.stop ?? "none"] ?? rep.critic.stop})`
       : "—";
+    // «На глаз»: the critic's three main findings of its last cycle, in words, without opening the screenshots.
+    const eye =
+      (rep?.critic?.top ?? [])
+        .slice(0, 3)
+        .map((t) => t.replace(/\|/g, "/"))
+        .join("<br>") || "—";
     const shots = r.shots.map((s) => `[${s.replace(/\.jpg$/, "")}](${meta.shotsBase}/${r.brief}/${s})`).join(" · ") || "—";
     out.push(
-      `| ${r.brief} | ${r.status}${r.error ? `: ${r.error.slice(0, 80)}` : ""} | ${r.screensSec ?? "—"} ${mark(r.screensSec === null ? null : r.screensSec <= V4_TARGETS.screensSec)} | ${r.systemMin ?? "—"} ${mark(r.systemMin === null ? null : r.systemMin <= V4_TARGETS.systemMin)} | ${round(r.rub)} ${mark(r.rub <= V4_TARGETS.rub)} | ${critic} | ${gates} | ${shots} |`,
+      `| ${r.brief} | ${r.status}${r.error ? `: ${r.error.slice(0, 80)}` : ""} | ${r.screensSec ?? "—"} ${mark(r.screensSec === null ? null : r.screensSec <= V4_TARGETS.screensSec)} | ${r.systemMin ?? "—"} ${mark(r.systemMin === null ? null : r.systemMin <= V4_TARGETS.systemMin)} | ${round(r.rub)} ${mark(r.rub <= V4_TARGETS.rub)} | ${critic} | ${eye} | ${gates} | ${shots} |`,
     );
   }
   out.push("", "## ₽ и минуты по этапам сборки (отчёт V4-04)", "");
@@ -204,7 +227,11 @@ export async function runAcceptance(o: { out: string; capRub: number; briefs?: r
   const local = createFileStorage({ WIZARD_FILES_STORAGE: "fs", WIZARD_FILES_DIR: filesDir }, { defaultDir: filesDir });
   const files: FileStorage =
     process.env.WIZARD_FILES_STORAGE === "s3"
-      ? new ReadThroughStorage(local, createFileStorage(process.env, { defaultDir: filesDir }))
+      ? new ReadThroughStorage(
+          local,
+          // The bucket of prod by the account key when the job gives none (as the photo library runner finds it).
+          createFileStorage(await storageEnv({ DEPLOY_ENV: "prod", ...process.env }), { defaultDir: filesDir }),
+        )
       : local;
   delete process.env.WIZARD_FILES_STORAGE;
   mkdirSync(artifactsDir, { recursive: true });
@@ -322,7 +349,7 @@ export async function runAcceptance(o: { out: string; capRub: number; briefs?: r
         const sc = r.systemId ? screens.get(r.systemId) : undefined;
         const row: Row = {
           brief: r.id,
-          status: r.build?.status ?? r.status,
+          status: rowStatus(r as Parameters<typeof rowStatus>[0]),
           screensSec: sc?.sec ?? null,
           screensFromStartSec: sc && r.startedAt ? round((sc.at - Date.parse(r.startedAt)) / 1000) : null,
           systemMin: typeof r.minutes === "number" ? round(r.minutes) : null,

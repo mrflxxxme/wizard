@@ -9,7 +9,8 @@ import { designSystemV3 } from "@wizard/ui-kit/v3/design";
 import { PATTERNS, patternById } from "@wizard/ui-kit/v3/patterns";
 import { describe, expect, test } from "vitest";
 import { applyEdit, type SiteModel, siteRules } from "../src/builder/index.js";
-import { pageSource } from "../src/builder/v3/compose/index.js";
+import { keepPhotoPlaces } from "../src/builder/v3/compose/codegen.js";
+import { applyPageCode, pageSource } from "../src/builder/v3/compose/index.js";
 import type { SitePage, SiteSection } from "../src/builder/v3/compose/site.js";
 import { briefSite } from "./v3-brief-site.js";
 import { EVAL_BRIEFS } from "./v3-eval-briefs.js";
@@ -263,6 +264,33 @@ describe("siteRules: the places of the owner's photos stay on the page (V3-18, G
     // The page file asks useSitePhotos for the place.
     expect(pageSource(out.pages[0] as SitePage)).toContain('image={photo.one("top", undefined)}');
     expect(siteRules(out)).toBe(out);
+  });
+
+  test("V4-06: the first screen written as code keeps its place — the owner's photo reaches its `image` prop", () => {
+    const p = page("/", [withTop("hero-split"), leadForm()]);
+    const image = { src: "/_wizard/photos/00000000-0000-4000-8000-000000000001/1600", alt: "Кабинет" };
+    const code = (props: Record<string, unknown>) =>
+      keepPhotoPlaces(
+        p,
+        applyPageCode(p, {
+          sections: [
+            {
+              kind: "code",
+              id: "hero",
+              title: "Первый экран",
+              source: "export default function Hero() {}",
+              props,
+            },
+            { kind: "keep", id: p.sections[1]?.id as string },
+          ],
+          seo: { title: "Клиника", description: "Запись к врачу онлайн" },
+        } as Parameters<typeof applyPageCode>[1]).page,
+      );
+    const withPhoto = code({ title: "Лечим зубы", image });
+    expect(withPhoto.sections[0]?.photos).toEqual({ image: "top" });
+    expect(pageSource(withPhoto)).toContain(`image={photo.one("top", ${JSON.stringify(image)})}`);
+    // A code section that takes no photo in props: nothing to replace, the page does not ask for the place.
+    expect(pageSource(code({ title: "Лечим зубы" }))).not.toContain("photo.one");
   });
 
   test("a variant that shows the place stays; a section without places is not touched", () => {
