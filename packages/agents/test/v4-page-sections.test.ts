@@ -208,7 +208,9 @@ describe("V4-06 speed: the page by sections", () => {
     ].join("\n");
     const fixed = autofixSection(src);
     expect(fixed).toContain("fitWords(title)");
-    expect(fixed).toContain('className="text-inherit font-medium underline"');
+    expect(fixed).toContain(
+      'className="inline-flex items-center text-inherit font-medium underline min-h-11"',
+    );
     expect(fixed).toContain("<LazyMotion features={domAnimation}>");
     const codes = sectionIssues(fixed, { id: "hero", hero: true }).map((i) => i.code);
     expect(codes).not.toContain("MOTION_LAZY");
@@ -234,6 +236,35 @@ describe("V4-06 speed: the page by sections", () => {
     expect(fixed).toContain("<LazyMotion features={domAnimation}>");
     expect(fixed).toContain("href={safeHref(href)?.href}");
     expect(sectionIssues(fixed, { id: "cta", hero: false }).map((i) => i.code)).not.toContain("MOTION_LAZY");
+  });
+
+  test("motion without reduced motion gets MotionConfig; a phone link gets a finger's height and no letter spacing", () => {
+    const src = [
+      'import { domAnimation, LazyMotion, m } from "motion/react";',
+      "export default function Contacts() {",
+      "  return (",
+      "    <LazyMotion features={domAnimation}>",
+      '      <section className="bg-background px-gutter py-section text-foreground">',
+      '        <m.h2 animate={{ opacity: 1 }} className="font-display text-h2">Контакты</m.h2>',
+      '        <a href="tel:+73432003040" className="text-primary font-display text-h3 tracking-widest">+7 343 200-30-40</a>',
+      "      </section>",
+      "    </LazyMotion>",
+      "  );",
+      "}",
+      "",
+    ].join("\n");
+    const fixed = autofixSection(src);
+    expect(fixed).toContain('<MotionConfig reducedMotion="user">');
+    expect(fixed).toMatch(/import \{[^}]*MotionConfig[^}]*\} from "motion\/react"/);
+    expect(fixed).toContain(
+      'className="inline-flex items-center text-primary font-display text-h3 min-h-11"',
+    );
+    const codes = sectionIssues(fixed, { id: "contacts", hero: false }).map((i) => i.code);
+    expect(codes).not.toContain("REDUCED_MOTION");
+    expect(codes).not.toContain("MOTION_LAZY");
+    // A link already tall enough keeps its classes.
+    const tall = '<a href="tel:+7" className="inline-flex min-h-12 items-center text-primary">x</a>';
+    expect(autofixSection(tall)).toBe(tall);
   });
 
   test("the plan: sections as a JSON string are parsed, «01» ordinals leave props", () => {

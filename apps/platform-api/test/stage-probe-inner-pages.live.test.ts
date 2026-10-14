@@ -95,7 +95,7 @@ describe.skipIf(!ON || !hasChromium)("V4-06: the inner pages (/services, /bookin
                 // Refusals of the tool and the page checks / G0 the sections or the page are sent back with.
                 if (
                   (last?.role === "tool" && text.includes("INVALID_ARGS")) ||
-                  (last?.role === "user" && /не прошл[аи]? проверк/.test(text))
+                  (last?.role === "user" && /не прош[её]?л[аи]? проверк/.test(text))
                 )
                   refusals.push(text.slice(-700));
                 return router.route({ ...i, orgPolicy: OPEN, ctx: { orgId: "probe" } });
