@@ -97,7 +97,7 @@ test("the niche of the plan comes from its photos' alt", () => {
 // V4-27: the build checks the card rows with the vision model in one call — two candidates a row, the model's photo,
 // else the row's other candidate without text; photos with text are flagged in the library; a failed call changes
 // nothing (first candidates).
-test("the card check: one call for every row, the model's photo or the row's other candidate, text flagged", async () => {
+test("the card check: one call for every row, the model's photo or none, text flagged", async () => {
   queries.length = 0;
   const names = { entity: "service", field: "name", values: ["Терапия", "Хирургия", "Ортодонтия"] };
   const calls: { slots: string[]; candidates: string[]; niche: string }[] = [];
@@ -112,8 +112,8 @@ test("the card check: one call for every row, the model's photo or the row's oth
       const files = input.candidates.map((c) => c.entry.file);
       calls.push({ slots: input.slots.map((s) => s.label), candidates: files, niche: input.niche });
       const at = (f: string) => files.indexOf(f);
-      // Row 1 (22, 23): its second; row 2 (24, 25): nothing — its first stays; row 3 (26, 27): 26 has a sign and the
-      // model still puts it there — the row takes 27.
+      // Row 1 (22, 23): its second; row 2 (24, 25): nothing fits; row 3 (26, 27): 26 has a sign and the model still
+      // puts it there.
       return [
         { slot: "card-1", index: at(uuid(23)) },
         { text: at(uuid(26)) },
@@ -135,7 +135,8 @@ test("the card check: one call for every row, the model's photo or the row's oth
   // Two dental candidates a row, never the other shard's.
   expect(calls[0]?.candidates).toEqual([22, 23, 24, 25, 26, 27].map(uuid));
   expect(flagged).toEqual([uuid(26)]);
-  expect(hints[0]?.values).toEqual([uuid(23), uuid(24), uuid(27)].map((f) => `/_wizard/photos/${f}/960`));
+  // Row 1 the model's photo; row 2 (left empty) and row 3 (a photo with text) none — the trailing empties dropped.
+  expect(hints[0]?.values).toEqual([`/_wizard/photos/${uuid(23)}/960`]);
   // A failed call: the rows take their first candidates.
   queries.length = 0;
   const failed = await semanticSeedHints(spec, [names], new Set([uuid(1)]), new Set(), source, {
@@ -217,4 +218,21 @@ test("a row naming another niche of the catalog searches that niche; a row of th
     niche: "салон красоты",
   });
   expect(hints[0]?.values).toEqual([uuid(3), uuid(2)].map((f) => `/_wizard/photos/${f}/960`));
+});
+
+// V4-27: a row the check rejects keeps its place without a photo (null), the rows after it keep theirs.
+test("a rejected row in the middle stays empty, not shifted", async () => {
+  queries.length = 0;
+  const names = { entity: "service", field: "name", values: ["Терапия", "Хирургия", "Ортодонтия"] };
+  const check = async (rows: readonly { candidates: { file: string }[] }[]) =>
+    rows.map((r, i) => (i === 1 ? null : r.candidates[0])) as never;
+  const hints = await semanticSeedHints(spec, [names], new Set([uuid(1)]), new Set(), source, {
+    niche: "стоматология",
+    check,
+  });
+  expect(hints[0]?.values).toEqual([
+    `/_wizard/photos/${uuid(22)}/960`,
+    null,
+    `/_wizard/photos/${uuid(26)}/960`,
+  ]);
 });

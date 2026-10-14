@@ -155,6 +155,8 @@ export async function semanticPhotos(o: {
   if (backfill) await o.source.requestBackfill(o.plan.niche).catch(() => {});
 
   const assigned = new Map<string, LibraryPhotoEntry>();
+  // V4-27: one photo per author on a site — one shoot shows one model, and a person three times reads as the staff.
+  const authors = new Set<string>();
   let picked = false;
   if (o.picker && pool.length > 0) {
     const withThumbs: { entry: LibraryPhotoEntry; thumbnail: Uint8Array }[] = [];
@@ -190,21 +192,26 @@ export async function semanticPhotos(o: {
           !entry ||
           assigned.has(slot.slot) ||
           used.has(sourceOf(entry)) ||
+          authors.has(entry.author) ||
           !fitsPhotoSlot(entry, slot)
         )
           continue;
         assigned.set(slot.slot, entry);
         used.add(sourceOf(entry));
+        authors.add(entry.author);
       }
       picked = assigned.size > 0;
     }
   }
   for (const s of o.slots) {
     if (assigned.has(s.slot)) continue;
-    const next = (byKind.get(`${s.type}|${s.orientation}`) ?? []).find((c) => !used.has(sourceOf(c.entry)));
+    const kind = byKind.get(`${s.type}|${s.orientation}`) ?? [];
+    const free = (c: Candidate) => !used.has(sourceOf(c.entry));
+    const next = kind.find((c) => free(c) && !authors.has(c.entry.author)) ?? kind.find(free);
     if (!next) continue;
     assigned.set(s.slot, next.entry);
     used.add(sourceOf(next.entry));
+    authors.add(next.entry.author);
   }
   const photos: PlanPhoto[] = o.slots.flatMap((s) => {
     const e = assigned.get(s.slot);
