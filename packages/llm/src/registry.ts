@@ -440,7 +440,7 @@ export const ROUTES: Record<CallType, RouteDef> = {
   critic_visual: r(
     "critic",
     "T1",
-    { T1: ["glm-5v-turbo", "glm-4.6v"], T0: ["kimi-k2.6", "qwen3.6-35b"] },
+    { T1: ["glm-5v-turbo", "glm-4.6v"], T0: ["qwen3.6-35b", "kimi-k2.6"] },
     0.1,
     4000,
     240000,

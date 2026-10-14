@@ -110,14 +110,15 @@ describe.skipIf(!hasChromium)("V3-13 critic in Chromium", () => {
     expect(r.stubPhotos).toBe(true);
     expect(
       r.shots.map((s) => `${s.route}@${s.width}:${s.kind} ${s.px.width}×${s.px.height <= s.maxHeight}`),
-    ).toEqual(["/@390:screen 390×true", "/@1440:page 360×true"]);
+    ).toEqual(["/@390:page 390×true", "/@1440:page 360×true"]);
     for (const s of r.shots) {
       expect(s.mime).toBe("image/jpeg");
       expect(Buffer.from(s.data, "base64").subarray(0, 2).toString("hex")).toBe("ffd8");
       // Small images keep a cycle cheap: ≤ 60 KB each.
       expect(s.data.length).toBeLessThan(80_000);
     }
-    expect(r.shots[0]?.sections.slice(0, 2)).toEqual(["header", "hero"]);
+    // A page shot names its sections with their spans (V4-09: the phone page as a whole).
+    expect(r.shots[0]?.sections.slice(0, 2).map((s) => s.split(" ")[0])).toEqual(["header", "hero"]);
     expect(r.shots[1]?.sections[0]).toMatch(/^header 0–\d+$/);
   }, 120_000);
 
@@ -233,10 +234,12 @@ describe.skipIf(!hasChromium)("V3-13 critic in Chromium", () => {
     expect(r.before.penalty).toBeGreaterThan(0);
     expect(r.after.penalty).toBe(0);
     expect(r.stop).toBe("pass");
-    expect(r.cycles.map((c) => `${c.n}:${c.tier}:${c.model}`)).toEqual([
-      "1:T1:glm-5v-turbo",
-      "2:T1:glm-5v-turbo",
-    ]);
+    // The critic is never of the page writer's family (the head of page_compose is GLM since V4-06) and stays one
+    // model for both cycles; which one is the route's (models.yaml#critic_visual), not this test's.
+    const critics = r.cycles.map((c) => `${c.tier}:${c.model}`);
+    expect(r.cycles.map((c) => c.n)).toEqual([1, 2]);
+    expect(new Set(critics).size).toBe(1);
+    expect(critics[0]).not.toMatch(/:glm-/);
     expect(r.cycles[0]?.applied).toEqual(["/: порядок секций hero → form → services"]);
     expect(r.rolledBack).toEqual([]);
     expect(r.spentRub).toBeLessThanOrEqual(40);
@@ -579,15 +582,16 @@ describe.skipIf(!hasChromium)("V3-40 the critic sees the visitor's site", () => 
       }
     }
     // The screenshots the model gets show the photo, not the grey frame of a picture still loading.
-    const first = r.shots.find((s) => s.kind === "screen");
+    const first = r.shots.find((s) => s.width === 390);
     expect(first).toBeDefined();
     // V4-10: the site grades its library photos (one CSS filter); the shot shows the graded colour.
     const grade = photoGrade({
       treatment: ctx.design.imagery.treatment,
       accent: ctx.design.palette[ctx.design.palette.scheme].accent,
     }).filter;
-    expect(await colourShare(first?.data ?? "", colour, grade)).toBeGreaterThan(0.15);
-    const page = r.shots.find((s) => s.kind === "page");
+    // The whole phone page (V4-09): the hero photo is a part of a tall shot.
+    expect(await colourShare(first?.data ?? "", colour, grade)).toBeGreaterThan(0.05);
+    const page = r.shots.find((s) => s.width === 1440);
     expect(await colourShare(page?.data ?? "", colour, grade)).toBeGreaterThan(0.05);
   }, 180_000);
 });
