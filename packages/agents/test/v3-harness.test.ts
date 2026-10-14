@@ -457,6 +457,10 @@ describe("harness v3: browser check, stop rules, «Запросы на разв�
       unkept: [PRICES],
     });
     expect(Object.values(sys.files).some((src) => src.includes("показывает услуги с ценами"))).toBe(true);
+    // The promises of the first check are not lost: they go to «Запросы на развитие».
+    expect(sys.requests).toEqual([
+      expect.objectContaining({ quote: expect.stringContaining("цены не показаны — нужны цены у услуг") }),
+    ]);
   });
 
   test("a repair that breaks the gates: the first layer is put back, its promises go to the requests", async () => {
