@@ -234,10 +234,12 @@ describe.skipIf(!hasChromium)("V3-13 critic in Chromium", () => {
     expect(r.before.penalty).toBeGreaterThan(0);
     expect(r.after.penalty).toBe(0);
     expect(r.stop).toBe("pass");
-    expect(r.cycles.map((c) => `${c.n}:${c.tier}:${c.model}`)).toEqual([
-      "1:T1:glm-5v-turbo",
-      "2:T1:glm-5v-turbo",
-    ]);
+    // The critic is never of the page writer's family (the head of page_compose is GLM since V4-06) and stays one
+    // model for both cycles; which one is the route's (models.yaml#critic_visual), not this test's.
+    const critics = r.cycles.map((c) => `${c.tier}:${c.model}`);
+    expect(r.cycles.map((c) => c.n)).toEqual([1, 2]);
+    expect(new Set(critics).size).toBe(1);
+    expect(critics[0]).not.toMatch(/:glm-/);
     expect(r.cycles[0]?.applied).toEqual(["/: порядок секций hero → form → services"]);
     expect(r.rolledBack).toEqual([]);
     expect(r.spentRub).toBeLessThanOrEqual(40);
