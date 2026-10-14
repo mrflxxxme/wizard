@@ -55,6 +55,9 @@ const json = (v: unknown) => JSON.stringify(v);
 
 const isPhoto = (v: unknown): boolean =>
   typeof v === "object" && v !== null && typeof (v as { src?: unknown }).src === "string";
+/** A photo given as its address alone (`image: "/_wizard/photos/…"`, the alt in `imageAlt`): the page-by-sections hero. */
+const isPhotoPath = (v: unknown): v is string =>
+  typeof v === "string" && /^\/(?:_wizard\/photos|api\/files)\//.test(v);
 
 /**
  * V4-06: a section the model wrote as code keeps the places of the owner's photos («Фото сайта») of the section it
@@ -74,13 +77,14 @@ export function keepPhotoPlaces(before: SitePage, after: SitePage): SitePage {
 
 /**
  * Places of a section written as code (V4-06): those of the section it replaced whose props it still takes in the
- * library's shape — `image` {src, alt}, `images` [{src, alt}], `items` [{image}] (the prompt: props carry the photos).
+ * library's shape — `image` {src, alt} or its address alone, `images` [{src, alt}], `items` [{image}] (the prompt: props
+ * carry the photos).
  */
 function codePhotos(s: SiteSection): SectionPhotos | undefined {
   const p = s.photos;
   if (!p) return undefined;
   const out: SectionPhotos = {};
-  if (p.image && isPhoto(s.props.image)) out.image = p.image;
+  if (p.image && (isPhoto(s.props.image) || isPhotoPath(s.props.image))) out.image = p.image;
   if (p.images && Array.isArray(s.props.images) && s.props.images.every(isPhoto)) out.images = p.images;
   if (
     p.items &&
@@ -99,7 +103,11 @@ function photoAttrs(s: SiteSection, patternOf: (id: string) => PatternMeta | und
   const places = s.type === "signature" ? codePhotos(s) : fitPhotos(patternOf(s.pattern), s.photos, s.props);
   if (!places) return "";
   const out: string[] = [];
-  if (places.image) {
+  if (places.image && isPhotoPath(s.props.image)) {
+    // The address alone: the owner's photo's address, the stock one otherwise (its alt stays in imageAlt).
+    const alt = typeof s.props.imageAlt === "string" ? s.props.imageAlt : "";
+    out.push(`image={photo.one(${json(places.image)}, ${json({ src: s.props.image, alt })}).src}`);
+  } else if (places.image) {
     const stock = s.props.image === undefined ? "undefined" : json(s.props.image);
     out.push(`image={photo.one(${json(places.image)}, ${stock})}`);
   }
