@@ -156,6 +156,24 @@ describe("V4-06 speed: the page by sections", () => {
     expect(apply(ctx.files, r).get("ui/sections/home-first-visit.tsx")).toBe(SIGNATURE_OK.source);
   });
 
+  test("G0 names a line of the page file: the section wrapped there hears it with the props hint", async () => {
+    const ctx = await prepared();
+    const broken = SIGNATURE_OK.source.replace("export default function", "export default function /*x*/");
+    const verify = async (_s: unknown, f: ReadonlyMap<string, string>) => {
+      if (!f.get("ui/sections/home-first-visit.tsx")?.includes("/*x*/")) return { ok: true, problems: [] };
+      const lines = (f.get("ui/pages/site/Home.tsx") ?? "").split("\n");
+      const at = lines.findIndex((l) => l.includes('<div id="first-visit">')) + 2;
+      return { ok: false, problems: [`G0-TS-01: Ошибка типов в ui/pages/site/Home.tsx:${at} (TS2322)`] };
+    };
+    const m = model({ hero: [HERO_CODE.source], "first-visit": [broken, SIGNATURE_OK.source] });
+    const r = await composer({ verify }).scenario({ ...ctx, route: m.route }, LEAD);
+    const fix = m.calls
+      .filter((c) => String(c.messages[1]?.content).includes("## Твоя секция: first-visit"))
+      .at(-1);
+    expect(JSON.stringify(fix?.messages)).toContain("props секции из плана не подходят под тип props");
+    expect(apply(ctx.files, r).get("ui/sections/home-first-visit.tsx")).toBe(SIGNATURE_OK.source);
+  });
+
   test("a section that never passes is dropped: the page is assembled from the ones that did (not the skeleton)", async () => {
     const ctx = await prepared();
     const broken = SIGNATURE_OK.source.replace("export default function", "export default function /*x*/");

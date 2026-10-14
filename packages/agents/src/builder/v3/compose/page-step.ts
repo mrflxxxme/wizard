@@ -196,11 +196,41 @@ export async function pageCode(
 /** Checks of the assembled page by sections: the first and two rounds of rewriting the failing sections. */
 const SECTION_ROUNDS = 3;
 
-/** Section ids named by problems of the page lint (path sections.<i>…) or of G0 (the section file in the text). */
+/**
+ * The section of a G0 error in the page file itself (`<file>:<line>`): the props of the plan do not fit the props type
+ * the section's code declares (rehearsal №6, salon: `cta` a string, the hero's type a link). The page file wraps each
+ * section's element in `<div id="<id>">` (codegen pageSource), so the nearest such line above names the section.
+ */
+function pageFileSection(
+  pageFile: string,
+  pageSource: string | undefined,
+  message: string,
+): string | undefined {
+  if (!pageSource) return undefined;
+  const at = new RegExp(`${pageFile.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:(\\d+)`).exec(message);
+  if (!at) return undefined;
+  const lines = pageSource.split("\n");
+  for (let i = Math.min(Number(at[1]), lines.length) - 1; i >= 0; i--) {
+    const div = /^\s*<div id="([^"]+)">\s*$/.exec(lines[i] ?? "");
+    if (div) return div[1];
+    if (/^\s*<\/div>\s*$/.test(lines[i] ?? "")) return undefined;
+  }
+  return undefined;
+}
+
+/** What the section hears of a G0 error in the page file: its props type must take the props of the plan as they are. */
+const PROPS_TYPE_HINT =
+  "Ошибка в файле страницы: props секции из плана не подходят под тип props, который объявляет код секции. Тип props в коде должен принимать ровно ключи и значения props плана (строка остаётся строкой).";
+
+/**
+ * Section ids named by problems of the page lint (path sections.<i>…) or of G0 (the section file in the text, or a
+ * line of the page file inside the section's wrapper).
+ */
 function failingSections(
   plan: PagePlan,
   page: SitePage,
   issues: readonly { path?: string; message: string }[],
+  pageSource?: string,
 ): Map<string, string[]> {
   const out = new Map<string, string[]>();
   const add = (id: string, m: string) => out.set(id, [...(out.get(id) ?? []), m]);
@@ -214,7 +244,13 @@ function failingSections(
     const byFile = plan.sections.find(
       (s) => s.kind === "code" && i.message.includes(codeSectionFile(page, s.id)),
     );
-    if (byFile) add(byFile.id, i.message);
+    if (byFile) {
+      add(byFile.id, i.message);
+      continue;
+    }
+    const id = pageFileSection(page.file, pageSource, i.message);
+    if (id && plan.sections.some((s) => s.kind === "code" && s.id === id))
+      add(id, `${i.message}\n${PROPS_TYPE_HINT}`);
   }
   return out;
 }
@@ -336,6 +372,7 @@ export async function pageSections(
     return null;
   }
   let last: { path?: string; message: string }[] = [];
+  let lastSource: string | undefined;
   for (let round = 0; round < SECTION_ROUNDS; round++) {
     const answer = planAnswer(plan, sources);
     // The last round keeps only the hard issues: soft ones never leave the page as it was (G0 still decides).
@@ -343,6 +380,7 @@ export async function pageSections(
       (i) => round < SECTION_ROUNDS - 1 || HARD_ISSUES.has(i.code ?? ""),
     );
     let problems = lint.map((i) => ({ path: i.path, message: i.message }));
+    lastSource = undefined;
     let applied = codePage(s.page, answer, s.library);
     if (!problems.length) {
       const sys = systemWith(ctx, s, applied.page, new Map([...s.signatures, ...applied.sources]));
@@ -359,16 +397,17 @@ export async function pageSections(
         return s.firstScreen ? firstScreen(ctx, base, s, result, model) : result;
       }
       problems = g0.problems.map((m) => ({ path: "", message: m }));
+      lastSource = sys.files.get(applied.page.file);
     }
     last = problems;
     if (round === SECTION_ROUNDS - 1) break;
-    const failing = failingSections(plan, s.page, problems);
+    const failing = failingSections(plan, s.page, problems, lastSource);
     if (!failing.size) break;
     await Promise.all(items.filter((it) => failing.has(it.id)).map((it) => write(it, failing.get(it.id))));
     if (stopped) return s.stop(stopped) ? "stop" : null;
     applied = codePage(s.page, planAnswer(plan, sources), s.library);
   }
-  const failing = failingSections(plan, s.page, last);
+  const failing = failingSections(plan, s.page, last, lastSource);
   const p = await partial(
     new Set(failing.keys()),
     last.map((x) => x.message),
