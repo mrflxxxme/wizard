@@ -108,6 +108,7 @@ export async function seedDraft(
     showcase: true,
     ...(i.hints?.length ? { hints: i.hints } : {}),
   });
+  const demo = withoutDemoArticles(seed.rows, i.hints ?? []);
   let rows = 0;
   let users = 0;
   await pg.begin(async (tx) => {
@@ -127,12 +128,28 @@ export async function seedDraft(
       users += 1;
     }
     for (const name of seed.order)
-      for (const row of seed.rows[name] ?? []) {
+      for (const row of demo[name] ?? []) {
         await insertRow(tx, schema, name, row);
         rows += 1;
       }
   });
   return { users, rows };
+}
+
+/** @wizard/modules CONTENT_NAMES.article: the blog's articles. */
+const BLOG_ARTICLE = "article";
+
+/**
+ * V4-23: the blog of the draft is the owner's — no «Статья 1» demo articles unless the brief names them (title hints):
+ * an empty blog hides its band on the home page and its archive says «Статей пока нет».
+ */
+export function withoutDemoArticles<R>(
+  rows: Readonly<Record<string, R[]>>,
+  hints: readonly SeedHint[],
+): Record<string, R[]> {
+  if (hints.some((h) => h.entity === BLOG_ARTICLE && h.field === "title")) return { ...rows };
+  const { [BLOG_ARTICLE]: _, ...rest } = rows;
+  return rest;
 }
 
 export interface BundleDraftInput {
