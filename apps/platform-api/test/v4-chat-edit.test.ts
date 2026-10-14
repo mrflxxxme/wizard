@@ -68,6 +68,12 @@ describe("V4-24: a chat edit with a clear goal goes to «Укажи и изме�
     expect(chatGoal("Какие цены у конкурентов?")).toBeNull();
     expect(chatGoal("Сделай первый экран короче и подвал светлее")).toBeNull();
     expect(chatGoal("Добавь онлайн-оплату")).toBeNull();
+    // A new block, section or page is a change of the structure — the interview, not an edit of a section.
+    expect(chatGoal("Добавь блок с отзывами")).toBeNull();
+    expect(chatGoal("Сделай отдельную страницу с ценами")).toBeNull();
+    expect(chatGoal("Добавь новую секцию про врачей")).toBeNull();
+    // An addition inside a part that is there stays its edit.
+    expect(chatGoal("Добавь в первый экран телефон")).toBe("hero");
   });
 
   test("the element of the section on the home page — the wzId of the build's wz-map", () => {
@@ -97,7 +103,10 @@ describe("V4-24: a chat edit with a clear goal goes to «Укажи и изме�
 
   test("no clear goal, no such section, no site model — null (the interview)", () => {
     expect(chatEditTarget("Добавь онлайн-оплату", FILES)).toBeNull();
+    // A part the home page does not have («сделай отзывы ярче» without reviews) — not an edit into nowhere.
     expect(chatEditTarget("Отзывы сделай крупнее", FILES)).toBeNull();
+    expect(chatEditTarget("Сделай отзывы ярче", FILES)).toBeNull();
+    expect(chatEditTarget("Добавь блок с ценами", FILES)).toBeNull();
     expect(chatEditTarget("Сделай первый экран короче", new Map([[PAGE, SOURCE]]))).toBeNull();
   });
 });

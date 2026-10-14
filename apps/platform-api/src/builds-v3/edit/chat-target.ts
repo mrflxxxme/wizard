@@ -50,9 +50,16 @@ const GOALS: readonly { goal: ChatGoal; words: RegExp; keys: readonly string[] }
 const EDIT_RE =
   /сдела|измен|поменя|замен|убер|убра|удали|добав|перепиш|короче|длиннее|крупн|мельч|ярч|светл|темн|тёмн|сократ|увелич|уменьш|передела|поправ|исправ|сдвин|выдел/i;
 
-/** The one part of the page the message names with a request to change it; null — none or more than one. */
+/** A new block, section or page — a change of the site's structure (the interview and a rebuild), not an edit. */
+const NEW_PART_RE =
+  /(?:добав|созда|сдела|встав)\S*\s+(?:ещё\s+|еще\s+|отдельн\S*\s+)?(?:нов\S*\s+)?(?:блок|секци|раздел|страниц)/i;
+
+/**
+ * The one part of the page the message names with a request to change it; null — none or more than one, or a new
+ * block, section or page asked for.
+ */
 export function chatGoal(text: string): ChatGoal | null {
-  if (!EDIT_RE.test(text)) return null;
+  if (!EDIT_RE.test(text) || NEW_PART_RE.test(text)) return null;
   const found = GOALS.filter((g) => g.words.test(text));
   return found.length === 1 ? (found[0] as (typeof GOALS)[number]).goal : null;
 }
