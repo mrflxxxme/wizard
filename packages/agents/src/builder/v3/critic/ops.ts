@@ -16,6 +16,7 @@ import type { PatternMeta } from "@wizard/ui-kit/v3/patterns";
 import { z } from "zod";
 import { actionLink, slotShape } from "../compose/content.js";
 import { copyIssues } from "../compose/lint.js";
+import { HOME_MIN_SECTIONS } from "../compose/page-code.js";
 import type { SectionPhotos, SiteModel, SitePage, SiteSection } from "../compose/site.js";
 import { choosePattern } from "../compose/skeleton.js";
 import type { CodePatch } from "./rubric.js";
@@ -326,8 +327,11 @@ function drop(st: CriticState, op: Extract<EditOp, { op: "drop_section" }>, env:
   if (isBound(env.library, s)) return fail("секция с формой или данными нужна сценариям брифа");
   // V3-18: the owner's photo of «Фото сайта» must reach the page (GS-landing-2).
   if (s.photos && Object.keys(s.photos).length) return fail("в секции место для фото владельца");
-  if (page.sections.filter((x) => !CHROME.has(x.type)).length <= 2)
-    return fail("на странице останется только первый экран");
+  const body = page.sections.filter((x) => !CHROME.has(x.type)).length;
+  if (body <= 2) return fail("на странице останется только первый экран");
+  // Rehearsal №6: the critic dropped a block of a home page already short of its sections (the composer's floor).
+  if (op.route === "/" && body <= HOME_MIN_SECTIONS)
+    return fail(`на главной останется меньше ${HOME_MIN_SECTIONS} секций — блок не убирается`);
   return {
     ok: true,
     state: {

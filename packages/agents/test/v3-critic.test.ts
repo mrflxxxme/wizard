@@ -21,7 +21,7 @@ import {
   readSite,
   runCritic,
 } from "../src/builder/index.js";
-import { siteFacts, siteFiles } from "../src/builder/v3/compose/index.js";
+import { HOME_MIN_SECTIONS, siteFacts, siteFiles } from "../src/builder/v3/compose/index.js";
 import { shownCode } from "../src/builder/v3/critic/hook.js";
 import { pageOutline } from "../src/builder/v3/critic/index.js";
 import { signatureFallback } from "../src/builder/v3/critic/ops.js";
@@ -250,7 +250,32 @@ describe("V3-13 edit operations (closed set, applied by code)", () => {
     expect(applyEdit(state, { op: "drop_section", route: "/", section: "hero" }, env).ok).toBe(false);
     const form = applyEdit(state, { op: "drop_section", route: "/", section: "form" }, env);
     expect(form.ok ? "" : form.reason_ru).toContain("данными");
-    expect(applyEdit(state, { op: "drop_section", route: "/", section: "services" }, env).ok).toBe(true);
+    // Rehearsal №6: the home page keeps at least HOME_MIN_SECTIONS body sections (3 here: the drop is refused).
+    const short = applyEdit(state, { op: "drop_section", route: "/", section: "services" }, env);
+    expect(short.ok ? "" : short.reason_ru).toBe(
+      `на главной останется меньше ${HOME_MIN_SECTIONS} секций — блок не убирается`,
+    );
+    const services = page?.sections.find((s) => s.id === "services");
+    const long = {
+      ...state,
+      site: {
+        ...state.site,
+        pages: state.site.pages.map((p) =>
+          p.route === "/" && services
+            ? {
+                ...p,
+                sections: [
+                  ...p.sections.slice(0, -1),
+                  { ...services, id: "services-2" },
+                  { ...services, id: "services-3" },
+                  ...p.sections.slice(-1),
+                ],
+              }
+            : p,
+        ),
+      },
+    };
+    expect(applyEdit(long, { op: "drop_section", route: "/", section: "services" }, env).ok).toBe(true);
   });
 });
 

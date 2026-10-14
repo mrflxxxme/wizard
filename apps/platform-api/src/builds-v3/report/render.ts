@@ -1,5 +1,5 @@
 // V4-04: the report as Markdown — the admin page and the body of the issue of a failed founder build.
-import type { BuildReport, ReportCall, ScenarioTiming } from "./types.js";
+import type { BuildReport, ReportCall, ReportScenario, ScenarioTiming } from "./types.js";
 
 const cell = (s: string | number | null | undefined): string =>
   String(s ?? "—")
@@ -28,6 +28,7 @@ export function renderReportMd(r: BuildReport, base: string): string {
   if (!r.scenarios.length) out.push("Сценариев нет.");
   for (const s of r.scenarios) {
     out.push(`- **${s.id}** — ${s.status}${s.problems.length ? `: ${s.problems.join("; ")}` : ""}`);
+    for (const line of promiseLines(s)) out.push(`  - ${line}`);
     if (s.timing) out.push(`  - время: ${timingLine(s.timing)}`);
     for (const h of s.http.filter((x) => x.status >= 400 || x.failure).slice(0, 10))
       out.push(`  - ${h.method} ${h.url} → ${h.failure ?? h.status}${h.body ? ` \`${cell(h.body)}\`` : ""}`);
@@ -88,4 +89,17 @@ function timingLine(t: ScenarioTiming): string {
   const check = `проверка ${sec(t.checkMs)} (G0 ${sec(t.g0Ms)}, G1 ${sec(t.g1Ms)}, обещания ${sec(t.promisesMs)})`;
   const repair = t.repairMs ? `, ремонт ${sec(t.repairMs)} + проверка ${sec(t.repairCheckMs)}` : "";
   return `всего ${sec(t.totalMs)}: сборка ${sec(t.composeMs)}, ${check}${repair}`;
+}
+
+/**
+ * V4-21: the promises of a scenario that passed but does not show them — withdrawn for want of facts (D49) or not kept;
+ * none — no line (its promises are kept, or it promised nothing).
+ */
+export function promiseLines(s: Pick<ReportScenario, "unkept" | "withdrawn">): string[] {
+  const withdrawn = new Set(s.withdrawn ?? []);
+  const notKept = (s.unkept ?? []).filter((x) => !withdrawn.has(x));
+  return [
+    ...(withdrawn.size ? [`обещания сняты — нет фактов владельца: ${[...withdrawn].join("; ")}`] : []),
+    ...(notKept.length ? [`обещания не выполнены: ${notKept.join("; ")}`] : []),
+  ];
 }

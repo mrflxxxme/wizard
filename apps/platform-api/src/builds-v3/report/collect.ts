@@ -149,6 +149,8 @@ export async function collectBuildReport(pg: postgres.Sql, o: CollectInput): Pro
         status: str(d.status) ?? "unknown",
         problems: strs(d.problems).slice(0, 5),
         http: http.filter((h) => h.scenario === id),
+        ...(strs(d.unkept).length ? { unkept: strs(d.unkept).slice(0, 8) } : {}),
+        ...(strs(d.withdrawn).length ? { withdrawn: strs(d.withdrawn).slice(0, 8) } : {}),
         ...(timing ? { timing } : {}),
       };
     })
