@@ -2737,6 +2737,51 @@ tasks:
     acceptance:
       - "Проба приёмки: карточки кофейни и салона с фото по теме, шарды сайта верные (38511868096)"
       - "Обзор 15 ниш: список ниш, где герой или карточки — люди крупно, текст или чужая ниша"
+  - id: V4-30
+    title: "Фото сайта из своего шарда ниши, смежные — из группы каталога; второй круг карточек глубже; запросы танцев и сантехники"
+    milestone: V4
+    deps: [V4-28]
+    specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4"]
+    owner: platform
+    parallel_group: v4-c
+    estimate_days: 0.5
+    status: done
+    claimed_by: session_01HWKT1m6cHQBBtUV7d9pQhf
+    owns: ["packages/agents/src/stock/catalog.ts", "packages/agents/src/stock/photos.ts (siteShards)", "apps/platform-api/src/builds-v3/card-photos.ts", "tools/stock/fill.mjs (--prune)", "tools/stock/sites.mjs", ".github/workflows/stock-library.yml (prune)"]
+    acceptance:
+      - "Ниша, которую называет каталог, берёт свой шард: ветклиника — vet, клининг — cleaning (тест и обзор 38521959330)"
+      - "Смежный шард сайта — только из группы каталога первого шарда (тест)"
+      - "Второй круг карточек — 4 кандидата строки (тест)"
+      - "fill --prune убирает фото старых запросов и дозаполняет шард (тест; dance и plumbing — 38520656968)"
+  - id: V4-31
+    title: "Второй круг карточек — и из смежных ниш группы; ниша вне каталога — без чужого шарда"
+    milestone: V4
+    deps: [V4-30]
+    specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4"]
+    owner: platform
+    parallel_group: v4-c
+    estimate_days: 0.25
+    status: done
+    claimed_by: session_01HWKT1m6cHQBBtUV7d9pQhf
+    owns: ["apps/platform-api/src/builds-v3/card-photos.ts", "packages/agents/src/stock/catalog.ts (shardNamesNiche)", "packages/agents/src/stock/photos.ts (siteShards)"]
+    acceptance:
+      - "Второй круг: 2 последних кандидата строки — из других ниш группы каталога сайта (тест)"
+      - "Ниша вне каталога берёт шард по сходству, только если его название делит с ней корень, иначе — generic (тест)"
+      - "Повторный обзор 15 ниш: пустой каталог не больше чем в 1 из 15 (после пополнения Z.AI)"
+  - id: V4-32
+    title: "Дозаполнение шардов под строки каталога без фото: новые запросы, цель 310"
+    milestone: V4
+    deps: [V4-31]
+    specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D79_v4"]
+    owner: platform
+    parallel_group: v4-c
+    estimate_days: 0.1
+    status: done
+    claimed_by: session_01HWKT1m6cHQBBtUV7d9pQhf
+    owns: ["packages/agents/src/stock/catalog.ts (target, wide)", "tools/stock/fill.mjs (target)"]
+    acceptance:
+      - "Ниша с target заполняется сверх NICHE_TARGET, остальные — до NICHE_TARGET (тест)"
+      - "7 шардов дозаполнены до 310 (38523979870)"
   - id: V4-19
     title: "Записи e2e v3 по этапам и частичная перезапись record-stale"
     milestone: V4
