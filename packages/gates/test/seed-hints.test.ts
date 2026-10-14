@@ -134,3 +134,31 @@ describe("validateScenario", () => {
     expect(errs.join()).toContain("seedHints ticket.holder_email");
   });
 });
+
+// V4-27: an optional photo hint may leave a row empty (null) — the card shows none rather than a wrong one.
+test("image hints: null leaves an optional photo empty for its row; a required one needs a photo", () => {
+  const photoSpec = {
+    app: { name: "Каталог", locale: "ru" },
+    entities: [
+      {
+        name: "service",
+        label: "Услуга",
+        fields: [
+          { name: "name", label: "Название", type: "string", required: true },
+          { name: "photo", label: "Фото", type: "image" },
+          { name: "cover", label: "Обложка", type: "image", required: true },
+        ],
+      },
+    ],
+    roles: [{ name: "owner", label: "Владелец", access: "login" }],
+    permissions: [{ role: "owner", entity: "service", ops: ["read"] }],
+    pages: [],
+    acceptance: [],
+  } as never;
+  const photo = "/_wizard/photos/00000000-0000-4000-8000-000000000001/960";
+  const hint: SeedHint = { entity: "service", field: "photo", values: [photo, null, photo] };
+  expect(validateSeedHint(photoSpec, hint)).toEqual([]);
+  expect(validateSeedHint(photoSpec, { entity: "service", field: "cover", values: [null] })).not.toEqual([]);
+  const rows = generateSeed(photoSpec, "k", { now: NOW, hints: [hint] }).rows.service ?? [];
+  expect(rows.map((r) => r.photo ?? null)).toEqual([photo, null, photo]);
+});

@@ -17,7 +17,9 @@ import {
   OPERATOR_LINE_RU,
   OPERATOR_QUESTION,
   PLACE_QUESTION_TEXT,
+  PRICE_QUESTION_TEXT,
   placeFacts,
+  priceFacts,
   questionOrderIssues,
   scrubTokenPlaces,
   stopReason,
@@ -103,6 +105,18 @@ describe("the dental dialog on a scripted model", () => {
       phone: "+7 843 210-45-67",
       hours: "пн–пт 9:00–20:00, сб 10:00–16:00",
     });
+    // V4-24: the prices «от» of the main services, by code too; the answer replaces the build-time question of prices.
+    const prices = questionOf(res.outputs);
+    expect(prices).toMatchObject({ text: PRICE_QUESTION_TEXT, topic: "content", step: 5 });
+    res = await iv.answer(res.session, {
+      questionId: prices.id,
+      text: "Лечение кариеса — от 3 500 ₽; Профессиональная чистка — 4000",
+    });
+    expect(res.session.llmCalls).toBe(callsBefore);
+    expect(priceFacts(res.session.brief)).toEqual([
+      { name: "Лечение кариеса", price: 3500 },
+      { name: "Профессиональная чистка", price: 4000 },
+    ]);
     const done = main(res.outputs);
     expect(done?.kind).toBe("brief");
     if (done?.kind !== "brief") return;
@@ -118,24 +132,17 @@ describe("the dental dialog on a scripted model", () => {
     expect(b.roles.map((r) => r.id)).toEqual(["owner", "admin", "doctor"]);
     expect(b.data[0]?.fields.filter((f) => f.pii).map((f) => f.name)).toEqual(["Имя", "Телефон"]);
     // The journal: the recommended button, «Решите за меня» (with its assumption), an own answer.
-    expect(b.qa.map((x) => x.chosen)).toEqual(["recommended", "delegated", "custom", "custom"]);
+    expect(b.qa.map((x) => x.chosen)).toEqual(["recommended", "delegated", "custom", "custom", "custom"]);
     expect(b.qa[1]).toMatchObject({ a: "Имя и телефон", recommended: "Имя и телефон" });
+    // The owner's prices replace the «без цен» assumption.
     expect(b.assumptions).toEqual([
       { text: "Какие данные пациента нужны для записи? — Имя и телефон (решили за вас)", source: "default" },
-      { text: "Покажем список услуг без цен (уточним во время сборки)", source: "default" },
     ]);
     // Non-blocking questions → the build queue; the brief keeps personal data — the operator's data are asked by code
     // (no turn), filled by the owner in the settings before publication (V3-18).
-    expect(done.deferred).toEqual([
-      {
-        topic: "content",
-        text: "Какие услуги и цены показать на сайте?",
-        assumption: "Покажем список услуг без цен",
-      },
-      OPERATOR_QUESTION,
-    ]);
+    expect(done.deferred).toEqual([OPERATOR_QUESTION]);
     expect(done.text).toContain(OPERATOR_LINE_RU);
-    expect(done.text).toContain("Вопросы на время сборки: 2.");
+    expect(done.text).toContain("Вопросы на время сборки: 1.");
     expect(b.capability.map((c) => c.level)).toEqual(["modules", "modules"]);
     expect(done.text).toContain("Бриф готов");
     expect(done.text).toContain("на проверенных модулях — 2");
@@ -563,7 +570,9 @@ describe("research, personal data, development requests, owner edits, wishes", (
     let res = await iv.start(newInterviewV3Session(), { prompt: PROMPTS.dental });
     for (const a of DENTAL_ANSWERS)
       res = await iv.answer(res.session, { questionId: questionOf(res.outputs).id, ...a });
-    res = await iv.answer(res.session, { questionId: questionOf(res.outputs).id, optionId: "later" });
+    // V4-24: where to find the clinic and its prices «от» — both later.
+    for (let i = 0; i < 2; i++)
+      res = await iv.answer(res.session, { questionId: questionOf(res.outputs).id, optionId: "later" });
     expect(res.session.state).toBe("ready");
     const wish = await iv.say(res.session, "Добавь, что приходят и родители с детьми");
     expect(main(wish.outputs)?.kind).toBe("brief");
