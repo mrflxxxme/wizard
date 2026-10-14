@@ -4,7 +4,12 @@
 // once (text in the frame, the niche's equipment) and the verdict is kept for the seed of the draft (checkpoint
 // «card_photos»): a foreign sign or another medicine never lands on a card.
 import { createHash } from "node:crypto";
-import type { LibraryPhotoEntry, PhotoPicker, SemanticPhotoSource } from "@wizard/agents/stock";
+import {
+  CATALOG,
+  type LibraryPhotoEntry,
+  type PhotoPicker,
+  type SemanticPhotoSource,
+} from "@wizard/agents/stock";
 import type { AppSpec } from "@wizard/appspec";
 import { LIBRARY_PHOTO_HINT, SEED_HINT_MAX_VALUES, type SeedHint } from "@wizard/gates";
 
@@ -55,6 +60,20 @@ export function planNiche(plan: readonly unknown[]): string | null {
   return null;
 }
 
+/** Word stems of a text (words of 5+ letters, their first 5): «Маникюр и педикюр» → маник, педик. */
+const stems = (text: string): Set<string> =>
+  new Set((text.toLowerCase().match(/[а-яё]{5,}/g) ?? []).map((w) => w.slice(0, 5)));
+
+/**
+ * V4-28: the library niches a row names itself («Брови и ресницы» → brows, «Маникюр и педикюр» → nails): a salon's
+ * site photos come from one shard (hair), its cards of other directions take their own. [] — the row names none.
+ */
+export function rowNiches(row: string): string[] {
+  const own = stems(row);
+  if (own.size === 0) return [];
+  return CATALOG.filter((c) => [...stems(c.name)].some((s) => own.has(s))).map((c) => c.slug);
+}
+
 /** One card row and its candidates, best first. */
 export interface CardRow {
   /** The row's name («Терапия»), or its number when the brief names none. */
@@ -94,12 +113,15 @@ export async function semanticSeedHints(
   );
   const inNiche = (e: { niche: string }) => shards.size === 0 || shards.has(e.niche);
   const per = topic.check ? CHECK_CANDIDATES : 1;
-  const search = async (q: string, n: number): Promise<LibraryPhotoEntry[]> =>
+  const search = async (q: string, n: number, own: readonly string[] = []): Promise<LibraryPhotoEntry[]> =>
     (
       await source
         .search(q.slice(0, 200), {
           limit: n + 4,
-          filter: (e) => e.width >= e.height * 1.15 && !taken.has(e.file) && inNiche(e),
+          filter: (e) =>
+            e.width >= e.height * 1.15 &&
+            !taken.has(e.file) &&
+            (own.length ? own.includes(e.niche) : inNiche(e)),
         })
         .catch(() => [])
     )
@@ -113,7 +135,10 @@ export async function semanticSeedHints(
     const rows: CardRow[] = [];
     if (names.length) {
       for (const n of names) {
-        const found = await search(`${site}, ${n}`, per);
+        // A row of another direction («Брови и ресницы» of a salon) searches its own niche; a row whose niches take in
+        // the site's own («Детская стоматология» of a clinic) stays in the site's.
+        const own = rowNiches(n);
+        const found = await search(`${site}, ${n}`, per, own.some((x) => shards.has(x)) ? [] : own);
         // A row without a photo ends the list: the photos follow the rows in order.
         if (!found.length) break;
         for (const e of found) taken.add(e.file);
