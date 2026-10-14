@@ -184,6 +184,24 @@ describe("generic seed values without a hint (V3-18)", () => {
     }
   });
 
+  test("V4-29: the site's niche prices the demo rows, not the app's name; a niche the prices lack keeps the default", () => {
+    const zerno = specOf("Зерно и пар");
+    const priced = (niche: string) =>
+      rowsOf(generateSeed(zerno, "key-1", { now: NOW, niche }), "product").map((r) => r.price);
+    // The acceptance briefs v3-13, v3-02, v3-14 by the niche of their sites.
+    for (const p of priced("кофейня")) expect([300, 400, 500, 700, 900]).toContain(p);
+    for (const p of priced("стоматология")) expect([1500, 2500, 3500, 5000, 7000]).toContain(p);
+    for (const p of priced("салон красоты")) expect([1200, 1800, 2500, 3200, 4500]).toContain(p);
+    // The niche wins over a misleading description; an optional price stays empty with any niche.
+    const misleading = specOf("Кофейня при салоне красоты");
+    for (const r of rowsOf(generateSeed(misleading, "key-1", { now: NOW, niche: "кофейня" }), "product"))
+      expect([300, 400, 500, 700, 900]).toContain(r.price);
+    for (const r of rowsOf(generateSeed(zerno, "key-1", { now: NOW, niche: "кофейня" }), "service"))
+      expect(r.price).toBeUndefined();
+    // A required price of an unknown niche cannot stay empty: round default prices.
+    for (const p of priced("обсерватория")) expect([1000, 1500, 2000, 3000, 5000]).toContain(p);
+  });
+
   test("durations on the booking grid, plausible grams and stock, an article code", () => {
     for (let k = 0; k < 20; k++)
       for (const r of rowsOf(generateSeed(spec, `d${k}`, { now: NOW }), "service"))

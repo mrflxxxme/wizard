@@ -11,6 +11,8 @@ export interface RealCtx {
   key: string;
   /** Lower-cased domain text of the spec (app name, description, entity labels): see domainHint. */
   hint: string;
+  /** V4-29: the site's niche (lower-cased), when the build knows it: demo prices go by it, not by the hint. */
+  niche?: string;
   entity: Entity;
   field: Field;
   /** Row index inside the entity. */
@@ -209,8 +211,10 @@ const NICHE_PRICES: readonly [RegExp, readonly number[]][] = [
   ],
   [/кафе(?!др)|кофе|ресторан|пицц|бургер|суши|обед/, [300, 400, 500, 700, 900]],
 ];
+/** Prices of a required price field whose niche is unknown (it cannot stay empty). */
 const DEFAULT_PRICES = [1000, 1500, 2000, 3000, 5000];
-const nichePrices = (hint: string) => NICHE_PRICES.find(([re]) => re.test(hint))?.[1] ?? DEFAULT_PRICES;
+/** Prices of the niche named in `text`; null — none of the known niches. */
+const nichePrices = (text: string) => NICHE_PRICES.find(([re]) => re.test(text))?.[1] ?? null;
 /** Service durations on the booking grid (minutes). */
 const DURATIONS = [60, 90, 30, 120];
 const HOURS = ["Пн–Пт 10:00–19:00", "Ежедневно 10:00–20:00", "Пн–Сб 09:00–21:00"];
@@ -403,7 +407,8 @@ function moneyValue(c: RealCtx): number | null | undefined {
     // An optional price without a vocabulary stays empty: the showcase says «по запросу» until the owner sets it.
     return null;
   }
-  v ??= rotate(nichePrices(c.hint), c, "row");
+  // V4-29: the site's niche decides when the build knows it (the app's name says nothing about prices).
+  v ??= rotate(nichePrices(c.niche ?? c.hint) ?? DEFAULT_PRICES, c, "row");
   const lo = c.field.min ?? 0;
   if (v < lo || (c.field.max !== undefined && v > c.field.max)) return undefined;
   return v;

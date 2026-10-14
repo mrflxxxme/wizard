@@ -391,6 +391,8 @@ describe("V3-13 critic", () => {
     expect(r.cycles[0]?.rejected.map((x) => x.reason_ru)).toEqual([
       expect.stringContaining("untraced-number"),
     ]);
+    // A finding with nothing to apply is said (the report's «why no edits»), not lost.
+    expect(r.cycles[0]?.noEdit).toEqual(["P2 · фирменной детали не хватает · /@1440#hero"]);
     // Cycle 2 sees what was done and refused.
     const second = fx.calls[1]?.messages.find((m) => m.role === "user")?.content ?? "";
     expect(second).toContain(

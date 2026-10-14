@@ -121,6 +121,8 @@ export interface ValueGenOptions {
   key?: string;
   /** domainHint(spec): picks domain vocabularies (bakery, events). */
   hint?: string;
+  /** V4-29: the site's niche (the brief's, as its photos): demo prices of its niche, not of the app's name. */
+  niche?: string;
 }
 
 /** The field is part of a unique index of the entity (single or composite). */
@@ -154,6 +156,7 @@ export class ValueGen {
       const v = realisticValue({
         key: this.opts.key ?? "",
         hint: this.opts.hint ?? "",
+        ...(this.opts.niche ? { niche: this.opts.niche } : {}),
         entity: e,
         field: f,
         i,
@@ -294,6 +297,11 @@ export interface SeedOptions {
    * publication dates lie in the past. Off — the seed of G1/G2 as it was.
    */
   showcase?: boolean;
+  /**
+   * V4-29: the site's niche («кофейня», «стоматология»): prices and vocabularies of its niche. The app's name («Зерно и
+   * пар») says nothing about it — a coffee house showed coffee at 1 800 ₽ by another niche's prices.
+   */
+  niche?: string;
 }
 
 /** Rows a visitor sees of an entity behind a fixed row filter in the draft's demo data (a blog shows three articles). */
@@ -465,7 +473,12 @@ function plausibleRow(
 /** gates.generateSeed(spec, key) — architecture.yaml#interfaces.gates, qa.yaml#seed. */
 export function generateSeed(spec: AppSpec, key: string, opts: SeedOptions = {}): Seed {
   const now = opts.now ?? new Date(Math.floor(Date.now() / DAY_MS) * DAY_MS);
-  const gen = new ValueGen(now, 1, { key, hint: domainHint(spec) });
+  const niche = opts.niche?.trim().toLowerCase();
+  const gen = new ValueGen(now, 1, {
+    key,
+    hint: niche ? `${niche} ${domainHint(spec)}` : domainHint(spec),
+    ...(niche ? { niche } : {}),
+  });
   const hints = mergeSeedHints(spec, opts.hints ?? []);
   const users: SeedUser[] = [];
   for (const r of spec.roles) {

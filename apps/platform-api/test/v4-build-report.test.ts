@@ -24,7 +24,7 @@ import { createAgentExecutors } from "../src/agents/executors.js";
 import { OutboxMailer } from "../src/auth/mailer.js";
 import { totpCode } from "../src/auth/totp.js";
 import { saveBriefVersion } from "../src/briefs/store.js";
-import { criticTop } from "../src/builds-v3/report/collect.js";
+import { criticTop, criticWhy } from "../src/builds-v3/report/collect.js";
 import { loadBuildReport, renderReportMd, reportFile, reportStorage } from "../src/builds-v3/report/index.js";
 import { startV3Build } from "../src/builds-v3/start.js";
 import { DEFAULT_ORG_ID, DEV_USER_ID, json } from "../src/db/index.js";
@@ -198,5 +198,22 @@ describe("V4-09: the critic's main findings in the report", () => {
       "P3 · C01 · /@1440#footer",
     ]);
     expect(criticTop(undefined)).toEqual([]);
+  });
+});
+
+describe("V4-09: why the critic applied nothing", () => {
+  test("its findings without an edit and its refused edits with the reason, at most five each", () => {
+    expect(
+      criticWhy({
+        noEdit: ["P1 · L13 перегруженный первый экран · /@390#hero"],
+        rejected: [
+          { edit: "патч ui/sections/home-hero.tsx", reason_ru: "фрагмент не найден в файле ровно один раз" },
+        ],
+      }),
+    ).toEqual({
+      noEdit: ["P1 · L13 перегруженный первый экран · /@390#hero"],
+      rejected: ["патч ui/sections/home-hero.tsx: фрагмент не найден в файле ровно один раз"],
+    });
+    expect(criticWhy(undefined)).toEqual({ noEdit: [], rejected: [] });
   });
 });

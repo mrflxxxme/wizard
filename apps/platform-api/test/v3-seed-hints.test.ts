@@ -9,7 +9,7 @@ import { INTERIOR_STUDIO } from "../../../packages/agents/test/v3-eval-briefs.js
 import { migrateDraft, seedDraft } from "../src/agents/draft.js";
 import { saveBriefVersion } from "../src/briefs/store.js";
 import { pgCheckpointStore } from "../src/builds-v3/checkpoints.js";
-import { checkCardPhotos, draftSeedHints } from "../src/builds-v3/host.js";
+import { checkCardPhotos, draftNiche, draftSeedHints } from "../src/builds-v3/host.js";
 import { DEFAULT_ORG_ID, DEV_USER_ID, json } from "../src/db/index.js";
 import { createTestDb, fakeExecutors, startApi, type TestApi } from "./helpers.js";
 
@@ -82,6 +82,25 @@ describe("draft seed hints from the brief", () => {
     await migrateDraft(api.deps.pg, { systemKey: key, spec, prevSpec: null });
     await seedDraft(api.deps.pg, { systemKey: key, spec });
     for (const r of await names(key)) expect(r.name).toMatch(/^Услуга \d+$/);
+  });
+});
+
+// V4-29: the demo prices go by the site's niche — the art director's (checkpoint «design»), else its photos' one.
+describe("the niche of the draft", () => {
+  const checkpoint = (systemId: string, key: string, data: unknown) =>
+    api.deps.pg`
+      insert into platform.system_build_checkpoints (system_id, key, checkpoint)
+      values (${systemId}, ${key}, ${api.deps.pg.json({ key, fingerprint: "f", data } as never)})`;
+
+  test("design first, then the photos' alt, else none", async () => {
+    const a = await addSystem();
+    expect(await draftNiche(api.deps.db, a.id)).toBeNull();
+    await checkpoint(a.id, "photos", {
+      photos: [{ slot: "top", alt: "Первый экран — фото по теме «кофейня»" }],
+    });
+    expect(await draftNiche(api.deps.db, a.id)).toBe("кофейня");
+    await checkpoint(a.id, "design", { niche: "кофейня и обжарка" });
+    expect(await draftNiche(api.deps.db, a.id)).toBe("кофейня и обжарка");
   });
 });
 

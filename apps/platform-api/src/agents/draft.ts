@@ -100,13 +100,21 @@ async function insertRow(
  */
 export async function seedDraft(
   pg: postgres.Sql,
-  i: { systemKey: string; spec: AppSpec; migratorRole?: string; hints?: readonly SeedHint[] },
+  i: {
+    systemKey: string;
+    spec: AppSpec;
+    migratorRole?: string;
+    hints?: readonly SeedHint[];
+    /** V4-29: the site's niche (draftNiche): demo prices of the niche, not of the app's name. */
+    niche?: string | null;
+  },
 ): Promise<{ users: number; rows: number }> {
   const schema = schemaName(i.systemKey, "draft");
   // The draft's demo data: what a visitor reads behind a fixed filter is there (published articles, V3-40).
   const seed = generateSeed(i.spec, sha256(i.systemKey), {
     showcase: true,
     ...(i.hints?.length ? { hints: i.hints } : {}),
+    ...(i.niche ? { niche: i.niche } : {}),
   });
   const demo = withoutDemoArticles(seed.rows, i.hints ?? []);
   let rows = 0;

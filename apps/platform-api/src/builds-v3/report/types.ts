@@ -83,6 +83,11 @@ export interface BuildReport {
     top?: string[];
     /** Problems of the deterministic checks left after the critic (code, page and section, what is wrong). */
     left?: { code: string; where: string; message: string }[];
+    /**
+     * Why the last cycle applied nothing: findings without an edit or a patch, and the edits refused with their reason
+     * («патч: фрагмент не найден в файле ровно один раз»).
+     */
+    why?: { noEdit: string[]; rejected: string[] };
   } | null;
   techreview: { status: string | null; blockers: string[]; notes: string[] } | null;
   calls: ReportCall[];
