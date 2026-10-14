@@ -196,6 +196,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @wizard/e2e exec playwright install --with-deps chromium
+      # The critic in Chromium follows the models' routes, which PRs change (main went red on #175): run it in PRs too.
+      - name: Critic v3 in Chromium
+        run: pnpm exec vitest run --project browser apps/platform-api/test/v3-critic.browser.test.ts
       - run: pnpm --filter @wizard/e2e exec playwright test --project v3
       - uses: actions/upload-artifact@v4
         if: failure()

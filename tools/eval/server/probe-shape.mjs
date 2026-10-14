@@ -2,7 +2,7 @@
 // probe (probe.mjs) sends one trivial message per route head; checkpoint 1 then failed where the production requests
 // differ from it: critic_visual (0 of 2 attempts, fast refusals) and techreview (2 of 7). This probe sends the
 // production SHAPES on synthetic content, model by model of the route's chain, with variants that isolate the cause:
-//   critic_visual (kimi-k2.6, qwen3.6-35b): as in the build — the real system prompt, the critique text, six JPEGs of
+//   critic_visual (qwen3.6-35b, kimi-k2.6): as in the build — the real system prompt, the critique text, six JPEGs of
 //     the shot plan and submit_critique with toolChoice required; when that is not usable, also 1 JPEG / 6 JPEGs
 //     without a tool, required + 1 JPEG, required without images, toolChoice auto, and the answer as JSON text
 //     (callTool textArgs);
@@ -31,7 +31,7 @@ export const SHAPE_GROUPS = Object.keys(SHAPE_CALL_TYPES);
 
 /** The T0 chains of the routes (models.yaml#routes; a test keeps them equal to the registry). */
 export const SHAPE_CHAINS = {
-  critic: ["kimi-k2.6", "qwen3.6-35b"],
+  critic: ["qwen3.6-35b", "kimi-k2.6"],
   techreview: ["gpt-oss-120b", "gigachat-3.5", "deepseek-v4-pro", "kimi-k2.6"],
 };
 
