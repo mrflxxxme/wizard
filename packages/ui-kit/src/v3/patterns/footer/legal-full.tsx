@@ -16,6 +16,10 @@ const docLinkClass =
 
 export default function FooterLegalFull({ brand, tagline, contacts, columns, legal }: FooterLegalFullProps) {
   const links = (columns ?? []).flatMap((c) => c.links);
+  // Before the owner gives the operator (a draft) the value is the site's «© <year> <name>» (content.ts footerProps):
+  // a copyright under the contacts, not a row «Оператор» that reads as a placeholder.
+  const operator = legal.operator.trim();
+  const named = operator !== "" && !operator.startsWith("©");
   return (
     <footer className="border-t border-border bg-muted font-sans text-foreground">
       <div className="mx-auto w-full max-w-page px-gutter py-16">
@@ -44,12 +48,15 @@ export default function FooterLegalFull({ brand, tagline, contacts, columns, leg
                 ))}
               </ul>
             ) : null}
+            {!named && operator ? <p className="mt-6 text-small text-muted-foreground">{operator}</p> : null}
           </div>
           <dl className="min-w-0 divide-y divide-border border-y border-border lg:col-span-7">
-            <div className="grid gap-1 py-4 sm:grid-cols-[12rem_minmax(0,1fr)] sm:gap-6">
-              <dt className="text-small font-bold text-muted-foreground">Оператор персональных данных</dt>
-              <dd className="text-body wrap-break-word">{legal.operator}</dd>
-            </div>
+            {named ? (
+              <div className="grid gap-1 py-4 sm:grid-cols-[12rem_minmax(0,1fr)] sm:gap-6">
+                <dt className="text-small font-bold text-muted-foreground">Оператор персональных данных</dt>
+                <dd className="text-body wrap-break-word">{operator}</dd>
+              </div>
+            ) : null}
             {legal.details ? (
               <div className="grid gap-1 py-4 sm:grid-cols-[12rem_minmax(0,1fr)] sm:gap-6">
                 <dt className="text-small font-bold text-muted-foreground">Реквизиты</dt>
