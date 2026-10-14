@@ -1,9 +1,10 @@
 // V4-10 (D79 (6)): one grade for every photo of a site, so photos from different stocks and authors read as one shoot
 // in the direction's style. Plain CSS filter functions (GPU, every browser, nothing re-encoded, a photo swap stays
-// instant): the tone and contrast of the direction's image treatment, then a light cast toward the accent hue
-// (sepia() gives a warm base, hue-rotate() turns it to the accent); monochrome turns into a duotone of the accent.
-// A neutral accent (low chroma) gets no cast. The rule targets the library photos the runtime serves
-// (/_wizard/photos/…) and elements marked data-wz-photo (background photos), never the owner's uploads or logos.
+// instant): the tone and contrast of the direction's image treatment, then a light warm cast (sepia) when the accent is
+// warm; monochrome turns into a duotone of the accent (sepia, then hue-rotate). hue-rotate is never applied to a colour
+// photo: it turns every hue of the picture, not the cast — skin went green and chairs pink under a teal accent (V4-22,
+// acceptance rehearsal 38483200787). A neutral accent gets no cast. The rule targets the library photos the runtime
+// serves (/_wizard/photos/…) and elements marked data-wz-photo (background photos), never the owner's uploads or logos.
 import type { DesignSystemV3 } from "@wizard/ui-kit/v3/design";
 import { cssHex, parseOklch } from "@wizard/ui-kit/v3/design";
 
@@ -30,6 +31,9 @@ const NEUTRAL_CHROMA = 0.04;
 /** Hue sepia() lands on (HSL degrees): hue-rotate turns it from here to the accent. */
 const SEPIA_HUE = 35;
 
+/** A warm hue (HSL degrees): reds, oranges, yellows. */
+const warm = (hue: number) => hue <= 60 || hue >= 330;
+
 /** HSL hue (degrees) of a hex colour; null — grey. */
 export function hslHue(hex: string): number | null {
   const v = hex.replace("#", "");
@@ -55,11 +59,12 @@ export function photoGrade(o: { treatment: ImageTreatment; accent: string }): Ph
   const neutral = ok ? ok.c < NEUTRAL_CHROMA : !hex;
   const hue = !neutral && hex ? hslHue(hex) : null;
   if (hue === null) return { filter: base.tone, hue: null };
-  const rotate = Math.round((((hue - SEPIA_HUE) % 360) + 540) % 360) - 180;
-  return {
-    filter: `${base.tone} sepia(${num(base.cast)}) hue-rotate(${rotate}deg)${o.treatment === "monochrome" ? "" : " saturate(1.04)"}`,
-    hue,
-  };
+  if (o.treatment === "monochrome") {
+    const rotate = Math.round((((hue - SEPIA_HUE) % 360) + 540) % 360) - 180;
+    return { filter: `${base.tone} sepia(${num(base.cast)}) hue-rotate(${rotate}deg)`, hue };
+  }
+  // A colour photo: only a warm accent (reds, oranges, yellows) warms it a little; a cool one keeps its colours.
+  return warm(hue) ? { filter: `${base.tone} sepia(${num(base.cast)})`, hue } : { filter: base.tone, hue };
 }
 
 /** Selector of the photos the grade applies to. */
