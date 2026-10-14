@@ -226,6 +226,37 @@ function merged(
 }
 
 /** An edit of a cycle: a closed operation or a code edit (V4-09). */
+/** Characters of code the critic is shown at most (the page files first, then the code sections in page order). */
+export const CRITIC_CODE_CHARS = 32_000;
+
+/**
+ * The code the critic may patch: the files of the shown pages, then the sections of those pages written as code
+ * (type signature, ui/sections/*), the first screen first; within CRITIC_CODE_CHARS.
+ */
+export function shownCode(
+  site: SiteModel,
+  files: ReadonlyMap<string, string | null>,
+  routes: readonly string[],
+  max = CRITIC_CODE_CHARS,
+): Map<string, string> {
+  const pages = [...new Set(routes)].flatMap((rt) => site.pages.filter((pg) => pg.route === rt));
+  const wanted = [
+    ...pages.map((pg) => pg.file),
+    ...pages.flatMap((pg) =>
+      pg.sections.filter((x) => x.type === "signature" && x.file).map((x) => x.file as string),
+    ),
+  ];
+  const out = new Map<string, string>();
+  let size = 0;
+  for (const file of new Set(wanted)) {
+    const src = files.get(file);
+    if (typeof src !== "string" || size + src.length > max) continue;
+    out.set(file, src);
+    size += src.length;
+  }
+  return out;
+}
+
 export type Change = { kind: "op"; op: EditOp } | { kind: "patch"; patch: CodePatch };
 
 export const describeChange = (ch: Change): string =>
@@ -412,7 +443,9 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
     // V4-18: an edit that adds a stub (a dead link, a placeholder, a strange contact) is refused before the browser.
     const stub = newStub(filesOf(st), p.file, after, contacts);
     if (stub) return { ok: false, reason_ru: `правка добавляет заглушку: ${stub}` };
-    const pages = st.site.pages.filter((pg) => pg.file === p.file).map((pg) => pg.route);
+    const pages = st.site.pages
+      .filter((pg) => pg.file === p.file || pg.sections.some((x) => x.file === p.file))
+      .map((pg) => pg.route);
     return {
       ok: true,
       state: { ...st, code: [...(st.code ?? []), p] },
@@ -654,13 +687,12 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
       found: problems,
       history,
       stubPhotos,
-      // V4-09: the code of the shown pages — the patches edit it.
-      code: new Map(
-        [...new Set(shots.map((x) => x.route))].flatMap((rt) => {
-          const file = state.site.pages.find((pg) => pg.route === rt)?.file;
-          const src = file ? filesOf(state).get(file) : undefined;
-          return file && src !== undefined ? [[file, src] as const] : [];
-        }),
+      // V4-09: the code of the shown pages — the patches edit it: the page files and the sections written as code
+      // (V4-06: the first screen and most sections are code; without their files nothing on them can be fixed).
+      code: shownCode(
+        state.site,
+        filesOf(state),
+        shots.map((x) => x.route),
       ),
     });
     const need = round2(
