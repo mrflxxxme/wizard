@@ -5,6 +5,7 @@
 import type { AppSpec, BriefScenario, SystemBrief } from "@wizard/appspec";
 import { SEED_HINT_MAX_VALUES, type SeedHint, validateSeedHint } from "@wizard/gates";
 import { CATALOG_NAMES, SHOP_NAMES } from "@wizard/modules";
+import { staffFacts } from "../../../interview-v3/place.js";
 import { businessOf, offerOf, shownLists } from "./copy.js";
 
 /** Entities whose rows are the offer (catalog items, booking services, shop products) and their sections. */
@@ -107,7 +108,7 @@ function hintOf(spec: AppSpec, entity: string, values: readonly string[]): SeedH
  */
 export function seedHintsFromBrief(
   spec: AppSpec,
-  brief: Pick<SystemBrief, "scenarios">,
+  brief: Pick<SystemBrief, "scenarios"> & Partial<Pick<SystemBrief, "qa">>,
   request?: string | null,
 ): SeedHint[] {
   const offer = brief.scenarios.filter(
@@ -119,7 +120,9 @@ export function seedHintsFromBrief(
   const items =
     lists.find((l) => !SECTION_LIST.test(l.what))?.items ??
     (request ? offerOf(request, businessOf(request)) : null) ??
-    staffDirections(request);
+    staffDirections(request) ??
+    // V4-24: the specialists the owner named in the interview («Анна Смирнова — терапевт»), as directions.
+    directionsOf(staffFacts({ qa: brief.qa ?? [] }));
   const has = new Set(spec.entities.map((e) => e.name));
   const out: SeedHint[] = [];
   for (const [entities, list] of [
