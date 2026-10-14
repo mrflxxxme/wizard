@@ -143,6 +143,28 @@ describe("section code (signature sections)", () => {
     expect(codes({ ...sig(SIGNATURE_OK.source), props })).not.toContain("three-cards");
   });
 
+  test("crutches of code sections: an eyebrow label, 01/02/03 ordinals, a picture without words (L04, L05)", () => {
+    const brow = section(
+      '      <p className="text-small uppercase tracking-wide text-muted-foreground">Причины</p>',
+    );
+    expect(codes(sig(brow))).toContain("eyebrow");
+    expect(
+      codes(sig(section('      <p className="text-small text-muted-foreground">Причины</p>'))),
+    ).not.toContain("eyebrow");
+    const padded = section(
+      '      {["a", "b"].map((t, i) => (\n        <p key={t}>{String(i + 1).padStart(2, "0")} {t}</p>\n      ))}',
+    );
+    expect(codes(sig(padded))).toContain("ordinal");
+    // A time of a slot is padded too: not an ordinal.
+    const time = section('      <p>{String(hour).padStart(2, "0")}:00</p>', "const hour = 9;\n");
+    expect(codes(sig(time))).not.toContain("ordinal");
+    const photo = { image: { src: "/_wizard/photos/a/1600", alt: "Зал кофейни у окна с утренним светом" } };
+    expect(codes({ ...sig(SIGNATURE_OK.source), props: photo })).toContain("filler");
+    expect(codes({ ...sig(SIGNATURE_OK.source), props: { ...photo, title: "Зал у окна" } })).not.toContain(
+      "filler",
+    );
+  });
+
   test("accessibility: img without alt, meaningless alt, heading order, one h1", () => {
     expect(codes(sig(section('      <img src="/_wizard/photos/a/1600" />')))).toContain("img-alt");
     expect(codes({ ...sig(SIGNATURE_OK.source), props: { image: { src: "/x", alt: "фото" } } })).toContain(
