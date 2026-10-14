@@ -222,6 +222,43 @@ function pageFileSection(
 const SOURCE_ANCHOR_RE = /href=\{?["'`](\/?#[a-zA-Z][\w-]*)["'`]/g;
 const PROPS_ANCHOR_RE = /^\/?#[a-zA-Z][\w-]*$/;
 
+/** Anchors of the page: its section ids, the ids of the answer's sections and the ids their code declares. */
+function anchorIds(v: PageCodeAnswer, page: Pick<SitePage, "sections">): Set<string> {
+  const code = v.sections.flatMap((s) => (s.kind === "code" ? [s] : []));
+  return new Set([
+    ...page.sections.map((s) => s.id),
+    ...v.sections.map((s) => s.id),
+    ...code.flatMap((s) => [...s.source.matchAll(/\bid=\{?["'`]([\w-]+)["'`]/g)].map((m) => m[1] ?? "")),
+  ]);
+}
+
+/**
+ * Code links to an anchor the page lacks, sent by code to the main action: /booking when the site has it, else the
+ * page's form, request or contacts section (probe «prices»: the hero's last fix round, mending a type error, wrote
+ * `#request` — no round was left to hear of it). Returns the sources that changed; with no target nothing changes.
+ */
+export function retargetAnchors(
+  v: PageCodeAnswer,
+  page: Pick<SitePage, "route" | "sections">,
+  routes: readonly string[],
+): Map<string, string> {
+  const ids = anchorIds(v, page);
+  const out = new Map<string, string>();
+  const section = ["form", "request", "contacts"].find((x) => ids.has(x));
+  const href = page.route !== "/booking" && routes.includes("/booking") ? "/booking" : section && `#${section}`;
+  if (!href) return out;
+  for (const s of v.sections) {
+    if (s.kind !== "code") continue;
+    const next = s.source.replace(SOURCE_ANCHOR_RE, (all, link: string) =>
+      (link.startsWith("/") && page.route !== "/") || ids.has(link.slice(link.indexOf("#") + 1))
+        ? all
+        : all.replace(link, href),
+    );
+    if (next !== s.source) out.set(s.id, next);
+  }
+  return out;
+}
+
 /**
  * Links of code sections to an anchor the page does not have (rehearsal №6, coffee: «#order» from the first screen,
  * critic P0 S01) — a hard issue at the source section: the visitor's main action must lead somewhere. Anchors are the
@@ -231,12 +268,7 @@ export function anchorIssues(
   v: PageCodeAnswer,
   page: Pick<SitePage, "route" | "sections">,
 ): { path: string; code: string; message: string }[] {
-  const code = v.sections.flatMap((s) => (s.kind === "code" ? [s] : []));
-  const ids = new Set([
-    ...page.sections.map((s) => s.id),
-    ...v.sections.map((s) => s.id),
-    ...code.flatMap((s) => [...s.source.matchAll(/\bid=\{?["'`]([\w-]+)["'`]/g)].map((m) => m[1] ?? "")),
-  ]);
+  const ids = anchorIds(v, page);
   const out: { path: string; code: string; message: string }[] = [];
   v.sections.forEach((s, i) => {
     if (s.kind !== "code") return;
@@ -418,7 +450,11 @@ export async function pageSections(
   }
   let last: { path?: string; message: string }[] = [];
   let lastSource: string | undefined;
+  const routes = s.site.pages.map((p) => p.route);
   for (let round = 0; round < SECTION_ROUNDS; round++) {
+    // The model mends its own links first; on the last round the code sends what is left to the main action.
+    if (round === SECTION_ROUNDS - 1)
+      for (const [id, src] of retargetAnchors(planAnswer(plan, sources), s.page, routes)) sources.set(id, src);
     const answer = planAnswer(plan, sources);
     // The last round keeps only the hard issues: soft ones never leave the page as it was (G0 still decides).
     const lint = [

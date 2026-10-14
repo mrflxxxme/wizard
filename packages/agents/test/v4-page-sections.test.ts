@@ -14,7 +14,7 @@ import {
   SECTION_CODE_TOOL,
   sectionIssues,
 } from "../src/builder/v3/compose/page-sections.js";
-import { anchorIssues } from "../src/builder/v3/compose/page-step.js";
+import { anchorIssues, retargetAnchors } from "../src/builder/v3/compose/page-step.js";
 import type { V3BuildContext, V3ComposeResult } from "../src/builder/v3/contract.js";
 import { BRIEF, composeContext, HERO_CODE, SIGNATURE_OK } from "./v3-compose-fixtures.js";
 
@@ -259,6 +259,28 @@ describe("V4-06 speed: the page by sections", () => {
     ).toEqual([]);
     const inner = { route: "/services", sections: [{ id: "form" }] } as never;
     expect(anchorIssues(answer('<a href="/#order">x</a>'), inner)).toEqual([]);
+  });
+
+  test("a link to an absent anchor is sent by code to /booking, else to the page's form; present ones stay", () => {
+    const answer = (src: string) =>
+      ({
+        seo: { title: "t", description: "d" },
+        sections: [
+          { kind: "code", id: "hero", title: "hero", source: src, props: {} },
+          { kind: "keep", id: "contacts" },
+        ],
+      }) as never;
+    const page = { route: "/services", sections: [{ id: "header" }, { id: "footer" }] } as never;
+    const src = '<a href="#request">Заявка</a><a href="#contacts">Контакты</a>';
+    expect(retargetAnchors(answer(src), page, ["/", "/services", "/booking"]).get("hero")).toBe(
+      '<a href="/booking">Заявка</a><a href="#contacts">Контакты</a>',
+    );
+    expect(retargetAnchors(answer(src), page, ["/", "/services"]).get("hero")).toBe(
+      '<a href="#contacts">Заявка</a><a href="#contacts">Контакты</a>',
+    );
+    expect(retargetAnchors(answer('<a href="#contacts">x</a>'), page, ["/booking"]).size).toBe(0);
+    const fixed = answer(retargetAnchors(answer(src), page, ["/booking"]).get("hero") ?? "");
+    expect(anchorIssues(fixed, page)).toEqual([]);
   });
 
   test("mechanical slips are fixed by code, not by a call", () => {
