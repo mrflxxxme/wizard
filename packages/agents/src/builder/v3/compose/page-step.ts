@@ -218,6 +218,50 @@ function pageFileSection(
   return undefined;
 }
 
+/** An anchor link of a section: `href="#x"` or `"/#x"` in its code, a string `#x` / `/#x` anywhere in its props. */
+const SOURCE_ANCHOR_RE = /href=\{?["'`](\/?#[a-zA-Z][\w-]*)["'`]/g;
+const PROPS_ANCHOR_RE = /^\/?#[a-zA-Z][\w-]*$/;
+
+/**
+ * Links of code sections to an anchor the page does not have (rehearsal №6, coffee: «#order» from the first screen,
+ * critic P0 S01) — a hard issue at the source section: the visitor's main action must lead somewhere. Anchors are the
+ * page's section ids and the ids the sections' code declares; «/#x» counts on the home page only.
+ */
+export function anchorIssues(
+  v: PageCodeAnswer,
+  page: Pick<SitePage, "route" | "sections">,
+): { path: string; code: string; message: string }[] {
+  const code = v.sections.flatMap((s) => (s.kind === "code" ? [s] : []));
+  const ids = new Set([
+    ...page.sections.map((s) => s.id),
+    ...v.sections.map((s) => s.id),
+    ...code.flatMap((s) => [...s.source.matchAll(/\bid=\{?["'`]([\w-]+)["'`]/g)].map((m) => m[1] ?? "")),
+  ]);
+  const out: { path: string; code: string; message: string }[] = [];
+  v.sections.forEach((s, i) => {
+    if (s.kind !== "code") return;
+    const links = new Set<string>();
+    for (const m of s.source.matchAll(SOURCE_ANCHOR_RE)) links.add(m[1] ?? "");
+    const visit = (x: unknown): void => {
+      if (typeof x === "string" && PROPS_ANCHOR_RE.test(x)) links.add(x);
+      else if (Array.isArray(x)) for (const y of x) visit(y);
+      else if (x && typeof x === "object") for (const y of Object.values(x)) visit(y);
+    };
+    visit(s.props);
+    for (const l of links) {
+      if (l.startsWith("/") && page.route !== "/") continue;
+      const id = l.slice(l.indexOf("#") + 1);
+      if (ids.has(id)) continue;
+      out.push({
+        path: `sections.${i}.source`,
+        code: "BROKEN_ANCHOR",
+        message: `Якоря #${id} на странице нет: ссылка на существующую секцию или на /booking`,
+      });
+    }
+  });
+  return out;
+}
+
 /** What the section hears of a G0 error in the page file: its props type must take the props of the plan as they are. */
 const PROPS_TYPE_HINT =
   "Ошибка в файле страницы: props секции из плана не подходят под тип props, который объявляет код секции. Тип props в коде должен принимать ровно ключи и значения props плана (строка остаётся строкой).";
@@ -351,6 +395,7 @@ export async function pageSections(
     if (s.page.route === "/" && kept.sections.length < HOME_MIN_SECTIONS) return null;
     const answer = planAnswer(kept, sources);
     if (pageLintIssues(answer, check).some((i) => HARD_ISSUES.has(i.code ?? ""))) return null;
+    if (anchorIssues(answer, s.page).length) return null;
     const applied = codePage(s.page, answer, s.library);
     const sys = systemWith(ctx, s, applied.page, new Map([...s.signatures, ...applied.sources]));
     const g0 = await s.verify(sys.spec, sys.files, [...applied.sources.keys(), applied.page.file]);
@@ -376,9 +421,12 @@ export async function pageSections(
   for (let round = 0; round < SECTION_ROUNDS; round++) {
     const answer = planAnswer(plan, sources);
     // The last round keeps only the hard issues: soft ones never leave the page as it was (G0 still decides).
-    const lint = pageLintIssues(answer, check).filter(
-      (i) => round < SECTION_ROUNDS - 1 || HARD_ISSUES.has(i.code ?? ""),
-    );
+    const lint = [
+      ...pageLintIssues(answer, check).filter(
+        (i) => round < SECTION_ROUNDS - 1 || HARD_ISSUES.has(i.code ?? ""),
+      ),
+      ...anchorIssues(answer, s.page),
+    ];
     let problems = lint.map((i) => ({ path: i.path, message: i.message }));
     lastSource = undefined;
     let applied = codePage(s.page, answer, s.library);

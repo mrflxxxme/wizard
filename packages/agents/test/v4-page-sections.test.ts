@@ -14,6 +14,7 @@ import {
   SECTION_CODE_TOOL,
   sectionIssues,
 } from "../src/builder/v3/compose/page-sections.js";
+import { anchorIssues } from "../src/builder/v3/compose/page-step.js";
 import type { V3BuildContext, V3ComposeResult } from "../src/builder/v3/contract.js";
 import { BRIEF, composeContext, HERO_CODE, SIGNATURE_OK } from "./v3-compose-fixtures.js";
 
@@ -209,6 +210,36 @@ describe("V4-06 speed: the page by sections", () => {
     expect(r.notes.join(" ")).toContain(
       "не прошёл проверки (G0-TS-01: ошибка типов в ui/sections/home-hero.tsx)",
     );
+  });
+
+  test("a link to an anchor the page lacks is a hard issue at its section; existing ids and other pages pass", () => {
+    const code = (id: string, source: string, props: Record<string, unknown> = {}) =>
+      ({ kind: "code", id, title: id, source, props }) as const;
+    const answer = (src: string, props?: Record<string, unknown>) =>
+      ({
+        seo: { title: "t", description: "d" },
+        sections: [
+          code("hero", src, props),
+          code("steps", '<section id="how">шаги</section>'),
+          { kind: "keep", id: "form" },
+        ],
+      }) as never;
+    const home = { route: "/", sections: [{ id: "header" }, { id: "form" }, { id: "footer" }] } as never;
+    expect(anchorIssues(answer('<a href="#order">Заказать</a>'), home)).toEqual([
+      expect.objectContaining({
+        path: "sections.0.source",
+        code: "BROKEN_ANCHOR",
+        message: expect.stringContaining("#order"),
+      }),
+    ]);
+    expect(
+      anchorIssues(answer("<a href={props.cta.href}>x</a>", { cta: { href: "/#order" } }), home),
+    ).toHaveLength(1);
+    expect(
+      anchorIssues(answer('<a href="#form">x</a><a href="#how">y</a><a href="#steps">z</a>'), home),
+    ).toEqual([]);
+    const inner = { route: "/services", sections: [{ id: "form" }] } as never;
+    expect(anchorIssues(answer('<a href="/#order">x</a>'), inner)).toEqual([]);
   });
 
   test("mechanical slips are fixed by code, not by a call", () => {
