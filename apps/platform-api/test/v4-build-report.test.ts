@@ -141,6 +141,12 @@ describe("V4-04: the build report", () => {
     expect(report.scenarios.every((s) => s.status === "passed")).toBe(true);
     expect(report.gates.map((g) => g.level).sort()).toEqual(["G0", "G1", "G2"]);
     expect(report.calls.length).toBeGreaterThan(0);
+    // Tokens per call (input with cached, output with reasoning) from llm_calls.
+    for (const c of report.calls) {
+      expect(c.tokens.cached).toBeLessThanOrEqual(c.tokens.input);
+      expect(c.tokens.reasoning).toBeLessThanOrEqual(c.tokens.output);
+    }
+    expect(report.calls.some((c) => c.status === "ok" && c.tokens.input > 0)).toBe(true);
     expect(report.techreview?.status).toBeTruthy();
     // No browser in this build: the report names what it could not collect.
     expect(report.shots).toEqual([]);
@@ -162,6 +168,7 @@ describe("V4-04: the build report", () => {
     expect(md).toContain("### Этапы");
     expect(md).toContain("s_book");
     expect(md).toContain("Записи вызовов");
+    expect(md).toContain("| Токены |");
 
     // Staff with MFA reads the report (JSON, Markdown) and its files; a client gets 404.
     const r = await staff.req("GET", `/admin/runs/${run.id}/report`);

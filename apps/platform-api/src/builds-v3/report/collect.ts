@@ -178,9 +178,14 @@ export async function collectBuildReport(pg: postgres.Sql, o: CollectInput): Pro
       error_code: string | null;
       cost_rub: string;
       latency_ms: number | null;
+      input_tokens: number;
+      cached_tokens: number;
+      output_tokens: number;
+      reasoning_tokens: number;
     }[]
   >`
-    select c.step, c.call_type, c.model_id, c.tier, c.status, c.error_code, c.cost_rub, c.latency_ms
+    select c.step, c.call_type, c.model_id, c.tier, c.status, c.error_code, c.cost_rub, c.latency_ms,
+      c.input_tokens, c.cached_tokens, c.output_tokens, c.reasoning_tokens
     from platform.llm_calls c where c.run_id = ${o.runId} order by c.created_at limit 500`;
   const calls: ReportCall[] = callRows.map((c) => ({
     step: c.step,
@@ -191,6 +196,12 @@ export async function collectBuildReport(pg: postgres.Sql, o: CollectInput): Pro
     errorCode: c.error_code,
     rub: rub(num(c.cost_rub)),
     latencyMs: c.latency_ms,
+    tokens: {
+      input: c.input_tokens,
+      cached: c.cached_tokens,
+      output: c.output_tokens,
+      reasoning: c.reasoning_tokens,
+    },
   }));
 
   const started = run.started_at?.getTime() ?? null;

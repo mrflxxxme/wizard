@@ -49,6 +49,8 @@ export interface ReportCall {
   errorCode: string | null;
   rub: number;
   latencyMs: number | null;
+  /** Tokens of the call: all input (cached included), cached input, output, reasoning (part of output). */
+  tokens: { input: number; cached: number; output: number; reasoning: number };
 }
 
 export interface ReportShot {

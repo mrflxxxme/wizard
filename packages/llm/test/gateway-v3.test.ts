@@ -29,6 +29,7 @@ import {
   type Registry,
   ROUTES,
   type RouterOptions,
+  reasoningOutputTokens,
   WESTERN_API_HOSTS,
 } from "../src/index.js";
 import { okText, okToolCall, type Responder, type Stub, startStub } from "./stub-server.js";
@@ -420,6 +421,16 @@ describe("prompt cache: cached input is journaled and billed at the cache price 
     expect(cachedInputTokens(100, Number.NaN, null)).toBe(0);
   });
 
+  test("reasoningOutputTokens: SDK value, completion_tokens_details.reasoning_tokens, clamped to the output", () => {
+    expect(reasoningOutputTokens(2000, 1200, undefined)).toBe(1200);
+    expect(
+      reasoningOutputTokens(2000, undefined, { completion_tokens_details: { reasoning_tokens: 900 } }),
+    ).toBe(900);
+    expect(reasoningOutputTokens(500, 1200, undefined)).toBe(500);
+    expect(reasoningOutputTokens(500, undefined, { completion_tokens_details: null })).toBe(0);
+    expect(reasoningOutputTokens(500, Number.NaN, null)).toBe(0);
+  });
+
   test("Z.ai (prompt_tokens_details.cached_tokens): glm-5.3 bills cached input at 30 ₽ instead of 162 ₽", async () => {
     const { router, sink } = mk();
     await router.route({
@@ -478,6 +489,18 @@ describe("prompt cache: cached input is journaled and billed at the cache price 
     expect(rec?.costRub).toBe(
       costRub(model("gpt-oss-120b").price, { inputTokens: 1000, cachedTokens: 0, outputTokens: 200 }),
     );
+  });
+
+  test("V4-04: reasoning tokens (completion_tokens_details.reasoning_tokens) are journaled, part of the output", async () => {
+    stub.respond.cloudru = usageReply({
+      prompt_tokens: 1000,
+      completion_tokens: 900,
+      total_tokens: 1900,
+      completion_tokens_details: { reasoning_tokens: 600 },
+    });
+    const { router, sink } = mk();
+    await router.route({ callType: "research", messages: msgs("Факты о нише"), orgPolicy: OPEN, ctx });
+    expect(sink.records[0]).toMatchObject({ outputTokens: 900, reasoningTokens: 600 });
   });
 
   test("cache prices: providers without a cache discount have cached = input; caching providers ≤ input", () => {

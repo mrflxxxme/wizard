@@ -14,7 +14,7 @@ import { Agent, fetch as undiciFetch } from "undici";
 import { modelViolation } from "./allowlist.js";
 import type { ModelDef, ProviderDef } from "./registry.js";
 import type { LlmMessage, LlmResult, LlmTool, LlmUsage } from "./types.js";
-import { cachedInputTokens } from "./usage.js";
+import { cachedInputTokens, reasoningOutputTokens } from "./usage.js";
 
 export type Env = Record<string, string | undefined>;
 
@@ -299,6 +299,9 @@ export interface ChatCallInput {
  * The HTTP call shared by platform providers (liveCall) and the users' own keys (byok/call.ts). Errors are reduced to a
  * LiveCallError code: provider bodies, headers and the key never travel further (data-boundary.yaml#storage_of_content).
  */
+/** The reasoning tokens of a usage, only when the provider reported some (the usage keeps its shape otherwise). */
+const reasoning = (n: number): { reasoningTokens?: number } => (n > 0 ? { reasoningTokens: n } : {});
+
 export async function chatCall(i: ChatCallInput): Promise<{ result: LlmResult; usage: LlmUsage }> {
   const client = createOpenAICompatible({
     name: i.bodyProfile,
@@ -350,6 +353,13 @@ export async function chatCall(i: ChatCallInput): Promise<{ result: LlmResult; u
           res.steps.at(-1)?.usage.raw,
         ),
         outputTokens: res.usage.outputTokens ?? 0,
+        ...reasoning(
+          reasoningOutputTokens(
+            res.usage.outputTokens ?? 0,
+            res.usage.outputTokenDetails?.reasoningTokens,
+            res.steps.at(-1)?.usage.raw,
+          ),
+        ),
       },
     };
   } catch (e) {
@@ -373,6 +383,13 @@ export async function chatCall(i: ChatCallInput): Promise<{ result: LlmResult; u
             answered.raw,
           ),
           outputTokens: answered.usage.outputTokens ?? 0,
+          ...reasoning(
+            reasoningOutputTokens(
+              answered.usage.outputTokens ?? 0,
+              answered.usage.outputTokenDetails?.reasoningTokens,
+              answered.raw,
+            ),
+          ),
         },
       };
     }

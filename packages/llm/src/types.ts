@@ -129,6 +129,8 @@ export interface LlmUsage {
   inputTokens: number;
   cachedTokens: number;
   outputTokens: number;
+  /** Reasoning tokens the provider reported (part of outputTokens); absent — not reported. */
+  reasoningTokens?: number;
 }
 
 export interface RouteOutput {
@@ -174,6 +176,8 @@ export interface UsageRecord {
   inputTokens: number;
   cachedTokens: number;
   outputTokens: number;
+  /** Reasoning tokens (part of outputTokens; models.yaml#usage_record.reasoningTokens). */
+  reasoningTokens?: number;
   toolCalls: number;
   latencyMs: number;
   ttftMs: number | null;
