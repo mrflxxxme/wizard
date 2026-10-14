@@ -17,12 +17,12 @@ import { LIBRARY_PHOTO_HINT, SEED_HINT_MAX_VALUES, type SeedHint } from "@wizard
 export const SITE_PHOTO_ENTITY = "site_photo";
 
 /**
- * D49: entities a site passes off as its own — the owner's doctors, masters, team, the works of its portfolio, the
- * reviews (avatars). A stock photo there would show strangers as the staff and others' work as the masters': these cards
+ * D49: entities a site passes off as its own — the owner's doctors, masters, team, the works of its portfolio and its
+ * projects, the reviews (avatars). A stock photo there would show strangers as the staff and others' work as the masters': these cards
  * keep no photo (the site shows initials or nothing) without the owner's own, never a library one.
  */
 const PERSON_ENTITY =
-  /^(specialist|staff|doctor|master|employee|team|member|trainer|teacher|coach|tutor|stylist|barber|instructor|expert|person|people|author|portfolio|work|review|testimonial)(s|_.*)?$/;
+  /^(specialist|staff|doctor|master|employee|team|member|trainer|teacher|coach|tutor|stylist|barber|instructor|expert|person|people|author|portfolio|work|review|testimonial|project)(s|_.*)?$/;
 
 /** true — `entity` is the site's own people or work (D49): no stock photo ever goes on its cards. */
 export const isPersonEntity = (entity: string): boolean => PERSON_ENTITY.test(entity);
@@ -77,6 +77,8 @@ export function rowNiches(row: string): string[] {
 
 /** One card row and its candidates, best first. */
 export interface CardRow {
+  /** V4-27: the next candidates of the row, for the second round of the check. */
+  extra?: LibraryPhotoEntry[];
   /** The row's name («Терапия»), or its number when the brief names none. */
   label: string;
   candidates: LibraryPhotoEntry[];
@@ -114,6 +116,8 @@ export async function semanticSeedHints(
   );
   const inNiche = (e: { niche: string }) => shards.size === 0 || shards.has(e.niche);
   const per = topic.check ? CHECK_CANDIDATES : 1;
+  // With a check, the next candidates of a row wait for its second round.
+  const fetch = topic.check ? per * 2 : per;
   const search = async (q: string, n: number, own: readonly string[] = []): Promise<LibraryPhotoEntry[]> =>
     (
       await source
@@ -139,40 +143,57 @@ export async function semanticSeedHints(
         // A row of another direction («Брови и ресницы» of a salon) searches its own niche; a row whose niches take in
         // the site's own («Детская стоматология» of a clinic) stays in the site's.
         const own = rowNiches(n);
-        const found = await search(`${site}, ${n}`, per, own.some((x) => shards.has(x)) ? [] : own);
+        const found = await search(`${site}, ${n}`, fetch, own.some((x) => shards.has(x)) ? [] : own);
         // A row without a photo ends the list: the photos follow the rows in order.
         if (!found.length) break;
         for (const e of found) taken.add(e.file);
-        rows.push({ label: n, candidates: found });
+        rows.push({ label: n, candidates: found.slice(0, per), extra: found.slice(per) });
       }
     } else {
-      const found = await search(site, UNNAMED_ROWS * per);
+      const found = await search(site, UNNAMED_ROWS * fetch);
       for (const e of found) taken.add(e.file);
-      for (let i = 0; i < found.length; i += per)
-        rows.push({ label: String(rows.length + 1), candidates: found.slice(i, i + per) });
+      const half = topic.check ? Math.ceil(found.length / 2) : found.length;
+      for (let i = 0; i < half; i += per)
+        rows.push({
+          label: String(rows.length + 1),
+          candidates: found.slice(i, i + per),
+          extra: found.slice(half + i, half + i + per),
+        });
     }
     fields.push({ ...f, named: names.length > 0, rows });
   }
   const all = fields.flatMap((x) => x.rows);
-  const verdict =
-    topic.check && all.length ? await topic.check(all.slice(0, CHECKED_ROWS)).catch(() => null) : null;
+  const checked = all.slice(0, CHECKED_ROWS);
+  const verdict = topic.check && all.length ? await topic.check(checked).catch(() => null) : null;
+  // V4-27: the rows the check left empty get one more round with their next candidates (one call, only if any).
+  if (verdict && topic.check) {
+    const empty = checked.flatMap((r, i) => (!verdict[i] && r.extra?.length ? [i] : []));
+    if (empty.length) {
+      const again = await topic
+        .check(empty.map((i) => ({ label: checked[i]?.label ?? "", candidates: checked[i]?.extra ?? [] })))
+        .catch(() => null);
+      empty.forEach((i, j) => {
+        const e = again?.[j];
+        if (e) verdict[i] = e;
+      });
+    }
+  }
   const out: SeedHint[] = [];
   let k = 0;
   for (const x of fields) {
-    const values: (string | null)[] = [];
+    const values: string[] = [];
+    let empty = false;
     for (const r of x.rows) {
       const i = k++;
       const e = verdict && i < verdict.length ? verdict[i] : r.candidates[0];
-      // A named row the check rejected keeps its place without a photo (null): never a wrong one.
-      if (!e) {
-        if (x.named) values.push(null);
-        continue;
-      }
-      values.push(`/_wizard/photos/${e.file}/960`);
+      if (e) values.push(`/_wizard/photos/${e.file}/960`);
+      else empty = true;
     }
-    while (values.length && values.at(-1) === null) values.pop();
-    const ok = values.filter((v) => v === null || LIBRARY_PHOTO_HINT.test(v)).slice(0, SEED_HINT_MAX_VALUES);
-    if (ok.some((v) => v !== null)) out.push({ entity: x.entity, field: x.field, values: ok });
+    // A catalog with a card the check found nothing for shows no photos at all — uniformly, never 3 of 4 (a card
+    // without a photo among cards with photos reads as broken, S03), never a wrong photo.
+    if (empty) continue;
+    const ok = values.filter((v) => LIBRARY_PHOTO_HINT.test(v)).slice(0, SEED_HINT_MAX_VALUES);
+    if (ok.length) out.push({ entity: x.entity, field: x.field, values: ok });
   }
   return out;
 }
@@ -180,7 +201,8 @@ export async function semanticSeedHints(
 /**
  * V4-27: the check of the card rows by the vision model (photo_pick): a slot per row with its candidates, the niche of
  * the site. Each row takes the model's photo; a row the model left empty (nothing shows what the card names) or gave a
- * photo with text gets none — the card stays without a photo rather than with a wrong one. Photos with text are flagged in the library. null — the model
+ * photo with text gets none (semanticSeedHints then tries its next candidates once, and a catalog still with an empty
+ * card shows no photos at all). Photos with text are flagged in the library. null — the model
  * failed (the rows take their first candidates, as without a check).
  */
 export function pickerCardCheck(o: {
