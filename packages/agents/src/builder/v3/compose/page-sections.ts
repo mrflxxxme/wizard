@@ -285,6 +285,9 @@ function factsBlock(f: SiteFacts, site: SiteModel): string {
     f.description ? `Описание: ${f.description}` : "",
     f.audience ? `Аудитория: ${f.audience}` : "",
     `Цели: ${f.goals.join("; ") || "не указаны"}`,
+    f.prices
+      ? ""
+      : "Цены: в фактах их нет — не пиши «цены», «прайс», «стоимость» ни в заголовках, ни в текстах (D49).",
     f.phone || f.email || f.address
       ? `Контакты: ${[f.phone, f.email, f.address].filter(Boolean).join(", ")}`
       : "",
