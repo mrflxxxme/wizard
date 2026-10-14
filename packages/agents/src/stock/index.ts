@@ -12,6 +12,7 @@ export {
   normalizeNicheText,
   ownNiches,
   requestSlug,
+  shardNamesNiche,
 } from "./catalog.js";
 /** One CSS filter for every photo of a site from the direction's treatment and accent. */
 export { GRADED_PHOTOS, type PhotoGrade, photoGrade, photoGradeCss } from "./grade.js";

@@ -174,7 +174,8 @@ describe("the card check of the build and the seed", () => {
     expect(calls).toBe(1);
     const hints = await draftSeedHints(api.deps.db, id, spec, storage, () => source);
     const photos = hints.find((h) => h.field !== "name");
-    // Two candidates a row and four more for a second round: rows (11, 12 | 13–16), (17, 18 | 19–22), …
+    // Two candidates a row and four more for a second round (V4-31: the neighbour shards' in place of the last ones,
+    // none here): rows (11, 12 | 13–16), (17, 18 | 19–22), …
     expect(photos?.values).toEqual([12, 18, 24, 30].map((n) => `/_wizard/photos/${uuid(n)}/960`));
     await checkCardPhotos(o);
     expect(calls).toBe(1);
