@@ -311,11 +311,11 @@ describe.skipIf(!hasPsql)("v3 measurement on a local platform (fixtures)", () =>
     expect(doc.kind).toBe("v3");
     expect(r.error, lines.join("\n")).toBeNull();
     // The interview: the recommended option by the stem «время», «Решите за меня», an own text; then (V4-24) where to
-    // find the clinic, asked by code — this brief has no answer for it, the recommended button; then the ready brief.
+    // find the clinic, asked by code — the driver answers it with the brief's text (#192); then the ready brief.
     expect(r.interview).toMatchObject({
       questions: 4,
       restAt: null,
-      by: { recommended: 2, delegate: 1, text: 1 },
+      by: { recommended: 1, delegate: 1, text: 2 },
     });
     expect(r.pipeline).toBe("modules");
     expect(r.brief.version).toBeGreaterThanOrEqual(4);

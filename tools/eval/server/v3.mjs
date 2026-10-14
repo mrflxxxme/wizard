@@ -67,6 +67,12 @@ const norm = (s) =>
     .toLowerCase()
     .replace(/ё/g, "е");
 
+/** V4-24 content questions by the start of their text (agents PLACE_QUESTION_TEXT, STAFF_QUESTION_TEXT) → brief.answers key. */
+export const CONTENT_QUESTIONS = [
+  { start: "Где вас найти", key: "place" },
+  { start: "Кого из специалистов", key: "staff" },
+];
+
 /**
  * The owner's answer to one v3 question: «Дальше решай сам» once `answered` reached the brief's rest_after; else by
  * the brief's `answers[topic]` — "delegate" (the reserved option), {text} (once per topic, then the recommendation), an
@@ -79,6 +85,11 @@ export function v3Answer(q, brief, st = { answered: 0, texts: new Set() }) {
   const all = Array.isArray(q?.options) ? q.options : [];
   const opts = all.filter((o) => o.id !== DELEGATE && !o.delegate);
   const rec = opts.find((o) => o.recommended) ?? opts[0] ?? null;
+  // V4-24: the questions about the place and the staff (topic «content», asked by code) — the brief's own text, never
+  // «Добавлю потом»: an answer by button leaves the site without contacts and specialists.
+  const own = CONTENT_QUESTIONS.find((c) => String(q?.text ?? "").startsWith(c.start));
+  const text = own ? brief.answers?.[own.key]?.text : undefined;
+  if (typeof text === "string" && text.trim()) return { kind: "text", text: text.trim().slice(0, 500) };
   const want = brief.answers?.[q?.topic];
   if (want === DELEGATE && all.some((o) => o.id === DELEGATE))
     return { kind: "delegate", optionId: DELEGATE };
