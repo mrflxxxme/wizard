@@ -175,6 +175,25 @@ describe("V4-06 speed: the page by sections", () => {
     expect(apply(ctx.files, r).get("ui/sections/home-first-visit.tsx")).toBe(SIGNATURE_OK.source);
   });
 
+  test("a section linking to a missing anchor is written again alone with the anchor issue", async () => {
+    const ctx = await prepared();
+    const dead = SIGNATURE_OK.source.replace(
+      /(<section[^>]*>)/,
+      '$1<a href="#order" className="text-primary">Заказать</a>',
+    );
+    const m = model({ hero: [HERO_CODE.source], "first-visit": [dead, SIGNATURE_OK.source] });
+    const r = await composer().scenario({ ...ctx, route: m.route }, LEAD);
+    const asks = m.calls.filter((c) =>
+      String(c.messages[1]?.content).includes("## Твоя секция: first-visit"),
+    );
+    expect(asks).toHaveLength(2);
+    expect(JSON.stringify(asks[1]?.messages)).toContain("Якоря #order на странице нет");
+    expect(
+      m.calls.filter((c) => String(c.messages[1]?.content).includes("## Твоя секция: hero")),
+    ).toHaveLength(1);
+    expect(apply(ctx.files, r).get("ui/sections/home-first-visit.tsx")).toBe(SIGNATURE_OK.source);
+  });
+
   test("a section that never passes is dropped: the page is assembled from the ones that did (not the skeleton)", async () => {
     const ctx = await prepared();
     const broken = SIGNATURE_OK.source.replace("export default function", "export default function /*x*/");
