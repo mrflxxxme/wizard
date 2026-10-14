@@ -170,7 +170,18 @@ test("people entities get no library photos: neither by name nor from the plan",
       { role: "visitor", entity: "team_member", ops: ["read"] },
     ],
   } as unknown as AppSpec;
-  expect(["specialist", "team_member", "doctors", "master"].every(isPersonEntity)).toBe(true);
+  expect(
+    [
+      "specialist",
+      "team_member",
+      "doctors",
+      "master",
+      "portfolio_item",
+      "works",
+      "review",
+      "testimonials",
+    ].every(isPersonEntity),
+  ).toBe(true);
   expect(["service", "membership", "product"].some(isPersonEntity)).toBe(false);
   queries.length = 0;
   const names = { entity: "specialist", field: "name", values: ["Иванова Анна", "Петров Олег"] };
