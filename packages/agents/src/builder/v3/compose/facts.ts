@@ -66,7 +66,8 @@ const EXAMPLE_RE = /^\s*пример\b/i;
 const PLACEHOLDER_CTA = "Связаться";
 /** Width of the library variant a section's picture names; the patterns add the srcset of every width (srcSetOf). */
 const PHOTO_WIDTH = 1600;
-const NUMBER_RE = /\d(?:[\d   ]*\d)?(?:[.,]\d+)?/g;
+/** A number of a text; digits glued to a Latin letter (V60, A4, 3D) name a model or a format, not a number. */
+const NUMBER_RE = /(?<![A-Za-z\d])\d(?:[\d   ]*\d)?(?:[.,]\d+)?(?![A-Za-z\d])/g;
 
 /** Numbers of a text, normalised: «2 500» → «2500», «4,5» → «4.5». */
 export function numbersOf(text: string): string[] {
