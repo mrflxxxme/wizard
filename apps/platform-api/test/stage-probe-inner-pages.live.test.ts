@@ -86,8 +86,16 @@ describe.skipIf(!ON || !hasChromium)("V4-06: the inner pages (/services, /bookin
             for (const { route, scenario } of c.inner) {
               const sink = new MemoryUsageSink();
               const router = createRouter({ mode: "live", registry, sink });
-              const routeFn = (i: RouteInput) =>
-                router.route({ ...i, orgPolicy: OPEN, ctx: { orgId: "probe" } });
+              // The tool's refusals the model was sent back (the last ones say why a page stayed as it was).
+              const refusals: string[] = [];
+              const routeFn = (i: RouteInput) => {
+                const last = i.messages.at(-1);
+                if (last?.role === "tool") {
+                  const text = typeof last.content === "string" ? last.content : JSON.stringify(last.content);
+                  if (text.includes("INVALID_ARGS")) refusals.push(text.slice(0, 700));
+                }
+                return router.route({ ...i, orgPolicy: OPEN, ctx: { orgId: "probe" } });
+              };
               const ctx: V3BuildContext = { ...base, files, route: routeFn, budgetRub: 150 };
               const t0 = Date.now();
               const r = await createPageComposer({
@@ -131,6 +139,7 @@ describe.skipIf(!ON || !hasChromium)("V4-06: the inner pages (/services, /bookin
                   .slice(0, 8)
                   .map((p) => `${p.code} ${p.width}${p.section ? `#${p.section}` : ""} ${p.message_ru}`),
                 notes: r.notes,
+                refusals: refusals.slice(-3),
               };
               rows.push(row);
               console.log(`inner_page=${JSON.stringify(row)}`);
