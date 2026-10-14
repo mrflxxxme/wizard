@@ -732,3 +732,39 @@ export function requestSlug(text: string): string {
 /** A niche text as a request key: lower case, «ё» as «е», single spaces, at most 80 characters. */
 export const normalizeNicheText = (text: string): string =>
   text.toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ").trim().slice(0, 80);
+
+/** Roots of the words any business may carry («ремонт», «салон», «студия», «центр», «магазин»…). */
+const GENERIC_ROOTS = new Set([
+  "ремо",
+  "услу",
+  "мага",
+  "сало",
+  "студ",
+  "цент",
+  "школ",
+  "маст",
+  "клин",
+  "аген",
+  "това",
+  "изде",
+]);
+
+/**
+ * V4-31: a shard is about a site's niche — the shard the builds requested for that very text, or a catalog niche whose
+ * name shares a word stem with it («ремонт обуви» — «ремонт и изготовление ключей», «оптический салон» — «оптика»). A niche the catalog lacks takes the
+ * shard SigLIP ranks first only then: «ветклиника «Хвост»» ranked roofers first.
+ */
+export function shardNamesNiche(slug: string, text: string): boolean {
+  if (slug === requestSlug(text)) return true;
+  const name = catalogNiche(slug)?.name;
+  // Four letters: a stem keeps its alternations («оптик-а» — «оптич-еский»); words of any business say nothing.
+  const roots = (t: string) =>
+    new Set(
+      nicheWords(t)
+        .filter((w) => w.length >= 5)
+        .map((w) => w.slice(0, 4))
+        .filter((r) => !GENERIC_ROOTS.has(r)),
+    );
+  const own = roots(text);
+  return !!name && [...roots(name)].some((w) => own.has(w));
+}

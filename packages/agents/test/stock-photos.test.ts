@@ -270,7 +270,16 @@ describe("semanticPhotos", () => {
       cand("lab"),
       cand("lab"),
     ];
-    expect([...(siteShards(optics, "салон очков") ?? [])].sort()).toEqual(["lab", "optics"]);
+    expect([...(siteShards(optics) ?? [])].sort()).toEqual(["lab", "optics"]);
+    // V4-31: a niche the catalog lacks takes the first shard only when its name is about the niche.
+    expect([...(siteShards(optics, "оптический салон «Линза»") ?? [])].sort()).toEqual(["lab", "optics"]);
+    const roofers = Array.from({ length: 10 }, () => cand("roofing"));
+    const generic = CATALOG.filter((c) => c.group === "generic").map((c) => c.slug);
+    expect([...(siteShards(roofers, "ветклиника «Хвост»") ?? [])]).toEqual(generic);
+    expect([...(siteShards(roofers, "кровля и фасады") ?? [])]).toEqual(["roofing"]);
+    // Words any business carries relate nothing: shoe repair is not a flat renovation.
+    const flats = Array.from({ length: 10 }, () => cand("renovation"));
+    expect([...(siteShards(flats, "ремонт обуви") ?? [])]).toEqual(generic);
     expect([...(siteShards(optics, "оптика") ?? [])]).toEqual(["optics"]);
     // Most of the best candidates off the topic: neutral generic photos, not the neighbour's.
     const weak = Array.from({ length: 10 }, () => cand("medical", GOOD_SCORE / 2));

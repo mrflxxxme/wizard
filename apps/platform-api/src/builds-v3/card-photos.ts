@@ -6,6 +6,8 @@
 import { createHash } from "node:crypto";
 import {
   CATALOG,
+  catalogNiche,
+  GENERIC_GROUP,
   type LibraryPhotoEntry,
   nicheStems,
   type PhotoPicker,
@@ -42,6 +44,12 @@ const CHECK_CANDIDATES = 2;
  * flagged out of the library as the check sees them, and an empty catalog was 5 of 15 sites with 2).
  */
 const SECOND_ROUND_CANDIDATES = 4;
+
+/**
+ * V4-31: of them, the ones from the other niches of the site's catalog group: a row the site's shard has no photo for
+ * («Детская стрижка» of a barbershop, «Теория» of a driving school) may find it next door (hair, courses).
+ */
+const SECOND_ROUND_NEAR = 2;
 
 /** Image fields of the entities a public role reads (goods, catalog items, article covers); never the site's own photos. */
 export function publicImageFields(spec: AppSpec): { entity: string; field: string }[] {
@@ -120,6 +128,11 @@ export async function semanticSeedHints(
       : [],
   );
   const inNiche = (e: { niche: string }) => shards.size === 0 || shards.has(e.niche);
+  // V4-31: the other niches of the site's catalog groups (never the generic one: people, offices).
+  const groups = new Set(
+    [...shards].map((x) => catalogNiche(x)?.group).filter((g) => g && g !== GENERIC_GROUP),
+  );
+  const near = CATALOG.filter((c) => groups.has(c.group) && !shards.has(c.slug)).map((c) => c.slug);
   const per = topic.check ? CHECK_CANDIDATES : 1;
   // With a check, the next candidates of a row wait for its second round.
   const more = topic.check ? SECOND_ROUND_CANDIDATES : 0;
@@ -149,11 +162,18 @@ export async function semanticSeedHints(
         // A row of another direction («Брови и ресницы» of a salon) searches its own niche; a row whose niches take in
         // the site's own («Детская стоматология» of a clinic) stays in the site's.
         const own = rowNiches(n);
-        const found = await search(`${site}, ${n}`, fetch, own.some((x) => shards.has(x)) ? [] : own);
+        const inSite = own.some((x) => shards.has(x)) || own.length === 0;
+        const found = await search(`${site}, ${n}`, fetch, inSite ? [] : own);
         // A row without a photo ends the list: the photos follow the rows in order.
         if (!found.length) break;
-        for (const e of found) taken.add(e.file);
-        rows.push({ label: n, candidates: found.slice(0, per), extra: found.slice(per) });
+        const next =
+          more && inSite && near.length
+            ? (await search(`${site}, ${n}`, SECOND_ROUND_NEAR, near)).filter((e) => !found.includes(e))
+            : [];
+        // The neighbours' photos take the place of the row's last ones (its own fill the rest).
+        const kept = found.slice(0, fetch - next.length);
+        for (const e of [...kept, ...next]) taken.add(e.file);
+        rows.push({ label: n, candidates: kept.slice(0, per), extra: [...kept.slice(per), ...next] });
       }
     } else {
       const found = await search(site, UNNAMED_ROWS * fetch);

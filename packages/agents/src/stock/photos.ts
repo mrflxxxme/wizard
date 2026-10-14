@@ -5,7 +5,7 @@
 // photo twice on a site. Too few photos on the topic queue the niche for backfill (CI) — the build takes what there is.
 import type { PlanPhoto, SystemPlan } from "@wizard/appspec";
 import type { PhotoSlot } from "@wizard/modules";
-import { CATALOG, catalogNiche, GENERIC_GROUP, ownNiches } from "./catalog.js";
+import { CATALOG, catalogNiche, GENERIC_GROUP, ownNiches, shardNamesNiche } from "./catalog.js";
 import { STOCK_LICENSES } from "./client.js";
 import {
   type Candidate,
@@ -108,7 +108,8 @@ const LEAD_CANDIDATES = 10;
  * «ветеринарная клиника» near a human clinic, «клининг» near air conditioners); else the first shard of the first
  * screen's best candidates and the shards of its catalog group at least two of them come from (never a shard of
  * another group: an optician's site took a printing house); a niche the library lacks (most of those candidates under
- * GOOD_SCORE) takes the generic shards — neutral photos, never a neighbour's. undefined — no candidates (no restriction).
+ * GOOD_SCORE, or V4-31 a first shard whose name shares no word with the niche) takes the generic shards — neutral
+ * photos, never a neighbour's. undefined — no candidates (no restriction).
  */
 export function siteShards(lead: readonly Candidate[], niche = ""): Set<string> | undefined {
   const own = ownNiches(niche);
@@ -116,8 +117,12 @@ export function siteShards(lead: readonly Candidate[], niche = ""): Set<string> 
   const top = lead.slice(0, LEAD_CANDIDATES);
   const first = top[0]?.entry.niche;
   if (!first) return undefined;
-  // Most of the best candidates off the topic: the library lacks the niche.
-  if (top.filter((c) => c.score >= GOOD_SCORE).length * 2 < top.length)
+  // Most of the best candidates off the topic, or V4-31 a first shard whose name is not about the niche: the library
+  // lacks the niche.
+  if (
+    top.filter((c) => c.score >= GOOD_SCORE).length * 2 < top.length ||
+    (niche.trim() !== "" && !shardNamesNiche(first, niche))
+  )
     return new Set(CATALOG.filter((c) => c.group === GENERIC_GROUP).map((c) => c.slug));
   const group = catalogNiche(first)?.group;
   const count = new Map<string, number>();
