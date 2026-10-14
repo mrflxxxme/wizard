@@ -1,0 +1,318 @@
+{
+  "id": "v3-14-beauty-salon",
+  "class": "booking",
+  "title": "Салон красоты: онлайн-запись к мастерам и прайс",
+  "beyond": null,
+  "status": "ready",
+  "ready": true,
+  "systemId": "08183fb8-7fa3-4fc7-9ce4-e10f6a90f8f1",
+  "pipeline": "modules",
+  "error": null,
+  "interview": {
+    "turns": 4,
+    "questions": 3,
+    "retries": 0,
+    "free": 0,
+    "restAt": null,
+    "by": {
+      "recommended": 0,
+      "option": 0,
+      "delegate": 0,
+      "text": 3
+    },
+    "minutes": 4.7
+  },
+  "card": null,
+  "build": {
+    "runId": "1cd3f7fc-72e2-47dd-824a-32e4c39bb6b9",
+    "status": "succeeded",
+    "startedAt": "2026-10-14T14:00:33.071Z",
+    "finishedAt": "2026-10-14T14:09:23.672Z",
+    "minutes": 8.8,
+    "previewMinutes": 0.5,
+    "stages": [
+      {
+        "id": "brief",
+        "label": "Перечитываю бриф",
+        "status": "done",
+        "sec": 0
+      },
+      {
+        "id": "design",
+        "label": "Подбираю стиль",
+        "status": "done",
+        "sec": 0
+      },
+      {
+        "id": "backend",
+        "label": "Собираю данные, права и автоматизации",
+        "status": "done",
+        "sec": 7
+      },
+      {
+        "id": "skeleton",
+        "label": "Собираю каркас страниц",
+        "status": "done",
+        "sec": 5
+      },
+      {
+        "id": "scenarios",
+        "label": "Довожу сценарии по одному",
+        "status": "done",
+        "sec": 395
+      },
+      {
+        "id": "critic",
+        "label": "Смотрю на страницы глазами дизайнера",
+        "status": "done",
+        "sec": 34
+      },
+      {
+        "id": "template_gate",
+        "label": "Проверяю, что сайт не похож на шаблон",
+        "status": "done",
+        "sec": 5
+      },
+      {
+        "id": "techreview",
+        "label": "Провожу техревью",
+        "status": "done",
+        "sec": 24
+      },
+      {
+        "id": "gates",
+        "label": "Проверяю, что всё работает",
+        "status": "done",
+        "sec": 36
+      }
+    ],
+    "spentRub": 26.35,
+    "reusedRub": 0,
+    "capRub": 500,
+    "scenarios": {
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "stopped": 0,
+      "toRequests": 0,
+      "mustNotPassed": 0,
+      "list": [
+        {
+          "id": "s1",
+          "title": "Когда заходит на сайт салона — система видит каталог услуг с ценами и длительностью, видит портфолио работ мастеров, видит отзывы, видит контакты и форму заявки на подарочный сертификат",
+          "priority": "must",
+          "status": "passed"
+        },
+        {
+          "id": "s2",
+          "title": "Когда хочет записаться к мастеру — система выбирает услугу или мастера, видит свободные окна, бронирует подходящее время",
+          "priority": "must",
+          "status": "passed"
+        },
+        {
+          "id": "s3",
+          "title": "Когда за день до визита — система получает напоминание о записи",
+          "priority": "must",
+          "status": "passed"
+        },
+        {
+          "id": "s4",
+          "title": "Когда хочет отменить или перенести запись менее чем за 6 часов до визита — система система не позволяет отменить или перенести",
+          "priority": "must",
+          "status": "passed"
+        },
+        {
+          "id": "s5",
+          "title": "Когда мастер заходит в систему — система видит только свои записи на ближайшие дни",
+          "priority": "must",
+          "status": "passed"
+        },
+        {
+          "id": "s6",
+          "title": "Когда администратор заходит в систему — система видит все записи всех мастеров, может записать клиентку по телефону",
+          "priority": "must",
+          "status": "passed"
+        },
+        {
+          "id": "s7",
+          "title": "Когда поступает новая запись — система получает уведомление на почту",
+          "priority": "must",
+          "status": "passed"
+        },
+        {
+          "id": "s8",
+          "title": "Когда хочет подарочный сертификат — система заполняет заявку на сертификат",
+          "priority": "should",
+          "status": "passed"
+        }
+      ]
+    }
+  },
+  "fixes": 0,
+  "inputs": [],
+  "publish": {
+    "status": "skipped"
+  },
+  "gates": {
+    "G0": {
+      "passed": true,
+      "revision": 9,
+      "blockers": [],
+      "ownerActions": [],
+      "warnings": 7
+    },
+    "G1": {
+      "passed": true,
+      "revision": 9,
+      "blockers": [],
+      "ownerActions": [],
+      "warnings": 1
+    },
+    "G2": {
+      "passed": false,
+      "revision": 9,
+      "blockers": [],
+      "ownerActions": [
+        {
+          "id": "G2-PII-06",
+          "message": "Не указано: название оператора ПДн (юрлицо, ИП или ФИО). Без этого систему с персональными данными нельзя опубликовать"
+        },
+        {
+          "id": "G2-PII-06",
+          "message": "Не указано: контакт оператора для обращений. Без этого систему с персональными данными нельзя опубликовать"
+        }
+      ],
+      "warnings": 3
+    }
+  },
+  "gaps": {
+    "outOfScope": [],
+    "reported": [],
+    "mentions": []
+  },
+  "plan": null,
+  "photos": null,
+  "browser": null,
+  "screenshots": [],
+  "runs": [
+    {
+      "id": "4b4458f3-d19c-4807-9f7a-26e25eb8ba23",
+      "kind": "interview_turn",
+      "status": "succeeded",
+      "creditsUsed": 0.693
+    },
+    {
+      "id": "8eaedd9f-8f4c-4997-a026-16b5937cd500",
+      "kind": "interview_turn",
+      "status": "succeeded",
+      "creditsUsed": 0
+    },
+    {
+      "id": "c9526ef0-6058-49d7-8b54-d97c59b8e92f",
+      "kind": "interview_turn",
+      "status": "succeeded",
+      "creditsUsed": 0
+    },
+    {
+      "id": "40f8e735-6425-4795-917c-f869d0aac299",
+      "kind": "interview_turn",
+      "status": "succeeded",
+      "creditsUsed": 0
+    },
+    {
+      "id": "1cd3f7fc-72e2-47dd-824a-32e4c39bb6b9",
+      "kind": "build",
+      "mode": "create",
+      "status": "succeeded",
+      "creditsUsed": 5.269
+    }
+  ],
+  "creditsUsed": 5.962,
+  "costRubEstimate": 29.81,
+  "minutes": 14.3,
+  "buildMinutes": 8.8,
+  "startedAt": "2026-10-14T13:55:06.269Z",
+  "finishedAt": "2026-10-14T14:09:23.761Z",
+  "tz": null,
+  "direction": {
+    "proposalId": "4f5ce9e7b088d0063702cf4db7b631a5347280beae1cd4e7928278ab0605ed00",
+    "names": [
+      "Лаванда без сирени",
+      "Расписание как сервис",
+      "Вечерний салон"
+    ],
+    "archetypes": [
+      "soft_organic",
+      "tech_minimal",
+      "night_contrast"
+    ],
+    "costRub": 10.46,
+    "fallback": false,
+    "n": null,
+    "archetype": "soft_organic",
+    "pinned": false,
+    "briefVersion": 5
+  },
+  "brief": {
+    "version": 5,
+    "goals": 5,
+    "scenarios": {
+      "must": 7,
+      "should": 1
+    },
+    "roles": 2,
+    "data": 5,
+    "integrations": 1,
+    "outOfScope": 4,
+    "assumptions": 5,
+    "qa": 3,
+    "capability": {
+      "modules": 13,
+      "custom": 0,
+      "not_yet": 0
+    },
+    "canariesKept": 0
+  },
+  "coverage": {
+    "roles": {
+      "total": 3,
+      "found": 2,
+      "missing": [
+        "Клиент"
+      ]
+    },
+    "entities": {
+      "total": 3,
+      "found": 3,
+      "missing": []
+    },
+    "features": {
+      "total": 4,
+      "found": 4,
+      "missing": []
+    },
+    "acceptance": {
+      "total": 2,
+      "found": 2,
+      "missing": []
+    },
+    "score": 0.93
+  },
+  "techreview": {
+    "status": "done",
+    "blocked": false
+  },
+  "owner": {
+    "operator": {
+      "filled": true,
+      "revision": 10,
+      "blockers": [
+        "OPERATOR_NAME_REQUIRED",
+        "OPERATOR_CONTACT_REQUIRED",
+        "OPERATOR_ADDRESS_REQUIRED"
+      ]
+    }
+  },
+  "briefAt": "2026-10-14T13:59:48.014Z",
+  "fromBriefMinutes": 9.6
+}

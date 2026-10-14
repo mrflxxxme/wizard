@@ -1,0 +1,301 @@
+{
+  "id": "v3-13-coffee-house",
+  "class": "site",
+  "title": "Кофейня: сайт с меню, предзаказом навынос и афишей",
+  "beyond": null,
+  "status": "not_ready",
+  "ready": false,
+  "systemId": "ceac93a8-e68b-46d0-90b3-8b133b7fb307",
+  "pipeline": "modules",
+  "error": null,
+  "interview": {
+    "turns": 4,
+    "questions": 3,
+    "retries": 0,
+    "free": 0,
+    "restAt": null,
+    "by": {
+      "recommended": 1,
+      "option": 0,
+      "delegate": 0,
+      "text": 2
+    },
+    "minutes": 3.4
+  },
+  "card": null,
+  "build": {
+    "runId": "f7554b03-05bb-4d88-a315-2e9cf69bfa5b",
+    "status": "succeeded",
+    "startedAt": "2026-10-14T13:47:32.485Z",
+    "finishedAt": "2026-10-14T13:55:06.186Z",
+    "minutes": 7.6,
+    "previewMinutes": 0.6,
+    "stages": [
+      {
+        "id": "brief",
+        "label": "Перечитываю бриф",
+        "status": "done",
+        "sec": 0
+      },
+      {
+        "id": "design",
+        "label": "Подбираю стиль",
+        "status": "done",
+        "sec": 0
+      },
+      {
+        "id": "backend",
+        "label": "Собираю данные, права и автоматизации",
+        "status": "done",
+        "sec": 9
+      },
+      {
+        "id": "skeleton",
+        "label": "Собираю каркас страниц",
+        "status": "done",
+        "sec": 5
+      },
+      {
+        "id": "scenarios",
+        "label": "Довожу сценарии по одному",
+        "status": "done",
+        "sec": 249
+      },
+      {
+        "id": "critic",
+        "label": "Смотрю на страницы глазами дизайнера",
+        "status": "done",
+        "sec": 57
+      },
+      {
+        "id": "template_gate",
+        "label": "Проверяю, что сайт не похож на шаблон",
+        "status": "done",
+        "sec": 5
+      },
+      {
+        "id": "techreview",
+        "label": "Провожу техревью",
+        "status": "done",
+        "sec": 66
+      },
+      {
+        "id": "gates",
+        "label": "Проверяю, что всё работает",
+        "status": "done",
+        "sec": 38
+      }
+    ],
+    "spentRub": 28.46,
+    "reusedRub": 0,
+    "capRub": 500,
+    "scenarios": {
+      "total": 5,
+      "passed": 4,
+      "failed": 1,
+      "stopped": 0,
+      "toRequests": 1,
+      "mustNotPassed": 1,
+      "list": [
+        {
+          "id": "sc1",
+          "title": "Когда Гость заходит на сайт — система Видит меню с ценами и фото, Видит текущее зерно в работе, Видит часы работы и адрес",
+          "priority": "must",
+          "status": "failed",
+          "reason": "не прошёл проверку в браузере: Сценарий цели «Посетитель с телефона понимает предложение и находит главное действие» не проходит (390 px, светлая тема): Посетитель нажимает главную кнопку первого экрана — кнопка первого экрана ведёт не к форме на этой странице"
+        },
+        {
+          "id": "sc2",
+          "title": "Когда Гость хочет заказать кофе навынос к определённому времени — система Выбирает позиции из меню, Указывает время самовывоза, Отправляет заказ, Получает подтверждение по email",
+          "priority": "must",
+          "status": "passed"
+        },
+        {
+          "id": "sc3",
+          "title": "Когда Бариста открывает систему — система Видит список предзаказов с временем, Отмечает заказ «готово»",
+          "priority": "must",
+          "status": "passed"
+        },
+        {
+          "id": "sc4",
+          "title": "Когда Гость хочет попасть на каппинг в пятницу — система Видит афишу события, Выбирает конкретную дату каппинга из календаря/афиши, Записывается на каппинг (макс. 8 мест), Получает подтверждение",
+          "priority": "must",
+          "status": "passed"
+        },
+        {
+          "id": "sc5",
+          "title": "Когда Гость заходит на сайт в пятницу — система Видит афишу вечера с музыкантом",
+          "priority": "should",
+          "status": "passed"
+        }
+      ]
+    }
+  },
+  "fixes": 0,
+  "inputs": [],
+  "publish": {
+    "status": "skipped"
+  },
+  "gates": {
+    "G0": {
+      "passed": true,
+      "revision": 6,
+      "blockers": [],
+      "ownerActions": [],
+      "warnings": 7
+    },
+    "G1": {
+      "passed": true,
+      "revision": 6,
+      "blockers": [],
+      "ownerActions": [],
+      "warnings": 1
+    },
+    "G2": {
+      "passed": false,
+      "revision": 6,
+      "blockers": [],
+      "ownerActions": [
+        {
+          "id": "G2-PII-06",
+          "message": "Не указано: название оператора ПДн (юрлицо, ИП или ФИО). Без этого систему с персональными данными нельзя опубликовать"
+        },
+        {
+          "id": "G2-PII-06",
+          "message": "Не указано: контакт оператора для обращений. Без этого систему с персональными данными нельзя опубликовать"
+        }
+      ],
+      "warnings": 3
+    }
+  },
+  "gaps": {
+    "outOfScope": [],
+    "reported": [],
+    "mentions": []
+  },
+  "plan": null,
+  "photos": null,
+  "browser": null,
+  "screenshots": [],
+  "runs": [
+    {
+      "id": "b2e56163-e6f5-48eb-8e10-ff8907e72cb0",
+      "kind": "interview_turn",
+      "status": "succeeded",
+      "creditsUsed": 0.611
+    },
+    {
+      "id": "ef00b627-faf7-4545-9082-1c739f6f4bd7",
+      "kind": "interview_turn",
+      "status": "succeeded",
+      "creditsUsed": 0.447
+    },
+    {
+      "id": "2ea8215a-4f8e-4d3b-ac5a-7f99957cd9dc",
+      "kind": "interview_turn",
+      "status": "succeeded",
+      "creditsUsed": 0
+    },
+    {
+      "id": "0ca1e6d5-73ac-4261-b7e6-6f2a02e2234b",
+      "kind": "interview_turn",
+      "status": "succeeded",
+      "creditsUsed": 0
+    },
+    {
+      "id": "f7554b03-05bb-4d88-a315-2e9cf69bfa5b",
+      "kind": "build",
+      "mode": "create",
+      "status": "succeeded",
+      "creditsUsed": 5.691
+    }
+  ],
+  "creditsUsed": 6.749,
+  "costRubEstimate": 33.74,
+  "minutes": 12.1,
+  "buildMinutes": 7.6,
+  "startedAt": "2026-10-14T13:43:00.271Z",
+  "finishedAt": "2026-10-14T13:55:06.269Z",
+  "tz": null,
+  "direction": {
+    "proposalId": "527aba5aeaa997e9106c57f354bff58a5705bb24d6b4d03549b05e3473deb39b",
+    "names": [
+      "Утро на Большой",
+      "Карта зерна",
+      "Кофейная афиша"
+    ],
+    "archetypes": [
+      "warm_craft",
+      "natural",
+      "bold_poster"
+    ],
+    "costRub": 15.75,
+    "fallback": false,
+    "n": null,
+    "archetype": "warm_craft",
+    "pinned": false,
+    "briefVersion": 5
+  },
+  "brief": {
+    "version": 5,
+    "goals": 3,
+    "scenarios": {
+      "must": 4,
+      "should": 1
+    },
+    "roles": 2,
+    "data": 4,
+    "integrations": 1,
+    "outOfScope": 2,
+    "assumptions": 4,
+    "qa": 3,
+    "capability": {
+      "modules": 6,
+      "custom": 0,
+      "not_yet": 0
+    },
+    "canariesKept": 0
+  },
+  "coverage": {
+    "roles": {
+      "total": 3,
+      "found": 2,
+      "missing": [
+        "Гость"
+      ]
+    },
+    "entities": {
+      "total": 3,
+      "found": 3,
+      "missing": []
+    },
+    "features": {
+      "total": 3,
+      "found": 3,
+      "missing": []
+    },
+    "acceptance": {
+      "total": 2,
+      "found": 2,
+      "missing": []
+    },
+    "score": 0.93
+  },
+  "techreview": {
+    "status": "done",
+    "blocked": false
+  },
+  "owner": {
+    "operator": {
+      "filled": true,
+      "revision": 7,
+      "blockers": [
+        "OPERATOR_NAME_REQUIRED",
+        "OPERATOR_CONTACT_REQUIRED",
+        "OPERATOR_ADDRESS_REQUIRED"
+      ]
+    }
+  },
+  "briefAt": "2026-10-14T13:46:24.601Z",
+  "fromBriefMinutes": 8.7
+}
