@@ -142,12 +142,14 @@ export async function draftSeedHints(
     const photos = r.rows[0]?.photos;
     const plan = Array.isArray(photos) ? photos : [];
     const library = storage ? parseLibraryIndex(await readLibraryIndex(storage).catch(() => null)) : null;
-    const fromIndex = photoSeedHints(spec, plan, library);
+    // V4-23: the draft has no demo articles unless the brief names them — their covers take no photos then.
+    const skip = new Set(out.some((h) => h.entity === "article" && h.field === "title") ? [] : ["article"]);
+    const fromIndex = photoSeedHints(spec, plan, library, skip);
     out = [...out, ...fromIndex];
     // V4-22: the semantic library (V4-10) is not in the index: the image fields still without photos get the library's
     // photos found by each row's name (the brief's «Терапия» → a photo of it), never a photo already on the site.
     if (storage && semanticSource) {
-      const covered = new Set(fromIndex.map((h) => `${h.entity}.${h.field}`));
+      const covered = new Set([...fromIndex.map((h) => `${h.entity}.${h.field}`), ...skip]);
       const used = new Set(plan.map((p) => String((p as { file?: unknown })?.file ?? "")));
       out = [...out, ...(await semanticSeedHints(spec, out, used, covered, semanticSource(storage)))];
     }
@@ -189,7 +191,7 @@ export async function semanticSeedHints(
   const taken = new Set(used);
   const out: SeedHint[] = [];
   for (const f of publicImageFields(spec)) {
-    if (covered.has(`${f.entity}.${f.field}`)) continue;
+    if (covered.has(`${f.entity}.${f.field}`) || covered.has(f.entity)) continue;
     const names = hints.find((h) => h.entity === f.entity && h.field === "name")?.values.map(String) ?? [];
     const queries = names.length ? names.map((n) => `${site}, ${n}`) : [site];
     const values: string[] = [];
@@ -231,6 +233,7 @@ export function photoSeedHints(
   spec: AppSpec,
   photos: readonly unknown[],
   library?: LibraryIndex | null,
+  skip: ReadonlySet<string> = new Set(),
 ): SeedHint[] {
   const plan = photos.filter((p): p is { slot: string; file: string } => {
     const x = p as { slot?: unknown; file?: unknown };
@@ -267,7 +270,7 @@ export function photoSeedHints(
   const fields: { entity: string; field: string }[] = [];
   for (const e of spec.entities) {
     // The owner's replacements of the site's own photos (landing «Фото сайта») keep the plan's photos in their places.
-    if (e.name === SITE_PHOTO_ENTITY) continue;
+    if (e.name === SITE_PHOTO_ENTITY || skip.has(e.name)) continue;
     const readable = spec.permissions.some(
       (p) => p.entity === e.name && publicRoles.has(p.role) && p.ops.includes("read"),
     );

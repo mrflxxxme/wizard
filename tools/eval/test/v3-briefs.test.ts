@@ -11,6 +11,7 @@ import {
   loadBriefs,
   V3_CLASSES,
   V3_FINAL_SET,
+  V3_CONTENT_ANSWERS,
   V3_TOPICS,
 } from "../lib/briefs.mjs";
 
@@ -38,7 +39,7 @@ describe("v3 briefs (checkpoint 1)", () => {
     expect(values).toContain("delegate");
     expect(values.some((v) => typeof v === "object")).toBe(true);
     expect(values.some((v) => typeof v === "string" && !["delegate", "recommended"].includes(v))).toBe(true);
-    expect(v3.every((b) => Object.keys(b.answers ?? {}).every((k) => V3_TOPICS.includes(k)))).toBe(true);
+    expect(v3.every((b) => Object.keys(b.answers ?? {}).every((k) => V3_TOPICS.includes(k) || V3_CONTENT_ANSWERS.includes(k)))).toBe(true);
     expect(v3.every((b) => (b.canaries ?? []).length > 0)).toBe(true);
     expect(new Set(v3.map((b) => b.direction ?? 1)).size).toBeGreaterThan(1);
   });
@@ -49,7 +50,7 @@ describe("v3 briefs (checkpoint 1)", () => {
       expect(final.filter((b) => b.class === c).length, c).toBe(V3_FINAL_SET.perClass);
     expect(v3.every((b) => final.some((x) => x.id === b.id))).toBe(true);
     expect(final.every((b) => b.segment === "v3" && (b.canaries ?? []).length > 0)).toBe(true);
-    expect(final.every((b) => Object.keys(b.answers ?? {}).every((k) => V3_TOPICS.includes(k)))).toBe(true);
+    expect(final.every((b) => Object.keys(b.answers ?? {}).every((k) => V3_TOPICS.includes(k) || V3_CONTENT_ANSWERS.includes(k)))).toBe(true);
     // Every brief is its own business: unique titles and canaries; a ТЗ file of each format in the set.
     expect(new Set(final.map((b) => b.title)).size).toBe(final.length);
     expect(new Set(final.flatMap((b) => b.canaries)).size).toBe(final.flatMap((b) => b.canaries).length);
