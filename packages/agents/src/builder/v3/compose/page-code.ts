@@ -9,6 +9,7 @@ import type { LlmMessage } from "@wizard/llm";
 import type { DesignSystemV3 } from "@wizard/ui-kit/v3/design";
 import { PATTERN_IMPORTS, PATTERN_THEME, PATTERNS, type PatternMeta } from "@wizard/ui-kit/v3/patterns";
 import { z } from "zod";
+import { DEFAULT_MAX_REPAIRS } from "../../../core/loop.js";
 import { defineTool, type ToolIssue, toJsonSchema } from "../../../core/tool.js";
 import { heroPhoto } from "./content.js";
 import { type SiteFacts, textLeaves } from "./facts.js";
@@ -163,8 +164,94 @@ const code = (i: number, c: string, message: string, path = `sections.${i}`): To
 /** The least body sections of the home page (rehearsal 13.10.2026: a home of a hero and two lists is thin). */
 export const HOME_MIN_SECTIONS = 4;
 
+/**
+ * Issues that keep a page from the site whatever the round (orchestrator 14.10: the skeleton instead of a page only for
+ * something real): the SDK gate and the shape, code that is not allowed, h1, and the honesty of the copy (D49).
+ * Every other issue (taste, rhythm, a thin page, a price word) goes back to the model, but the last answer is taken.
+ */
+export const HARD_ISSUES: ReadonlySet<string> = new Set([
+  "SDK_REQUIRED",
+  "HERO_FIRST",
+  "DUPLICATE",
+  "UNKNOWN_PHOTO",
+  "IMPORT",
+  "DYNAMIC_CODE",
+  "DEFAULT_EXPORT",
+  "FORBIDDEN_SOURCE",
+  "UNKNOWN_IMPORT",
+  "NO_H1",
+  "EXTRA_H1",
+  "MULTIPLE_H1",
+  "FABRICATED",
+  "UNTRACED_NUMBER",
+  "SUPERLATIVE",
+  "PLACEHOLDER",
+  "SCRUB_TOKEN",
+]);
+
+/**
+ * A tool check that sends every issue back on the first attempts and only the hard ones on the last of
+ * `attempts` (callTool: DEFAULT_MAX_REPAIRS + 1): a soft slip never leaves the page as it was.
+ */
+export function softOnLastAttempt<T>(check: (v: T) => ToolIssue[], attempts = DEFAULT_MAX_REPAIRS + 1) {
+  let n = 0;
+  return (v: T): ToolIssue[] => {
+    n += 1;
+    const all = check(v);
+    return n >= attempts ? all.filter((i) => HARD_ISSUES.has(i.code ?? "")) : all;
+  };
+}
+
 /** A promise of prices in a heading or a text: «цены», «прайс», «стоимость». */
 const PRICE_WORD = /(?:^|[^а-яё])(?:цен[аыуе]?|ценами|прайс|стоимост)/i;
+
+/** Price promises the code removes from a text: «и цены», «, прайс», «с ценами «от»», «цены и …». */
+const PRICE_PHRASES: readonly RegExp[] = [
+  /\s*(?:,\s*|\s+и\s+)(?:цены|прайс|стоимость)(?:\s*«от»)?/gi,
+  /\s+(?:с|и)\s+ценами(?:\s*«от»)?/gi,
+  /^(?:цены|прайс|стоимость)\s+и\s+/i,
+];
+
+/** A text without its price promises (D49: no prices in the facts); a text that was only one becomes «Услуги». */
+export function withoutPricePromise(text: string): string {
+  const t = text.trim();
+  if (/^(?:цены|прайс|прайс-лист|стоимость)$/i.test(t)) return "Услуги";
+  let out = t;
+  for (const re of PRICE_PHRASES) out = out.replace(re, "");
+  out = out.replace(/\s{2,}/g, " ").trim();
+  if (!out) return "Услуги";
+  return t.charAt(0) === t.charAt(0).toUpperCase() ? out.charAt(0).toUpperCase() + out.slice(1) : out;
+}
+
+/**
+ * The answer with the price promises removed from the props of its sections (orchestrator 14.10: a soft slip is fixed
+ * by the code, not sent back for a round): only when the facts name no price.
+ */
+export function stripPricePromises(args: unknown, prices: boolean): unknown {
+  if (prices || !args || typeof args !== "object") return args;
+  const a = args as { sections?: unknown };
+  if (!Array.isArray(a.sections)) return args;
+  const fix = (v: unknown): unknown =>
+    typeof v === "string"
+      ? PRICE_WORD.test(v)
+        ? withoutPricePromise(v)
+        : v
+      : Array.isArray(v)
+        ? v.map(fix)
+        : v && typeof v === "object"
+          ? Object.fromEntries(
+              Object.entries(v).map(([k, x]) => [k, k === "src" || k === "href" ? x : fix(x)]),
+            )
+          : v;
+  return {
+    ...a,
+    sections: a.sections.map((sec) =>
+      sec && typeof sec === "object" && "props" in sec
+        ? { ...sec, props: fix((sec as { props: unknown }).props) }
+        : sec,
+    ),
+  };
+}
 
 interface PageCheckCtx {
   site: SiteModel;
@@ -309,6 +396,7 @@ const PAGE_RULES = [
   "Все компоненты SDK из списка ниже обязаны остаться (kind keep с их id): форма заявки, запись, корзина, вход и данные системы работают только через них. В props компонента можно переписать тексты по его схеме; привязку к данным не трогай.",
   "Первая секция — первый экран кодом (kind code, id hero) с единственным h1. Шапку и подвал не пиши — их добавит система.",
   "Главная — полная страница: 5–8 секций тела. Каждое обещание сценария из «Что показать» — своя секция: компонент SDK, если он есть в списке, иначе секция кодом по фактам. Контакты (телефон, адрес, как добраться) и «как проходит запись» по фактам — обязательно, если факты есть.",
+  "На внутренней странице первый экран говорит, что на этой странице (её название и строка о ней), а не повторяет заголовок первого экрана главной.",
   "Каталог (услуги, меню, прайс) на главной — компонент SDK из списка: ставь его сразу после первого экрана; заголовок — словами брифа («Услуги», «Меню»); «цены» в заголовке — только если цены есть в фактах.",
   "Специалисты (врачи, мастера, команда) — только люди из строки «Специалисты» фактов: имена и специализации как есть, без фото людей, стажа и цитат. Отзывы — только компонентом SDK с данными системы; кодом их не пиши. Нет ни фактов, ни компонента — секции нет: никаких секций-обещаний с одной кнопкой, выдуманных имён, цитат и стажа.",
   "Секция кодом: id — латиница через дефис, title — что она показывает (по-русски), source — TSX, props — тексты и фото, которые секция получит ровно в таком виде.",
@@ -323,6 +411,9 @@ function factsBlock(f: SiteFacts, site: SiteModel): string {
     f.description ? `Описание: ${f.description}` : "",
     f.audience ? `Аудитория: ${f.audience}` : "",
     `Цели: ${f.goals.join("; ") || "не указаны"}`,
+    f.prices
+      ? ""
+      : "Цены: в фактах их нет — не пиши «цены», «прайс», «стоимость» ни в заголовках, ни в текстах (D49).",
     f.phone || f.email || f.address
       ? `Контакты: ${[f.phone, f.email, f.address].filter(Boolean).join(", ")}`
       : "",
@@ -445,7 +536,10 @@ export function pageCodeRequest(o: {
     name: PAGE_CODE_TOOL,
     description: "The public page as free code: code sections and the kept SDK components in order, SEO.",
     input: pageCodeSchema(sdkSections(o.page).map((s) => s.id)),
-    check: (v) => pageCodeIssues(v, { site: o.site, page: o.page, facts: o.facts, library, signatures }),
+    normalize: (args: unknown) => stripPricePromises(args, o.facts.prices),
+    check: softOnLastAttempt((v: PageCodeAnswer) =>
+      pageCodeIssues(v, { site: o.site, page: o.page, facts: o.facts, library, signatures }),
+    ),
   });
   return {
     tool,

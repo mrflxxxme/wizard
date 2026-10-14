@@ -3,6 +3,8 @@
 // platform keys from env). Skipped unless WIZARD_STAGE_PROBE=1: it runs only in GitHub Actions (stock-library.yml,
 // action probe). Candidates are Openverse thumbnails fetched for the run (never stored). Prints one record per call
 // (choices, share on topic, the sign listed as text and kept off the slots, ₽, ms; never keys) and the summary table.
+// V4-27: and the card check of a dental clinic — three rows, each with its own photo and a stranger (another medicine,
+// a sign): «Вывеска на месте» there means a stranger on a card.
 import { createRegistry, createRouter, MemoryUsageSink, type Registry } from "@wizard/llm";
 import { describe, expect, test } from "vitest";
 import { type LibraryPhotoEntry, modelPhotoPicker, type PickInput } from "../src/stock/index.js";
@@ -116,6 +118,62 @@ describe.skipIf(!ON)("V4-10 live probe of photo_pick", () => {
           console.log(`photo_pick_probe=${JSON.stringify(records.at(-1))}`);
         }
       }
+      // V4-27: the card check of a dental clinic — a row per service, its own photo and a stranger (another medicine,
+      // a sign); the model should take the dental one for every row.
+      const cardRows = [
+        { label: "Терапия", on: "dentist treatment patient", off: "gynecology examination chair" },
+        { label: "Хирургия", on: "dental surgery", off: "hospital ward bed" },
+        { label: "Ортодонтия", on: "dental braces orthodontist", off: SIGNS },
+      ];
+      const cardPool: { bytes: Uint8Array; width: number; height: number; row: number; on: boolean }[] = [];
+      for (const [i, r] of cardRows.entries()) {
+        const [on] = await thumbs(r.on, 1);
+        const [off] = await thumbs(r.off, 1);
+        // The stranger first: the order says nothing.
+        if (off) cardPool.push({ ...off, row: i, on: false });
+        if (on) cardPool.push({ ...on, row: i, on: true });
+      }
+      const cards: PickInput = {
+        niche: "стоматология",
+        style: "",
+        palette: [],
+        slots: cardRows.map((r, i) => ({
+          slot: `card-${i + 1}`,
+          label: `Карточка каталога «${r.label}»`,
+          orientation: "landscape" as const,
+        })),
+        candidates: cardPool.map((p) => ({ entry: entry(p.width, p.height), thumbnail: p.bytes })),
+      };
+      for (const model of ["glm-5v-turbo", "kimi-k3"]) {
+        const sink = new MemoryUsageSink();
+        const router = createRouter({ mode: "live", registry: only(model), sink });
+        const t0 = Date.now();
+        const answer = await modelPhotoPicker({
+          route: (i) => router.route(i),
+          orgPolicy: OPEN,
+          ctx: { orgId: "00000000-0000-4000-8000-0000000000f5" },
+          stepName: "photo_cards",
+        })(cards);
+        const choices = answer?.flatMap((a) => ("slot" in a ? [a] : [])) ?? null;
+        const right =
+          choices?.filter(
+            (c) => cardPool[c.index]?.on && `card-${(cardPool[c.index]?.row ?? -1) + 1}` === c.slot,
+          ).length ?? 0;
+        records.push({
+          id: `photo_cards:${model}:стоматология`,
+          status: choices ? "ok" : "error",
+          candidates: cardPool.length,
+          choices,
+          onTopic: choices?.length ? right / choices.length : null,
+          text: answer?.flatMap((a) => ("text" in a ? [a.text] : [])) ?? [],
+          signFlagged: null,
+          signPlaced: choices?.some((c) => !cardPool[c.index]?.on) ?? false,
+          rub: sink.records.reduce((s, r) => s + r.costRub, 0),
+          ms: Date.now() - t0,
+          attempts: sink.records.map((r) => `${r.modelId}:${r.status}:${r.errorCode ?? ""}`),
+        });
+        console.log(`photo_pick_probe=${JSON.stringify(records.at(-1))}`);
+      }
       const rub = records.reduce((s, r) => s + Number(r.rub ?? 0), 0);
       const table = records.map(
         (r) =>
@@ -127,7 +185,7 @@ describe.skipIf(!ON)("V4-10 live probe of photo_pick", () => {
         const { appendFileSync } = await import("node:fs");
         appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
       }
-      expect(records.length).toBe(NICHES.length * 2);
+      expect(records.length).toBe(NICHES.length * 2 + 2);
     },
     20 * 60_000,
   );

@@ -50,6 +50,10 @@ describe("the owner's answers to the grill interview", () => {
       kind: "text",
       text: "Анна Смирнова — терапевт",
     });
+    expect(v3Answer(content("Цены «от» на основные услуги: название — цена?"), { answers: { prices: { text: "Чистка — от 4000" } } })).toEqual({
+      kind: "text",
+      text: "Чистка — от 4000",
+    });
     // A brief without them: the recommended option, as before.
     expect(v3Answer(content("Где вас найти: адрес, телефон и часы работы?"), {})).toEqual({
       kind: "recommended",

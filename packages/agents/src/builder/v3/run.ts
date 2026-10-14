@@ -172,6 +172,9 @@ export function swapIds(src: string, swap: ReadonlyMap<string, string>): string 
 }
 
 /** The plan with the stock photos of its places (V3-18); unchanged without photos. */
+/** V4-27: how long the preview waits for the card check (glm-5v-turbo answers 12 photos in ≈10 s). */
+export const CARD_CHECK_WAIT_MS = 15_000;
+
 const withStockPhotos = (plan: SystemPlan, photos: readonly PlanPhoto[]): SystemPlan =>
   photos.length ? { ...plan, design: { ...plan.design, photos: [...photos] } } : plan;
 
@@ -519,6 +522,45 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
       .then((r) => (r.modelPicked ? { photos: r.plan.design.photos ?? [], milli: wallet.spentMilli } : null))
       .catch(() => null);
   };
+  /**
+   * V4-27: the card photos of the draft, checked by the vision model (one photo_pick call over every card row's
+   * candidates) once the backend is compiled; the preview (whose G0 seeds the draft) waits for it at most
+   * CARD_CHECK_WAIT_MS. The host keeps the verdict; a failed or late check leaves the photos by similarity.
+   */
+  let cardCheck: Promise<number> | null = null;
+  const startCardCheck = () => {
+    const ph = host.photos;
+    if (cardCheck || !ph?.cards || !ph.semantic || photos.length === 0) return;
+    const wallet = new V3Wallet("backend", budgets.photos, poolLeft("must", "backend"), rpc);
+    const picker =
+      ph.picker ??
+      modelPhotoPicker({
+        route: wallet.route(host, llm),
+        stepName: "photo_cards",
+        ...(host.signal ? { signal: host.signal } : {}),
+      });
+    cardCheck = ph
+      .cards({ spec: backend.spec, picker })
+      .catch(() => {})
+      .then(() => wallet.spentMilli);
+  };
+  const settleCardCheck = async () => {
+    if (!cardCheck) return;
+    const pending = cardCheck;
+    const settled = async () => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const late = new Promise<number>((res) => {
+        timer = setTimeout(() => res(0), CARD_CHECK_WAIT_MS);
+      });
+      try {
+        return await Promise.race([pending, late]);
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+    runMilli += host.once ? await host.once("v4_card_check", settled) : await settled();
+    cardCheck = null;
+  };
   const SETTLING = Symbol("settling");
   const applyPhotoPick = async (at: "hooks" | "gates") => {
     if (!photoPick) return;
@@ -772,6 +814,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
         photos = host.once ? await host.once("v3_photos", stockPhotos) : await stockPhotos();
         startPhotoPick();
         await buildBackend();
+        startCardCheck();
         return {
           data: {
             modules: backend.plan.modules.map((m) => m.id),
@@ -936,6 +979,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
     const before = committed?.revision ?? null;
     revision = await commit("Каркас страниц в выбранном стиле");
     if (host.preview && (revision !== before || previewRevision === null)) {
+      await settleCardCheck();
       const pr = await host.runStep("v3:preview", () => (host.preview as NonNullable<V3Host["preview"]>)());
       if (!pr.ok && pr.unavailable) throw new V3Failure("CHECKS_UNAVAILABLE", CHECKS_UNAVAILABLE_RU, true);
       if (!pr.ok)
@@ -1044,12 +1088,15 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
       // V4-21: the gates passed but promises of its «видит …» steps are not shown — one repair with the reasons, then
       // the better of the two layers (fewer promises not kept); never more than one round per scenario.
       const unkept = check.ok ? (check.unkept ?? []) : [];
-      if (unkept.length) {
+      // Only what the facts can keep is worth a model's round (specialists without facts, reviews, prices go to the
+      // requests as they are).
+      const repair = check.ok ? (check.repairable ?? unkept) : [];
+      if (repair.length) {
         const first = { r, check };
         let again: V3ComposeResult | null = null;
         try {
           again = await host.runStep(`v3:${key}:repair`, () =>
-            host.composer.scenario({ ...ctxFor(wallet), repair: unkept }, next.scenario),
+            host.composer.scenario({ ...ctxFor(wallet), repair }, next.scenario),
           );
         } catch (e) {
           if (!(e instanceof V3BudgetError)) throw e;

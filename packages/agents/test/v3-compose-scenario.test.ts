@@ -24,6 +24,8 @@ import {
   type SitePage,
   sdkGate,
   siteFacts,
+  stripPricePromises,
+  withoutPricePromise,
 } from "../src/builder/v3/compose/index.js";
 import type { V3BuildContext, V3ComposeResult } from "../src/builder/v3/contract.js";
 import type { CriticInspectInput } from "../src/builder/v3/critic/types.js";
@@ -224,6 +226,21 @@ describe("V4-06: the page as free code", () => {
     expect(withPrice.prices).toBe(true);
   });
 
+  test("D49 without prices: price promises are removed by the code (no round), a price in the facts keeps them", () => {
+    expect(withoutPricePromise("Услуги и цены")).toBe("Услуги");
+    expect(withoutPricePromise("Меню с ценами")).toBe("Меню");
+    expect(withoutPricePromise("Услуги с ценами «от»")).toBe("Услуги");
+    expect(withoutPricePromise("Цены и запись")).toBe("Запись");
+    expect(withoutPricePromise("Прайс")).toBe("Услуги");
+    const answer = {
+      sections: [{ kind: "keep", id: "catalog", props: { title: "Услуги и цены", src: "/цены" } }],
+    };
+    expect(stripPricePromises(answer, false)).toEqual({
+      sections: [{ kind: "keep", id: "catalog", props: { title: "Услуги", src: "/цены" } }],
+    });
+    expect(stripPricePromises(answer, true)).toBe(answer);
+  });
+
   test("a thin home page (fewer than HOME_MIN_SECTIONS body sections) goes back; the promises are in the prompt", async () => {
     const { ctx, site, facts } = await prepared();
     const home = site.pages[0] as SitePage;
@@ -259,7 +276,7 @@ describe("V4-06: the page as free code", () => {
     expect(readSite(apply(ctx.files, r))?.pages[0]?.sections.some((s) => s.id === "form")).toBe(true);
   });
 
-  test("lint: raw colours, the default palette and a missing hero go back; a page that never passes stays", async () => {
+  test("lint: raw colours, the default palette and a missing hero go back; a hard issue on the last answer leaves the page", async () => {
     const { ctx } = await prepared();
     const hero = HOME.sections[0] as PageCodeAnswer["sections"][number];
     const loud = {
@@ -270,7 +287,7 @@ describe("V4-06: the page as free code", () => {
       ],
     };
     const noHero = { ...HOME, sections: HOME.sections.slice(1) };
-    const never = scripted({ page_compose: [loud, noHero, loud] });
+    const never = scripted({ page_compose: [loud, noHero, noHero] });
     const r = await composer().scenario({ ...ctx, route: never.route }, LEAD);
     expect(never.calls).toHaveLength(3);
     const repairs = JSON.stringify(never.calls.slice(1).map((c) => c.messages.at(-1)));
@@ -278,6 +295,11 @@ describe("V4-06: the page as free code", () => {
     expect(repairs).toContain("HERO_FIRST");
     expect(r.files.size).toBe(0);
     expect(r.notes.join("\n")).toContain("осталась прежней");
+    // Only soft issues on the last answer (orchestrator 14.10): the best version is taken, not the skeleton.
+    const soft = scripted({ page_compose: [loud, loud, loud] });
+    const r2 = await composer().scenario({ ...ctx, route: soft.route }, LEAD);
+    expect(soft.calls).toHaveLength(3);
+    expect(r2.files.size).toBeGreaterThan(0);
   });
 
   test("owner scenarios and an empty budget call no model", async () => {

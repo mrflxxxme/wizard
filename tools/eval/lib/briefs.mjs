@@ -30,7 +30,7 @@ export const V3_CHECKPOINT_IDS = [
 export const V3_FINAL_SET = { total: 12, perClass: 3 };
 /** Topics of the v3 grill interview (packages/agents interview-v3 V3_TOPICS) — keys of a v3 brief's `answers`. */
 /** Keys of brief.answers for the V4-24 content questions (tools/eval/server/v3.mjs CONTENT_QUESTIONS). */
-export const V3_CONTENT_ANSWERS = ["place", "staff"];
+export const V3_CONTENT_ANSWERS = ["place", "staff", "prices"];
 
 export const V3_TOPICS = ["goals", "audience", "scenarios", "data", "roles", "integrations", "content", "constraints"];
 export const isV3Brief = (id) => V3_ID.test(String(id ?? ""));
@@ -95,7 +95,8 @@ function v3Problems(b) {
     else
       for (const [k, v] of Object.entries(b.answers)) {
         const text = v && typeof v === "object" && typeof v.text === "string" ? v.text.trim() : null;
-        // V4-24: the owner's own text for the content questions «Где вас найти» (place), «Кого из специалистов» (staff).
+        // V4-24: the owner's own text for the content questions «Где вас найти» (place), «Кого из специалистов» (staff),
+        // «Цены «от»» (prices).
         if (V3_CONTENT_ANSWERS.includes(k)) {
           if (!(text && text.length <= 500)) out.push(`answers.${k}: {text} ≤ 500 символов`);
           continue;

@@ -373,6 +373,8 @@ export function validateSeedHint(spec: AppSpec, h: SeedHint): string[] {
           bad("ожидается сумма, кратная 100, в пределах min/max");
         break;
       case "image":
+        // V4-27: an optional photo may be left empty for its row (the card shows none rather than a wrong one).
+        if (v === null && !f.required) break;
         if (typeof v !== "string" || !LIBRARY_PHOTO_HINT.test(v))
           bad("ожидается фото библиотеки платформы /_wizard/photos/<id>/<ширина>");
         break;

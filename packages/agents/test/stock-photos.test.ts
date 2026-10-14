@@ -37,6 +37,7 @@ import {
   SEMANTIC_VERSION,
   type SemanticPhotoSource,
   semanticPhotos,
+  siteShards,
   writeManifest,
   writeShard,
 } from "../src/stock/index.js";
@@ -204,6 +205,40 @@ describe("semanticPhotos", () => {
     expect(flagged).toEqual([sign]);
     expect(r.photos.map((x) => x.file)).not.toContain(sign);
     expect(r.photos).toHaveLength(slots.length);
+  });
+
+  test("V4-27: the site's photos come from the shards of the first screen's candidates, not a neighbour's interior", async () => {
+    const mixed = [
+      ...Array.from({ length: 12 }, () => photo("landscape", { niche: "cafe" })),
+      ...Array.from({ length: 6 }, () => photo("landscape", { niche: "interior" })),
+      ...Array.from({ length: 4 }, () => photo("portrait", { niche: "cafe" })),
+    ];
+    // The interior photos rank first for the gallery query only.
+    const { source } = fakeSource(mixed);
+    const search = source.search;
+    source.search = async (text, o) => {
+      const all = await search(text, { ...o, limit: 100 });
+      const first = /результат работы/.test(text)
+        ? [
+            ...all.filter((c) => c.entry.niche === "interior"),
+            ...all.filter((c) => c.entry.niche !== "interior"),
+          ]
+        : all;
+      return first.slice(0, o.limit ?? 20);
+    };
+    const r = await semanticPhotos({ plan: p, slots, source, pickedAt: "2026-10-13" });
+    expect(r.photos.length).toBeGreaterThan(0);
+    for (const ph of r.photos) expect(mixed.find((e) => e.file === ph.file)?.niche).toBe("cafe");
+    expect([...(siteShards([]) ?? [])]).toEqual([]);
+  });
+
+  test("V4-27: one photo per author on a site — one shoot, one person", async () => {
+    const same = Array.from({ length: 30 }, (_, i) =>
+      photo("landscape", { author: i < 20 ? "Один автор" : `Автор ${i}` }),
+    );
+    const { source } = fakeSource([...same, ...library.filter((e) => e.height >= e.width)]);
+    const r = await semanticPhotos({ plan: p, slots, source, pickedAt: "2026-10-13" });
+    expect(r.photos.filter((x) => x.author === "Один автор").length).toBeLessThanOrEqual(1);
   });
 
   test("too few photos on the topic queue the niche; slots without a fitting photo stay empty", async () => {

@@ -50,18 +50,22 @@ export {
 /** Brief patches merged by code (ids, references, ПДн fields), the journal, assumptions, the capability refresh. */
 export { addAssumption, addQa, applyBriefPatch, type PatchResult, refreshCapability } from "./merge.js";
 /**
- * V4-24: the fact questions of a site with a place (where to find it, the specialists), asked by code within the cap,
- * and their answers read back from brief.qa (placeFacts, staffFacts).
+ * V4-24: the fact questions of a site with a place (where to find it, the specialists, the prices «от»), asked by code
+ * within the cap, and their answers read back from brief.qa (placeFacts, staffFacts, priceFacts).
  */
 export {
   type FactQuestionKind,
   isFactQuestion,
   needsPlace,
+  needsPrices,
   needsStaff,
   nextFactQuestion,
   PLACE_QUESTION_TEXT,
+  PRICE_QUESTION_TEXT,
   placeFacts,
   placeQuestion,
+  priceFacts,
+  priceQuestion,
   STAFF_QUESTION_TEXT,
   splitPlacePhone,
   staffFacts,

@@ -3,7 +3,7 @@
 // marked as an example («Пример: …») are dropped. Every number a page shows must be found here (fabricated check).
 import type { SystemBrief, SystemPlan } from "@wizard/appspec";
 import { type PhotoSectionType, PROVIDER_LABEL, photoSlots, photoSrc, SITE_PHOTO } from "@wizard/modules";
-import { placeFacts, staffFacts } from "../../../interview-v3/place.js";
+import { placeFacts, priceFacts, staffFacts } from "../../../interview-v3/place.js";
 import { isKeywordNiche } from "../../../planner/fallback.js";
 import type { V3BuildContext } from "../contract.js";
 import { type BriefCopy, briefCopy } from "./copy.js";
@@ -71,7 +71,8 @@ const EXAMPLE_RE = /^\s*пример\b/i;
 const PLACEHOLDER_CTA = "Связаться";
 /** Width of the library variant a section's picture names; the patterns add the srcset of every width (srcSetOf). */
 const PHOTO_WIDTH = 1600;
-const NUMBER_RE = /\d(?:[\d   ]*\d)?(?:[.,]\d+)?/g;
+/** A number of a text; digits glued to a Latin letter (V60, A4, 3D) name a model or a format, not a number. */
+const NUMBER_RE = /(?<![A-Za-z\d])\d(?:[\d   ]*\d)?(?:[.,]\d+)?(?![A-Za-z\d])/g;
 
 /** Numbers of a text, normalised: «2 500» → «2500», «4,5» → «4.5». */
 export function numbersOf(text: string): string[] {
@@ -217,7 +218,8 @@ export function siteFacts(ctx: Pick<V3BuildContext, "brief" | "plan" | "spec" | 
       "new",
     year,
     numbers,
-    prices: corpus.some((t) => PRICE_RE.test(t)),
+    // V4-24: the prices «от» the owner gave in the interview count even without «₽».
+    prices: corpus.some((t) => PRICE_RE.test(t)) || priceFacts(brief).length > 0,
   };
 }
 

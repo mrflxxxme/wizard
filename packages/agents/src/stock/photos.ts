@@ -98,6 +98,21 @@ export function fitsPhotoSlot(
       : r > 0.8 && r < 1.25;
 }
 
+/** Candidates of the first screen that decide the site's shards. */
+const LEAD_CANDIDATES = 10;
+
+/**
+ * The niche shards of a site: the first shard of the first screen's best candidates and every shard at least two of them
+ * come from; undefined — no candidates (no restriction).
+ */
+export function siteShards(lead: readonly Candidate[]): Set<string> | undefined {
+  const top = lead.slice(0, LEAD_CANDIDATES);
+  if (top.length === 0) return undefined;
+  const count = new Map<string, number>();
+  for (const c of top) count.set(c.entry.niche, (count.get(c.entry.niche) ?? 0) + 1);
+  return new Set([top[0]?.entry.niche as string, ...[...count].filter(([, n]) => n >= 2).map(([s]) => s)]);
+}
+
 export interface SemanticPhotosResult {
   photos: PlanPhoto[];
   /** true — the vision model chose (false: rank order, no model or it failed). */
@@ -129,15 +144,27 @@ export async function semanticPhotos(o: {
     kinds.set(`${s.type}|${s.orientation}`, [...(kinds.get(`${s.type}|${s.orientation}`) ?? []), s]);
   // Candidates of every kind, best first; each kind keeps its own ranking for the fallback.
   const byKind = new Map<string, Candidate[]>();
-  for (const [k, group] of kinds) {
-    const first = group[0] as PhotoSlot;
-    const found = await o.source.search(photoQueryText(o.plan, first.type), {
+  const search = (s: PhotoSlot, shards?: ReadonlySet<string>) =>
+    o.source.search(photoQueryText(o.plan, s.type), {
       limit: PICK_CANDIDATES,
-      filter: (e) => fitsPhotoSlot(e, first),
+      filter: (e) => fitsPhotoSlot(e, s) && (!shards || shards.has(e.niche)),
       exclude: used,
     });
-    byKind.set(k, found);
+  // V4-27: the site's photos come from the niche shards the first screen's candidates mostly come from (the main niche
+  // and its neighbours) — a coffee house's gallery found «a dining room at home» in the interior shard.
+  const groups = [...kinds.entries()];
+  const lead = groups.find(([, g]) => g[0]?.type === "hero") ?? groups[0];
+  let shards: Set<string> | undefined;
+  if (lead) {
+    const found = await search(lead[1][0] as PhotoSlot);
+    shards = siteShards(found);
+    byKind.set(
+      lead[0],
+      found.filter((c) => !shards || shards.has(c.entry.niche)),
+    );
   }
+  for (const [k, group] of groups)
+    if (!byKind.has(k)) byKind.set(k, await search(group[0] as PhotoSlot, shards));
   // The pool for the picker: kinds take turns, so every kind has its candidates in the 20.
   const pool: Candidate[] = [];
   const seen = new Set<string>();
@@ -155,6 +182,8 @@ export async function semanticPhotos(o: {
   if (backfill) await o.source.requestBackfill(o.plan.niche).catch(() => {});
 
   const assigned = new Map<string, LibraryPhotoEntry>();
+  // V4-27: one photo per author on a site — one shoot shows one model, and a person three times reads as the staff.
+  const authors = new Set<string>();
   let picked = false;
   if (o.picker && pool.length > 0) {
     const withThumbs: { entry: LibraryPhotoEntry; thumbnail: Uint8Array }[] = [];
@@ -190,21 +219,26 @@ export async function semanticPhotos(o: {
           !entry ||
           assigned.has(slot.slot) ||
           used.has(sourceOf(entry)) ||
+          authors.has(entry.author) ||
           !fitsPhotoSlot(entry, slot)
         )
           continue;
         assigned.set(slot.slot, entry);
         used.add(sourceOf(entry));
+        authors.add(entry.author);
       }
       picked = assigned.size > 0;
     }
   }
   for (const s of o.slots) {
     if (assigned.has(s.slot)) continue;
-    const next = (byKind.get(`${s.type}|${s.orientation}`) ?? []).find((c) => !used.has(sourceOf(c.entry)));
+    const kind = byKind.get(`${s.type}|${s.orientation}`) ?? [];
+    const free = (c: Candidate) => !used.has(sourceOf(c.entry));
+    const next = kind.find((c) => free(c) && !authors.has(c.entry.author));
     if (!next) continue;
     assigned.set(s.slot, next.entry);
     used.add(sourceOf(next.entry));
+    authors.add(next.entry.author);
   }
   const photos: PlanPhoto[] = o.slots.flatMap((s) => {
     const e = assigned.get(s.slot);

@@ -26,6 +26,8 @@ const SYSTEM = [
   "2) по палитре — фото сочетается с цветами направления, все фото сайта выглядят как одна съёмка;",
   "3) ориентация фото совпадает с местом; одно фото — на одно место;",
   "4) без надписей, вывесок, логотипов и водяных знаков в кадре; не учебный класс, не выставка и не ряд одинаковых рабочих мест — нужен один кабинет, мастер или результат, как у этого бизнеса.",
+  "5) люди — в работе: руки, со спины, вполоборота, на среднем или дальнем плане, клиент в кадре; не крупный портрет лицом в камеру (его примут за сотрудника этого бизнеса); один и тот же человек — не больше чем на одном фото;",
+  "6) карточка каталога показывает то, что названо в ней («Десерты» — сами десерты, «Маникюр» — руки с маникюром), а не зал или постановочную сцену; если такого фото нет — оставь карточку без фото.",
   "Отдельно перечисли в text номера всех кандидатов, на которых в кадре есть читаемый текст: вывеска, надпись на стене или витрине, логотип, водяной знак. Такие фото не ставь ни на одно место.",
   "Если подходящего фото для места нет, не выбирай ничего для него. Ответ — вызов инструмента submit_photos.",
 ].join("\n");
@@ -124,6 +126,8 @@ export function modelPhotoPicker(o: {
   ctx?: RouteContext;
   runStep?: RunStepFn;
   signal?: AbortSignal;
+  /** The step of the call (default photo_pick; V4-27 the card check is «photo_cards»). */
+  stepName?: string;
 }): PhotoPicker {
   return async (input) => {
     if (input.candidates.length === 0 || input.slots.length === 0) return null;
@@ -135,7 +139,7 @@ export function modelPhotoPicker(o: {
         ctx: o.ctx ?? { orgId: "host" },
         ...(o.runStep ? { runStep: o.runStep } : {}),
         ...(o.signal ? { signal: o.signal } : {}),
-        stepName: PHOTO_PICK_CALL_TYPE,
+        stepName: o.stepName ?? PHOTO_PICK_CALL_TYPE,
         messages: photoPickMessages(input),
         tool: photoPickTool(input),
         maxRepairs: 1,

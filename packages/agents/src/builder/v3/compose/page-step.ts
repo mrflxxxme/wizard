@@ -20,6 +20,7 @@ import {
   CODE_RULES,
   codeSectionFile,
   designBlock,
+  HARD_ISSUES,
   type PageCodeAnswer,
   pageCodeRequest,
   pageLintIssues,
@@ -302,7 +303,10 @@ export async function pageSections(
   const check = { site: s.site, page: s.page, facts: s.facts, library: s.library, signatures: s.signatures };
   for (let round = 0; round < SECTION_ROUNDS; round++) {
     const answer = planAnswer(plan, sources);
-    const lint = pageLintIssues(answer, check);
+    // The last round keeps only the hard issues: soft ones never leave the page as it was (G0 still decides).
+    const lint = pageLintIssues(answer, check).filter(
+      (i) => round < SECTION_ROUNDS - 1 || HARD_ISSUES.has(i.code ?? ""),
+    );
     let problems = lint.map((i) => ({ path: i.path, message: i.message }));
     let applied = codePage(s.page, answer, s.library);
     if (!problems.length) {

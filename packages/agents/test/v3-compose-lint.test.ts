@@ -58,6 +58,8 @@ describe("copy rules (D49, catalog K, H)", () => {
     expect(copyIssues("Работаем с 2009 года", facts).map((i) => i.code)).toContain("untraced-number");
     expect(copyIssues("Уникальный индивидуальный подход", facts).map((i) => i.code)).toContain("stop-word");
     expect(copyIssues("Перезвоним за 15 минут", facts)).toEqual([]);
+    // Digits glued to a Latin letter name a model or a format (V60 — a pour-over, A4), not a number of the facts.
+    expect(copyIssues("Заварим в V60 и аэропрессе, меню на A4", facts)).toEqual([]);
     expect(copyIssues("Первичный приём — 2 500 ₽", facts)).toEqual([]);
     expect(copyIssues("tel:+78432004050", facts)).toEqual([]);
   });
