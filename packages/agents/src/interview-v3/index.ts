@@ -49,6 +49,23 @@ export {
 } from "./interview.js";
 /** Brief patches merged by code (ids, references, ПДн fields), the journal, assumptions, the capability refresh. */
 export { addAssumption, addQa, applyBriefPatch, type PatchResult, refreshCapability } from "./merge.js";
+/**
+ * V4-24: the fact questions of a site with a place (where to find it, the specialists), asked by code within the cap,
+ * and their answers read back from brief.qa (placeFacts, staffFacts).
+ */
+export {
+  type FactQuestionKind,
+  isFactQuestion,
+  needsPlace,
+  needsStaff,
+  nextFactQuestion,
+  PLACE_QUESTION_TEXT,
+  placeFacts,
+  placeQuestion,
+  STAFF_QUESTION_TEXT,
+  staffFacts,
+  staffQuestion,
+} from "./place.js";
 /** Prompts of the interview_v3 route. */
 export { interviewV3Messages, interviewV3System, type V3TurnInput } from "./prompt.js";
 /** web_search / read_page of the interview with its own limits (C8 research). */

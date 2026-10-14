@@ -4,7 +4,7 @@
 // → every turn a new brief version (author agent) → the owner's edit in the panel is kept by the next turn → the
 // ready brief: a short text in the chat, no pending question, stage card (D7). «Остальное по рекомендациям» is
 // «Дальше решай сам». The build queue and the monthly «не умею» share for /admin are read from the database.
-import { OPERATOR_QUESTION } from "@wizard/agents/interview-v3";
+import { OPERATOR_QUESTION, PLACE_QUESTION_TEXT, placeFacts } from "@wizard/agents/interview-v3";
 import type { RouteInput, RouteOutput, Router, RouterOptions } from "@wizard/llm";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import {
@@ -180,6 +180,13 @@ describe("v3 grill interview through the platform", () => {
       },
     });
     await waitRun(api, a3.body.run.id, ["succeeded"]);
+    // V4-24: a clinic is a place — where to find it is asked by code; the owner writes it himself (no model call).
+    const asked = await system(systemId);
+    expect(asked.pendingQuestions.map((q: { text: string }) => q.text)).toEqual([PLACE_QUESTION_TEXT]);
+    const a4 = await api.req("POST", `/systems/${systemId}/answers`, {
+      body: { answers: [{ questionId: "q4", text: "Казань, ул. Баумана, 12; пн–пт 9:00–20:00" }] },
+    });
+    await waitRun(api, a4.body.run.id, ["succeeded"]);
     const s = await system(systemId);
     expect(s.system.stage).toBe("card");
     expect(s.pendingQuestions).toEqual([]);
@@ -187,17 +194,21 @@ describe("v3 grill interview through the platform", () => {
     expect(last).toMatchObject({
       role: "assistant",
       kind: "text",
-      payload: { interview: { ready: true, reason: "clear", briefVersion: 5 } },
+      payload: { interview: { ready: true, reason: "clear", briefVersion: 6 } },
     });
     expect(last.text).toContain("Бриф готов");
     // The content question of the model and the operator's data asked by code (V3-18: the brief keeps personal data).
     expect(last.payload.interview.buildQuestions).toHaveLength(2);
     const latest = (await api.req("GET", `/systems/${systemId}/brief`)).body.brief;
-    expect(latest).toMatchObject({ version: 5, author: "agent" });
+    expect(latest).toMatchObject({ version: 6, author: "agent" });
+    expect(placeFacts(latest.brief)).toEqual({
+      address: "Казань, ул. Баумана, 12",
+      hours: "пн–пт 9:00–20:00",
+    });
     expect(latest.brief.audience).toBe("Пациенты клиники и их родители");
     expect(latest.brief.roles.map((r: { id: string }) => r.id)).toEqual(["owner", "admin", "doctor"]);
     expect(latest.brief.capability.map((c: { level: string }) => c.level)).toEqual(["modules", "modules"]);
-    const ev = await events(a3.body.run.id);
+    const ev = await events(a4.body.run.id);
     expect(ev.find((e) => e.type === "chat_output")?.payload).toMatchObject({ kind: "answer" });
     // The build queue and the /admin share are read from the database.
     expect(await loadBuildQuestions(api.deps.db, systemId)).toEqual([

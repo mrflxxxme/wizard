@@ -16,6 +16,8 @@ import {
   newInterviewV3Session,
   OPERATOR_LINE_RU,
   OPERATOR_QUESTION,
+  PLACE_QUESTION_TEXT,
+  placeFacts,
   questionOrderIssues,
   scrubTokenPlaces,
   stopReason,
@@ -86,6 +88,17 @@ describe("the dental dialog on a scripted model", () => {
     // Tree order: scenarios → data → roles (the goals came from the description, not asked again).
     expect(asked).toEqual(["scenarios", "data", "roles"]);
     expect(asked.map((t) => V3_TOPICS.indexOf(t as never))).toEqual([2, 3, 4]);
+    // V4-24: a clinic is a place — where to find it is asked by code (no model call), the owner writes it himself.
+    const place = questionOf(res.outputs);
+    expect(place).toMatchObject({ text: PLACE_QUESTION_TEXT, topic: "content", step: 4 });
+    res = await iv.answer(res.session, {
+      questionId: place.id,
+      text: "Казань, ул. Баумана, 12, второй этаж; пн–пт 9:00–20:00, сб 10:00–16:00",
+    });
+    expect(placeFacts(res.session.brief)).toEqual({
+      address: "Казань, ул. Баумана, 12, второй этаж",
+      hours: "пн–пт 9:00–20:00, сб 10:00–16:00",
+    });
     const done = main(res.outputs);
     expect(done?.kind).toBe("brief");
     if (done?.kind !== "brief") return;
@@ -101,7 +114,7 @@ describe("the dental dialog on a scripted model", () => {
     expect(b.roles.map((r) => r.id)).toEqual(["owner", "admin", "doctor"]);
     expect(b.data[0]?.fields.filter((f) => f.pii).map((f) => f.name)).toEqual(["Имя", "Телефон"]);
     // The journal: the recommended button, «Решите за меня» (with its assumption), an own answer.
-    expect(b.qa.map((x) => x.chosen)).toEqual(["recommended", "delegated", "custom"]);
+    expect(b.qa.map((x) => x.chosen)).toEqual(["recommended", "delegated", "custom", "custom"]);
     expect(b.qa[1]).toMatchObject({ a: "Имя и телефон", recommended: "Имя и телефон" });
     expect(b.assumptions).toEqual([
       { text: "Какие данные пациента нужны для записи? — Имя и телефон (решили за вас)", source: "default" },
@@ -317,7 +330,8 @@ describe("without a model (fallback) and failures", () => {
       const rec = q.options.find((o) => o.recommended);
       res = await iv.answer(res.session, { questionId: q.id, optionId: rec?.id as string });
     }
-    expect(topics).toEqual(["goals", "scenarios", "data", "roles"]);
+    // V4-24: then where to find the clinic (by code; its recommended answer — without contacts for now).
+    expect(topics).toEqual(["goals", "scenarios", "data", "roles", "content"]);
     expect(main(res.outputs)?.kind).toBe("brief");
     const b = res.session.brief;
     expect(validateBrief(b).ok).toBe(true);
@@ -545,6 +559,7 @@ describe("research, personal data, development requests, owner edits, wishes", (
     let res = await iv.start(newInterviewV3Session(), { prompt: PROMPTS.dental });
     for (const a of DENTAL_ANSWERS)
       res = await iv.answer(res.session, { questionId: questionOf(res.outputs).id, ...a });
+    res = await iv.answer(res.session, { questionId: questionOf(res.outputs).id, optionId: "later" });
     expect(res.session.state).toBe("ready");
     const wish = await iv.say(res.session, "Добавь, что приходят и родители с детьми");
     expect(main(wish.outputs)?.kind).toBe("brief");

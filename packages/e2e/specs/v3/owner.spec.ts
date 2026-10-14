@@ -102,6 +102,10 @@ test("v3: интервью → бриф → три направления → «
   await expect(question).toContainText("Кто ещё работает с записями", { timeout: 30_000 });
   await say(page, "Администратор и два врача, врачи видят только свои записи");
 
+  // V4-24: a clinic is a place — where to find it, asked by code; the owner writes it himself.
+  await expect(question).toContainText("Где вас найти", { timeout: 30_000 });
+  await say(page, "Казань, ул. Баумана, 12; пн–пт 9:00–20:00");
+
   // The brief is ready: the short brief in the chat and «Собрать» with its cap; no question left.
   const build = page.getByTestId("canvas-v3-build");
   await expect(build).toBeVisible({ timeout: 30_000 });
