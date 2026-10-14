@@ -144,6 +144,13 @@ const DEFAULT_BACKOFF = [1000, 4000, 16000];
 export const MAX_RETRY_AFTER_MS = 30_000;
 
 /**
+ * V4-06: a server error or a timeout that came this late (ms) is the provider's gateway giving up on a long call: the
+ * same model is not tried again (rehearsal №4: glm-5.3 answered 5xx after 121, 121 and 181 s — 7 min), the call goes to
+ * the next model of the chain at once.
+ */
+export const SLOW_FAILURE_MS = 60_000;
+
+/**
  * `sleep(ms)` that ends early (rejects with LlmError ABORTED) when `signal` aborts: a cancelled run never waits out a
  * backoff or a Retry-After (V3-18).
  */
@@ -599,6 +606,8 @@ export function createRouter(opts: RouterOptions = {}): Router {
           });
           if (err.code === "ABORTED") throw new LlmError("ABORTED", "Вызов модели отменён.");
           if (!err.retryable || attempt === MAX_ATTEMPTS) break;
+          if ((err.code === "HTTP_5xx" || err.code === "TIMEOUT") && now() - started >= SLOW_FAILURE_MS)
+            break;
           // V3-18: a Retry-After past the cap is not waited for — the next model of the chain (or LLM_UNAVAILABLE).
           if (err.retryAfterMs !== null && err.retryAfterMs > MAX_RETRY_AFTER_MS) break;
           const base = backoff[attempt - 1] ?? backoff[backoff.length - 1] ?? 0;
