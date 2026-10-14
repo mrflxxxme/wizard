@@ -29,6 +29,7 @@ export class DbUsageSink implements UsageSink {
         input_tokens: r.inputTokens,
         cached_tokens: r.cachedTokens,
         output_tokens: r.outputTokens,
+        reasoning_tokens: r.reasoningTokens ?? 0,
         tool_calls: r.toolCalls,
         latency_ms: Math.round(r.latencyMs),
         ttft_ms: r.ttftMs === null ? null : Math.round(r.ttftMs),

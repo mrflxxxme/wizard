@@ -309,6 +309,7 @@ usage_record:          # одна запись на HTTP-попытку = стр
     - { name: inputTokens,        type: int, note: "все входные, включая кэшированные" }
     - { name: cachedTokens,       type: int, note: "кэшированный вход: usage.prompt_tokens_details.cached_tokens, иначе prompt_cache_hit_tokens (DeepSeek) или usage.cached_tokens (Kimi); ≤ inputTokens; цена — price.cached (credits.cost_rub)" }
     - { name: outputTokens,       type: int }
+    - { name: reasoningTokens,    type: int, note: "V4-04: рассуждения, часть outputTokens: usage.completion_tokens_details.reasoning_tokens; 0 — провайдер не сообщил" }
     - { name: toolCalls,          type: int }
     - { name: latencyMs,          type: int }
     - { name: ttftMs,             type: "int?" }

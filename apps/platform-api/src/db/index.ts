@@ -40,6 +40,7 @@ import * as m0042 from "../../migrations/0042_v3_secret_window.js";
 import * as m0043 from "../../migrations/0043_v3_repo_sync.js";
 import * as m0044 from "../../migrations/0044_v3_repo_agent.js";
 import * as m0045 from "../../migrations/0045_v4_build_unscrubbed.js";
+import * as m0046 from "../../migrations/0046_v4_reasoning_tokens.js";
 import type { DB } from "./types.js";
 
 export type { DB } from "./types.js";
@@ -107,6 +108,7 @@ const MIGRATIONS: Record<string, Migration> = {
   "0043_v3_repo_sync": m0043,
   "0044_v3_repo_agent": m0044,
   "0045_v4_build_unscrubbed": m0045,
+  "0046_v4_reasoning_tokens": m0046,
 };
 
 const provider: MigrationProvider = { getMigrations: async () => MIGRATIONS };

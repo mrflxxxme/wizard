@@ -33,6 +33,25 @@ export function cachedInputTokens(
   return Math.min(cached, Math.max(0, inputTokens));
 }
 
+/**
+ * Reasoning tokens of a call (models.yaml#usage_record.reasoningTokens): the SDK value (usage.outputTokenDetails.
+ * reasoningTokens), else the raw usage — completion_tokens_details.reasoning_tokens (OpenAI-compatible providers).
+ * Part of the output, never more than it; 0 when the provider does not report them.
+ */
+export function reasoningOutputTokens(
+  outputTokens: number,
+  sdkReasoning: number | undefined,
+  raw: unknown,
+): number {
+  let reasoning = count(sdkReasoning);
+  if (reasoning === 0 && raw !== null && typeof raw === "object") {
+    const d = (raw as Record<string, unknown>).completion_tokens_details;
+    if (d !== null && typeof d === "object")
+      reasoning = count((d as Record<string, unknown>).reasoning_tokens);
+  }
+  return Math.min(reasoning, Math.max(0, outputTokens));
+}
+
 export function creditsMilli(cost: number, rubPerCredit: number): number {
   // Round away float noise before ceil so that e.g. 0.30000000000000004 does not add a milli-credit.
   return Math.ceil(Math.round(((cost * 1000) / rubPerCredit) * 1e6) / 1e6);

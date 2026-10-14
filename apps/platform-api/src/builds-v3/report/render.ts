@@ -1,5 +1,5 @@
 // V4-04: the report as Markdown — the admin page and the body of the issue of a failed founder build.
-import type { BuildReport } from "./types.js";
+import type { BuildReport, ReportCall } from "./types.js";
 
 const cell = (s: string | number | null | undefined): string =>
   String(s ?? "—")
@@ -53,13 +53,29 @@ export function renderReportMd(r: BuildReport, base: string): string {
   out.push("", "### Снимки");
   if (!r.shots.length) out.push("Снимков нет.");
   for (const s of r.shots) out.push(`- ${s.width}: ${base}/files/${s.key}`);
-  out.push("", "### Вызовы моделей", "| Шаг | Тип | Модель | Итог | ₽ | с |", "|---|---|---|---|---|---|");
+  out.push(
+    "",
+    "### Вызовы моделей",
+    "Токены — в тысячах: вход (из него кэш) / выход (из него рассуждения).",
+    "| Шаг | Тип | Модель | Итог | ₽ | с | Токены |",
+    "|---|---|---|---|---|---|---|",
+  );
   for (const c of r.calls.slice(0, 60))
     out.push(
-      `| ${cell(c.step)} | ${c.callType} | ${c.model} (${c.tier}) | ${c.status}${c.errorCode ? ` ${c.errorCode}` : ""} | ${c.rub.toFixed(2)} | ${c.latencyMs === null ? "—" : Math.round(c.latencyMs / 1000)} |`,
+      `| ${cell(c.step)} | ${c.callType} | ${c.model} (${c.tier}) | ${c.status}${c.errorCode ? ` ${c.errorCode}` : ""} | ${c.rub.toFixed(2)} | ${c.latencyMs === null ? "—" : Math.round(c.latencyMs / 1000)} | ${tokensCell(c.tokens)} |`,
     );
   if (r.calls.length > 60) out.push(`… и ещё ${r.calls.length - 60}`);
   if (r.records) out.push("", `Записи вызовов (V4-03, jsonl): ${base}/files/${r.records}`);
   if (r.gaps.length) out.push("", `Не собрано: ${r.gaps.join("; ")}`);
   return `${out.join("\n")}\n`;
+}
+
+const kilo = (n: number) => (n / 1000).toFixed(1).replace(".", ",");
+
+/** «12,3 (кэш 8,0) / 2,1 (рассужд. 1,2)»: tokens of a call in thousands; a part that is 0 is left out. */
+function tokensCell(t: ReportCall["tokens"] | undefined): string {
+  if (!t || (t.input === 0 && t.output === 0)) return "—";
+  const input = t.cached ? `${kilo(t.input)} (кэш ${kilo(t.cached)})` : kilo(t.input);
+  const output = t.reasoning ? `${kilo(t.output)} (рассужд. ${kilo(t.reasoning)})` : kilo(t.output);
+  return `${input} / ${output}`;
 }

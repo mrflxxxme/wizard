@@ -235,4 +235,11 @@ export {
   type UsageRecord,
   type UsageSink,
 } from "./types.js";
-export { cachedInputTokens, costRub, creditsMilli, JsonlUsageSink, MemoryUsageSink } from "./usage.js";
+export {
+  cachedInputTokens,
+  costRub,
+  creditsMilli,
+  JsonlUsageSink,
+  MemoryUsageSink,
+  reasoningOutputTokens,
+} from "./usage.js";
