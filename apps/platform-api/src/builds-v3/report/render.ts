@@ -1,5 +1,5 @@
 // V4-04: the report as Markdown — the admin page and the body of the issue of a failed founder build.
-import type { BuildReport, ReportCall } from "./types.js";
+import type { BuildReport, ReportCall, ScenarioTiming } from "./types.js";
 
 const cell = (s: string | number | null | undefined): string =>
   String(s ?? "—")
@@ -28,6 +28,7 @@ export function renderReportMd(r: BuildReport, base: string): string {
   if (!r.scenarios.length) out.push("Сценариев нет.");
   for (const s of r.scenarios) {
     out.push(`- **${s.id}** — ${s.status}${s.problems.length ? `: ${s.problems.join("; ")}` : ""}`);
+    if (s.timing) out.push(`  - время: ${timingLine(s.timing)}`);
     for (const h of s.http.filter((x) => x.status >= 400 || x.failure).slice(0, 10))
       out.push(`  - ${h.method} ${h.url} → ${h.failure ?? h.status}${h.body ? ` \`${cell(h.body)}\`` : ""}`);
     const ok = s.http.filter((x) => x.status > 0 && x.status < 400).length;
@@ -78,4 +79,13 @@ function tokensCell(t: ReportCall["tokens"] | undefined): string {
   const input = t.cached ? `${kilo(t.input)} (кэш ${kilo(t.cached)})` : kilo(t.input);
   const output = t.reasoning ? `${kilo(t.output)} (рассужд. ${kilo(t.reasoning)})` : kilo(t.output);
   return `${input} / ${output}`;
+}
+
+const sec = (ms: number) => `${Math.round(ms / 1000)} с`;
+
+/** «всего 95 с: сборка 52 с, проверка 31 с (G0 6 с, G1 18 с, обещания 7 с), ремонт 12 с + проверка 9 с». */
+function timingLine(t: ScenarioTiming): string {
+  const check = `проверка ${sec(t.checkMs)} (G0 ${sec(t.g0Ms)}, G1 ${sec(t.g1Ms)}, обещания ${sec(t.promisesMs)})`;
+  const repair = t.repairMs ? `, ремонт ${sec(t.repairMs)} + проверка ${sec(t.repairCheckMs)}` : "";
+  return `всего ${sec(t.totalMs)}: сборка ${sec(t.composeMs)}, ${check}${repair}`;
 }
