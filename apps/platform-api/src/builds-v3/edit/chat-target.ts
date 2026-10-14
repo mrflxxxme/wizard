@@ -2,8 +2,11 @@
 // «поменяй кнопку», «подвал светлее», «блок с ценами крупнее»): the section is found by the words and the request goes
 // to «Укажи и измени» (point_edit) of that section — not to the brief and a rebuild, which would replace the owner's
 // manual edits of the draft. No clear goal (none, or two of them) — null: the message goes to the interview as before.
-import { readSite, type SitePage, type SiteSection } from "@wizard/agents/builder";
+import { readSite } from "@wizard/agents/builder";
 import { kitElements } from "@wizard/build";
+
+type SitePage = NonNullable<ReturnType<typeof readSite>>["pages"][number];
+type SiteSection = SitePage["sections"][number];
 
 /** A part of the page the owner names in words. */
 export type ChatGoal =
