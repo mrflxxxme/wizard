@@ -22,6 +22,8 @@ import {
   runCritic,
 } from "../src/builder/index.js";
 import { siteFacts, siteFiles } from "../src/builder/v3/compose/index.js";
+import { shownCode } from "../src/builder/v3/critic/hook.js";
+import { pageOutline } from "../src/builder/v3/critic/index.js";
 import { signatureFallback } from "../src/builder/v3/critic/ops.js";
 import {
   criticContext,
@@ -140,6 +142,11 @@ describe("V3-13 rubric", () => {
     expect(r.value.findings[1]?.edit).toBeNull();
     // No replacement or no observable sign — not a finding (catalog C «отбрасываем»).
     expect(critiqueTool.parse(critique(2, [{ ...F.swap, replace: "" }])).ok).toBe(false);
+    // Findings sent as a JSON string of the array (qwen3.6-35b, V4-09 probe) are read as the array.
+    const asText = critique(2, [F.swap, F.free]) as { findings: unknown };
+    const s = critiqueTool.parse({ ...asText, findings: JSON.stringify(asText.findings) });
+    expect(s.ok && s.value.findings.map((f) => f.sign)).toEqual([F.swap.sign, F.free.sign]);
+    expect(critiqueTool.parse({ ...asText, findings: "не JSON" }).ok).toBe(false);
   });
 });
 
@@ -636,5 +643,53 @@ describe("V3-13 critic", () => {
       verify: null,
     })({ ...ctx, route: noModel });
     expect(broken).toEqual({ status: "skipped", note: expect.stringContaining("сборка упала") });
+  });
+});
+
+describe("V4-09: the critic sees the code of the sections written as code", () => {
+  const sig = (id: string, file: string) => ({
+    id,
+    type: "signature",
+    pattern: "signature",
+    props: {},
+    file,
+    title: id,
+  });
+  const page = (route: string, file: string, sections: unknown[]) => ({ route, file, sections });
+  const site = {
+    pages: [
+      page("/", "ui/pages/site/Home.tsx", [
+        sig("hero", "ui/sections/home-hero.tsx"),
+        { id: "catalog", type: "catalog", pattern: "catalog-grid", props: {} },
+        sig("how", "ui/sections/home-how.tsx"),
+      ]),
+      page("/services", "ui/pages/site/Services.tsx", [sig("intro", "ui/sections/services-intro.tsx")]),
+    ],
+  } as unknown as Parameters<typeof shownCode>[0];
+  const files = new Map<string, string | null>([
+    ["ui/pages/site/Home.tsx", "page"],
+    ["ui/sections/home-hero.tsx", "hero code"],
+    ["ui/sections/home-how.tsx", "x".repeat(50)],
+    ["ui/sections/services-intro.tsx", "intro"],
+  ]);
+
+  test("the page files, then its code sections in order (first screen first); within the size cap", () => {
+    expect([...shownCode(site, files, ["/", "/"]).keys()]).toEqual([
+      "ui/pages/site/Home.tsx",
+      "ui/sections/home-hero.tsx",
+      "ui/sections/home-how.tsx",
+    ]);
+    // Over the cap a file is skipped (home-how), a smaller one after it still fits; a file not in the system is none.
+    expect([...shownCode(site, files, ["/", "/services"], 30).keys()]).toEqual([
+      "ui/pages/site/Home.tsx",
+      "ui/sections/home-hero.tsx",
+      "ui/sections/services-intro.tsx",
+    ]);
+  });
+
+  test("the outline names the file of a code section and that only a patch edits it", () => {
+    const out = pageOutline(site.pages[0] as Parameters<typeof pageOutline>[0], PATTERNS);
+    expect(out).toContain("hero · секция кодом «hero» (ui/sections/home-hero.tsx)");
+    expect(out).toContain("правится только patch этого файла");
   });
 });

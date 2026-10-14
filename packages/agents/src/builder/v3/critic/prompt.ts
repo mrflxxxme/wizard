@@ -89,7 +89,11 @@ export function pageOutline(page: SitePage, library: readonly PatternMeta[]): st
   for (const s of page.sections) {
     const meta = library.find((p) => p.id === s.pattern);
     const parts = [
-      `- ${s.id} · ${s.type === "signature" ? `фирменная секция «${s.title ?? s.id}»` : s.pattern}`,
+      `- ${s.id} · ${
+        s.type === "signature"
+          ? `секция кодом «${s.title ?? s.id}»${s.file ? ` (${s.file}): вариантов и путей текста нет — правится только patch этого файла` : ""}`
+          : s.pattern
+      }`,
     ];
     if (meta?.needs) parts.push(`данные: ${meta.needs}`);
     const texts =
@@ -200,13 +204,25 @@ export function critiqueMessages(o: CritiqueInput): LlmMessage[] {
   ];
 }
 
+/** `findings` sent as a JSON string of the array (qwen3.6-35b now and then, its repair too) → the array. */
+function parsedFindings(v: unknown): unknown {
+  if (typeof v !== "string") return v;
+  try {
+    const parsed: unknown = JSON.parse(v);
+    return Array.isArray(parsed) ? parsed : v;
+  } catch {
+    return v;
+  }
+}
+
 /**
- * Slips of one finding do not cost a repeat with the images: an edit outside the closed set becomes null (the finding
- * stays a note), a finding that does not say where it is is dropped.
+ * Slips of one finding do not cost a repeat with the images: findings as a JSON string are read, an edit outside the
+ * closed set becomes null (the finding stays a note), a finding that does not say where it is is dropped.
  */
 function dropBadEdits(args: unknown): unknown {
   if (!args || typeof args !== "object") return args;
-  const a = args as { findings?: unknown };
+  const a = { ...(args as { findings?: unknown }) };
+  a.findings = parsedFindings(a.findings);
   if (!Array.isArray(a.findings)) return args;
   return {
     ...a,
