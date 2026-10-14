@@ -29,6 +29,9 @@ export const V3_CHECKPOINT_IDS = [
 /** V3-40, docs/plans/2026-10-08-v3.md §6: the final measurement — 12 briefs, 3 per class (loadBriefs("v3-final")). */
 export const V3_FINAL_SET = { total: 12, perClass: 3 };
 /** Topics of the v3 grill interview (packages/agents interview-v3 V3_TOPICS) — keys of a v3 brief's `answers`. */
+/** Keys of brief.answers for the V4-24 content questions (tools/eval/server/v3.mjs CONTENT_QUESTIONS). */
+export const V3_CONTENT_ANSWERS = ["place", "staff"];
+
 export const V3_TOPICS = ["goals", "audience", "scenarios", "data", "roles", "integrations", "content", "constraints"];
 export const isV3Brief = (id) => V3_ID.test(String(id ?? ""));
 /** D67: 10 briefs, 2–3 per class of D65 and 2 outside the classes. */
@@ -91,8 +94,13 @@ function v3Problems(b) {
       out.push("answers: объект {тема: основа варианта | delegate | recommended | {text}}");
     else
       for (const [k, v] of Object.entries(b.answers)) {
-        if (!V3_TOPICS.includes(k)) out.push(`answers.${k}: тема интервью — одна из ${V3_TOPICS.join(", ")}`);
         const text = v && typeof v === "object" && typeof v.text === "string" ? v.text.trim() : null;
+        // V4-24: the owner's own text for the content questions «Где вас найти» (place), «Кого из специалистов» (staff).
+        if (V3_CONTENT_ANSWERS.includes(k)) {
+          if (!(text && text.length <= 500)) out.push(`answers.${k}: {text} ≤ 500 символов`);
+          continue;
+        }
+        if (!V3_TOPICS.includes(k)) out.push(`answers.${k}: тема интервью — одна из ${V3_TOPICS.join(", ")}`);
         if (!(typeof v === "string" && v.trim()) && !(text && text.length <= 500))
           out.push(`answers.${k}: строка (основа варианта, delegate, recommended) или {text} ≤ 500 символов`);
       }
