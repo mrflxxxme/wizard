@@ -192,6 +192,14 @@ export async function collectBuildReport(pg: postgres.Sql, o: CollectInput): Pro
           scores: cycles.map((c) => num(c.score)).filter((s) => s > 0),
           stop: str(review.stop),
           note: str(critic.note) ?? strs(critic.notes)[0] ?? null,
+          top: (Array.isArray(cycles.at(-1)?.top)
+            ? ((cycles.at(-1) as { top: unknown[] }).top as unknown[])
+            : []
+          )
+            .map(obj)
+            .map((f) => [str(f.severity), str(f.sign), str(f.where)].filter(Boolean).join(" · "))
+            .filter(Boolean)
+            .slice(0, 5),
           left: (Array.isArray(review.left) ? (review.left as unknown[]).map(obj) : [])
             .map((p) => ({
               code: str(p.code) ?? "",

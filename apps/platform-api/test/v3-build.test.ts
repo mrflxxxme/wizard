@@ -39,7 +39,16 @@ function smallBrief() {
   const b = clinicBrief();
   return {
     ...b,
-    scenarios: (b.scenarios ?? []).filter((s) => ["s_book", "s_lead", "s_doctors"].includes(s.id)),
+    // V4-21: the fake composer writes no sections, so «показывает врачей» would be a promise not kept; this test is
+    // about the pipeline (v4-scenario-promises tests the promises).
+    scenarios: (b.scenarios ?? [])
+      .filter((s) => ["s_book", "s_lead", "s_doctors"].includes(s.id))
+      .map((s) =>
+        s.id === "s_doctors"
+          ? // biome-ignore lint/suspicious/noThenProperty: field name fixed by builder-v3.md §3 C1
+            { ...s, then: ["записывает к выбранному врачу"] }
+          : s,
+      ),
   };
 }
 
