@@ -17,13 +17,14 @@ import { LIBRARY_PHOTO_HINT, SEED_HINT_MAX_VALUES, type SeedHint } from "@wizard
 export const SITE_PHOTO_ENTITY = "site_photo";
 
 /**
- * D49: entities of people — the owner's doctors, masters, team. A stock photo on their card would pass strangers off as
- * the staff: these cards keep no photo (the site shows initials), never a library one.
+ * D49: entities a site passes off as its own — the owner's doctors, masters, team, the works of its portfolio, the
+ * reviews (avatars). A stock photo there would show strangers as the staff and others' work as the masters': these cards
+ * keep no photo (the site shows initials or nothing) without the owner's own, never a library one.
  */
 const PERSON_ENTITY =
-  /^(specialist|staff|doctor|master|employee|team|member|trainer|teacher|coach|tutor|stylist|barber|instructor|expert|person|people|author)(s|_.*)?$/;
+  /^(specialist|staff|doctor|master|employee|team|member|trainer|teacher|coach|tutor|stylist|barber|instructor|expert|person|people|author|portfolio|work|review|testimonial)(s|_.*)?$/;
 
-/** true — `entity` holds people (D49): no stock photo ever goes on its cards. */
+/** true — `entity` is the site's own people or work (D49): no stock photo ever goes on its cards. */
 export const isPersonEntity = (entity: string): boolean => PERSON_ENTITY.test(entity);
 
 /** Rows a field without name hints gets photos for. */
