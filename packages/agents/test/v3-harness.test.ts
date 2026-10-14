@@ -429,6 +429,8 @@ describe("harness v3: browser check, stop rules, «Запросы на разв�
       unkept: [PRICES],
     });
     expect(r.scenarios.every((s) => s.status === "passed")).toBe(true);
+    // Repairable and not repaired: not kept, nothing withdrawn.
+    expect(sys.checkpoints.get("scenario:s_prices")?.data).not.toHaveProperty("withdrawn");
     // The scenario's page stays on the system.
     expect(Object.values(sys.files).some((src) => src.includes("показывает услуги с ценами"))).toBe(true);
     expect(sys.requests).toEqual([
@@ -457,6 +459,12 @@ describe("harness v3: browser check, stop rules, «Запросы на разв�
     expect(sys.requests).toEqual([
       expect.objectContaining({ quote: expect.stringContaining("нет настоящих имён") }),
     ]);
+    // Rehearsal №6: the report reads them as withdrawn for want of facts, not as kept.
+    expect(sys.checkpoints.get("scenario:s_prices")?.data).toMatchObject({
+      status: "passed",
+      unkept: [DOCTORS],
+      withdrawn: [DOCTORS],
+    });
   });
 
   test("the repair round gets only the promises the facts keep", async () => {

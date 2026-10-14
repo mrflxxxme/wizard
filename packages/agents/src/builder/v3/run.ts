@@ -1180,6 +1180,10 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
         );
       } else if (check.ok) {
         const left = check.unkept ?? [];
+        // Rehearsal №6: what no fact keeps (specialists the owner did not name, reviews, prices — D49) is withdrawn,
+        // not kept; the report says so instead of a bare «passed».
+        const fixable = new Set(check.repairable ?? left);
+        const withdrawn = left.filter((x) => !fixable.has(x));
         states.set(next.id, {
           id: next.id,
           title: next.title,
@@ -1197,6 +1201,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
             pages: r.pages,
             notes: r.notes,
             ...(left.length ? { unkept: left } : {}),
+            ...(withdrawn.length ? { withdrawn } : {}),
             timing,
           },
           costMilli,

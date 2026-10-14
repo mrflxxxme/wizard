@@ -32,6 +32,10 @@ export interface ReportScenario {
   http: ScenarioHttp[];
   /** The composer's notes (why a page stayed as it was, what the checks refused), at most eight. */
   notes?: string[];
+  /** V4-21: promises of its «видит …» steps the site does not show (they went to «Запросы на развитие»). */
+  unkept?: string[];
+  /** Of `unkept`, those withdrawn for want of the owner's facts (specialists, reviews, prices — D49), not repaired. */
+  withdrawn?: string[];
   /** Where its time went (ms): composing, the check (G0, G1, promises) and the repair round; absent — not recorded. */
   timing?: ScenarioTiming;
 }

@@ -26,6 +26,7 @@ import { totpCode } from "../src/auth/totp.js";
 import { saveBriefVersion } from "../src/briefs/store.js";
 import { criticTop, criticWhy } from "../src/builds-v3/report/collect.js";
 import { loadBuildReport, renderReportMd, reportFile, reportStorage } from "../src/builds-v3/report/index.js";
+import { promiseLines } from "../src/builds-v3/report/render.js";
 import { startV3Build } from "../src/builds-v3/start.js";
 import { DEFAULT_ORG_ID, DEV_USER_ID, json } from "../src/db/index.js";
 import { createTestDb, startApi, type TestApi, waitRun } from "./helpers.js";
@@ -232,5 +233,18 @@ describe("V4-09: why the critic applied nothing", () => {
       rejected: ["патч ui/sections/home-hero.tsx: фрагмент не найден в файле ровно один раз"],
     });
     expect(criticWhy(undefined)).toEqual({ noEdit: [], rejected: [] });
+  });
+});
+
+describe("V4-21: promises of a passed scenario in the report", () => {
+  const DOCTORS =
+    "Обещано в сценарии «видит врачей»: на сайте нет специалистов — нужна секция специалистов с их именами";
+  const PRICES = "Обещано в сценарии «видит цены»: цены не показаны";
+  test("withdrawn for want of the owner's facts — said so, not «выполнено»; the rest — not kept", () => {
+    expect(promiseLines({ unkept: [DOCTORS, PRICES], withdrawn: [DOCTORS] })).toEqual([
+      `обещания сняты — нет фактов владельца: ${DOCTORS}`,
+      `обещания не выполнены: ${PRICES}`,
+    ]);
+    expect(promiseLines({})).toEqual([]);
   });
 });
