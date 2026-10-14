@@ -3,6 +3,7 @@
 // marked as an example («Пример: …») are dropped. Every number a page shows must be found here (fabricated check).
 import type { SystemBrief, SystemPlan } from "@wizard/appspec";
 import { type PhotoSectionType, PROVIDER_LABEL, photoSlots, photoSrc, SITE_PHOTO } from "@wizard/modules";
+import { placeFacts } from "../../../interview-v3/place.js";
 import { isKeywordNiche } from "../../../planner/fallback.js";
 import type { V3BuildContext } from "../contract.js";
 import { type BriefCopy, briefCopy } from "./copy.js";
@@ -44,6 +45,8 @@ export interface SiteFacts {
   phone?: string;
   email?: string;
   address?: string;
+  /** V4-24: the opening hours the owner gave in the interview («пн–пт 9:00–20:00»). */
+  hours?: string;
   policyPage: string;
   /**
    * Bookings wait for the staff's confirmation (the booking module's confirm = manual: a new booking's status is
@@ -172,7 +175,11 @@ export function siteFacts(ctx: Pick<V3BuildContext, "brief" | "plan" | "spec" | 
   ];
   const year = new Date().getUTCFullYear();
   const numbers = new Set([...corpus.flatMap(numbersOf), String(year)]);
-  const contact = contactOf(c.operatorContact);
+  // V4-24: the operator's data first; else where to find the business as the owner wrote it in the interview.
+  const place = placeFacts(brief);
+  const operator = contactOf(c.operatorContact);
+  const contact = { ...operator, ...(!operator.phone && place.phone ? { phone: place.phone } : {}) };
+  const address = c.operatorAddress || place.address;
   const description = spec.app.description?.trim();
   const audience = brief.audience.trim();
   return {
@@ -197,7 +204,8 @@ export function siteFacts(ctx: Pick<V3BuildContext, "brief" | "plan" | "spec" | 
     ...(c.operatorInn ? { operatorInn: c.operatorInn } : {}),
     ...(c.operatorOgrn ? { operatorOgrn: c.operatorOgrn } : {}),
     ...contact,
-    ...(c.operatorAddress ? { address: c.operatorAddress } : {}),
+    ...(address ? { address } : {}),
+    ...(place.hours ? { hours: place.hours } : {}),
     policyPage: c.policyPage ?? "/privacy",
     bookingByRequest:
       spec.entities.find((e) => e.name === "booking")?.fields.find((f) => f.name === "status")?.default ===

@@ -78,7 +78,11 @@ async function recordAndReplay(name: string, script: readonly ScriptStep[], answ
 
 describe("interview v3 on recorded answers (fixture router)", () => {
   test("the dental dialog to the end: 3 questions, brief ready, the same brief as recorded; abroad as is (D79 (3))", async () => {
-    const r = await recordAndReplay("interview-v3-dental", DENTAL_SCRIPT, DENTAL_ANSWERS);
+    // V4-24: the fourth question — where to find the clinic — is by code: its answer calls no model.
+    const r = await recordAndReplay("interview-v3-dental", DENTAL_SCRIPT, [
+      ...DENTAL_ANSWERS,
+      { optionId: "later" },
+    ]);
     expect(r.lines.map((l) => l.callType)).toEqual(Array(5).fill("interview_v3"));
     const last = r.replayed.at(-1) as InterviewV3Result;
     expect(last.session.state).toBe("ready");
@@ -87,10 +91,16 @@ describe("interview v3 on recorded answers (fixture router)", () => {
       ["question"],
       ["question"],
       ["question"],
+      ["question"],
       ["brief"],
     ]);
     expect(blockingGaps(last.session.brief)).toEqual([]);
-    expect(last.session.brief.qa.map((x) => x.chosen)).toEqual(["recommended", "delegated", "custom"]);
+    expect(last.session.brief.qa.map((x) => x.chosen)).toEqual([
+      "recommended",
+      "delegated",
+      "custom",
+      "recommended",
+    ]);
     // V4-05 (D79 (3)): the interview is a build stage — abroad as is.
     expect(r.scrubbed).toEqual(Array(5).fill(false));
     expect(r.rub).toBeGreaterThan(0);
