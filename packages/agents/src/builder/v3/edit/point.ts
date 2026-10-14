@@ -25,6 +25,8 @@ export interface PointEditInput {
   target: PointEditTarget;
   /** The file as it is now. */
   source: string;
+  /** V4-24: a section written as code — its props as the page file passes them (texts and photos live there). */
+  props?: string;
   /** Problems of the platform's gates on the previous answer (the repair round). */
   problems?: readonly string[];
 }
@@ -54,6 +56,11 @@ export function pointEditMessages(i: PointEditInput): LlmMessage[] {
     ...(i.problems?.length
       ? [
           `Проверка прошлого варианта нашла ошибки — исправь их:\n${i.problems.map((p) => `- ${p}`).join("\n")}`,
+        ]
+      : []),
+    ...(i.props
+      ? [
+          `Это секция страницы: её тексты и фото приходят в props из файла страницы. Меняй вёрстку и оформление здесь; если владелец просит другой текст — впиши его прямо в разметку вместо поля props. Props секции сейчас: ${i.props}`,
         ]
       : []),
     "Файл сейчас:",
@@ -157,4 +164,51 @@ export async function pointEditV3(o: {
         .slice(0, 500),
     };
   return { ok: true, source: r.value.content, summary: r.value.summary };
+}
+
+/** Folder of the sections written as code (compose/site.ts SECTIONS_DIR). */
+const SECTIONS_DIR = "ui/sections/";
+
+/**
+ * V4-24: the owner pointed at a section written as code (its element on the page file, wrapped with data-wz-id by the
+ * build): the edit goes to the section's own file (ui/sections/<page>-<id>.tsx), with the props the page passes it.
+ * null — the element is not such a section (a pattern, a free page): the page file is the target as before.
+ */
+export function codeSectionTarget(
+  target: PointEditTarget,
+  pageSource: string,
+): { target: PointEditTarget; props: string } | null {
+  const sf = parse(target.file, pageSource);
+  let file: string | null = null;
+  for (const st of sf.statements) {
+    if (!ts.isImportDeclaration(st) || !ts.isStringLiteral(st.moduleSpecifier)) continue;
+    if (st.importClause?.name?.text !== target.componentName) continue;
+    const dir = target.file.split("/").slice(0, -1);
+    for (const part of st.moduleSpecifier.text.split("/")) {
+      if (part === "..") dir.pop();
+      else if (part !== ".") dir.push(part);
+    }
+    const path = `${dir.join("/")}.tsx`;
+    if (path.startsWith(SECTIONS_DIR)) file = path;
+  }
+  if (!file) return null;
+  // The props of the element the owner chose: its line (the first one of the component when the line is off).
+  const els: { line: number; props: string }[] = [];
+  const visit = (n: ts.Node): void => {
+    if (
+      (ts.isJsxSelfClosingElement(n) || ts.isJsxOpeningElement(n)) &&
+      ts.isIdentifier(n.tagName) &&
+      n.tagName.text === target.componentName
+    ) {
+      const spread = n.attributes.properties.find(ts.isJsxSpreadAttribute);
+      els.push({
+        line: sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1,
+        props: spread ? spread.expression.getText(sf) : "{}",
+      });
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  const el = els.find((e) => e.line === target.line) ?? els[0];
+  return { target: { ...target, file, line: 1 }, props: (el?.props ?? "{}").slice(0, 6000) };
 }

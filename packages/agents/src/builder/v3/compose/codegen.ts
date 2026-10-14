@@ -131,8 +131,15 @@ export function pageSource(
   }
   const attrs = new Map(page.sections.map((s) => [s, photoAttrs(s, patternOf)]));
   const photos = [...attrs.values()].some((a) => a !== "");
+  // V4-24: the props a photo attribute sets (image, images, items) are not spread too — the attribute wins anyway, and a
+  // second copy of the same photo address made the instant edit ambiguous (two literals, one picture shown).
+  const spread = (s: SiteSection) => {
+    const a = attrs.get(s) ?? "";
+    const set = new Set([...a.matchAll(/ (image|images|items)=\{/g)].map((m) => m[1] as string));
+    return set.size ? Object.fromEntries(Object.entries(s.props).filter(([k]) => !set.has(k))) : s.props;
+  };
   const el = (s: SiteSection, indent: string) =>
-    `${indent}<${sectionComponent(s)} {...${json(s.props)}}${attrs.get(s) ?? ""} />`;
+    `${indent}<${sectionComponent(s)} {...${json(spread(s))}}${attrs.get(s) ?? ""} />`;
   const header = page.sections.filter((s) => s.type === "header");
   const footer = page.sections.filter((s) => s.type === "footer");
   const body = page.sections.filter((s) => s.type !== "header" && s.type !== "footer");

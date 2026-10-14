@@ -260,13 +260,13 @@ paths:
       requestBody:
         required: true
         content:
-          application/json: {schema: {type: object, required: [version], additionalProperties: false, properties: {version: {type: integer, minimum: 1, description: 'версия брифа, которую видел владелец'}}}}
+          application/json: {schema: {type: object, required: [version], additionalProperties: false, properties: {version: {type: integer, minimum: 1, description: 'версия брифа, которую видел владелец'}, replaceEdits: {type: boolean, description: 'V4-24: владелец согласился, что пересборка заменит его ручные правки черновика'}}}}
       responses:
         '202': {description: 'Сборка поставлена в очередь', content: {application/json: {schema: {type: object, required: [run, capCredits], properties: {run: {$ref: '#/components/schemas/Run'}, capCredits: {type: integer}}}}}}
         '402': {$ref: '#/components/responses/Error'}
         '403': {$ref: '#/components/responses/Error'}
         '404': {$ref: '#/components/responses/Error'}
-        '409': {description: 'NO_PLAN — у системы нет брифа; SYSTEM_LOCKED — сборка уже идёт', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '409': {description: 'NO_PLAN — у системы нет брифа; SYSTEM_LOCKED — сборка уже идёт; REBUILD_REPLACES_EDITS (V4-24) — в черновике есть ручные правки после последней сборки (мгновенные и «Укажи и измени», details.edits — сколько), пересборка их заменит: без replaceEdits=true сборка не стартует', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '412': {description: 'VERSION_CONFLICT — бриф изменился после version (details.version — текущая)', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
   /systems/{id}/sessions:
     parameters: [{$ref: '#/components/parameters/systemId'}]
@@ -1788,6 +1788,7 @@ components:
             NO_PLAN: 409
             PLAN_REVISION_STALE: 409
             PREVIEW_NOT_READY: 409
+            REBUILD_REPLACES_EDITS: 409
             INVITE_EXPIRED: 410
             EXPORT_LINK_USED: 410
             VERSION_CONFLICT: 412

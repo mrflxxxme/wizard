@@ -77,7 +77,7 @@ describe("«Собрать» of a v3 system", () => {
     await click("canvas-v3-style-open");
     expect(onStyle).toHaveBeenCalled();
     await click("canvas-v3-approve");
-    expect(approveBrief).toHaveBeenCalledWith(SYS, 4);
+    expect(approveBrief).toHaveBeenCalledWith(SYS, 4, {});
     expect(onStarted).toHaveBeenCalledWith(run);
   });
 
@@ -90,6 +90,33 @@ describe("«Собрать» of a v3 system", () => {
     expect($("canvas-v3-style")?.textContent).toBe(`«${A.name}» — подберём сами`);
     expect($("canvas-v3-approve")).toBeNull();
     expect($("canvas-v3-style-open")).toBeNull();
+  });
+
+  test("V4-24: manual edits a rebuild would replace — the question in words; «Пересобрать» or «Выбрать блок»", async () => {
+    const run = { id: "r2", kind: "build", status: "queued", createdAt: "" };
+    const text = "Пересборка заменит ваши правки (2). Пересобрать или выбрать блок и поправить его?";
+    const approveBrief = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new ApiError(409, { code: "REBUILD_REPLACES_EDITS", message_ru: text, details: { edits: 2 } }),
+      )
+      .mockResolvedValueOnce({ run, capCredits: 100 })
+      .mockRejectedValueOnce(
+        new ApiError(409, { code: "REBUILD_REPLACES_EDITS", message_ru: text, details: { edits: 2 } }),
+      );
+    const onStarted = vi.fn();
+    const onPickBlock = vi.fn();
+    await mount({ approveBrief } as unknown as Partial<ApiClient>, card({ onStarted, onPickBlock }));
+    await click("canvas-v3-approve");
+    expect($("canvas-v3-replace")?.textContent).toContain(text);
+    expect(onStarted).not.toHaveBeenCalled();
+    await click("canvas-v3-rebuild");
+    expect(approveBrief).toHaveBeenLastCalledWith(SYS, 4, { replaceEdits: true });
+    expect(onStarted).toHaveBeenCalledWith(run);
+    await click("canvas-v3-approve");
+    await click("canvas-v3-pick-block");
+    expect(onPickBlock).toHaveBeenCalled();
+    expect($("canvas-v3-replace")).toBeNull();
   });
 
   test("a stale brief (412) is said in words and re-read; another refusal shows the server's text", async () => {

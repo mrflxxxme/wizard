@@ -2,7 +2,7 @@
 // file of the clicked element (packages/agents builder/v3/edit), the file is committed, G0 and G1 check it; G0's
 // problems go back to the agent once, then the file returns to what it was and the run fails with the reason. The
 // revision's diff is exactly {target.file}.
-import { erroredBlockers, failedBlockers, pointEditV3 } from "@wizard/agents/builder";
+import { codeSectionTarget, erroredBlockers, failedBlockers, pointEditV3 } from "@wizard/agents/builder";
 import type { RouteInput, RouteOutput } from "@wizard/llm";
 import { type BuildHost, type HostRouteInput, type PointEditTarget, RunFailure } from "../../runs/types.js";
 
@@ -11,9 +11,13 @@ export const POINT_EDIT_ROUNDS = 2;
 
 export async function pointEditBuild(
   host: BuildHost,
-  target: PointEditTarget,
+  chosen: PointEditTarget,
 ): Promise<{ status: "succeeded"; summary_ru: string }> {
-  const original = await host.store.readFile(target.file);
+  // V4-24: a section written as code is edited in its own file, with the props its page passes it.
+  const page = await host.store.readFile(chosen.file);
+  const section = page === null ? null : codeSectionTarget(chosen, page);
+  const target = section ? section.target : chosen;
+  const original = section ? await host.store.readFile(target.file) : page;
   if (original === null)
     throw new RunFailure(
       "GATES_FAILED",
@@ -29,7 +33,12 @@ export async function pointEditBuild(
   for (let round = 1; round <= POINT_EDIT_ROUNDS; round++) {
     const r = await host.runStep(`point_edit:${round}`, () =>
       pointEditV3({
-        input: { target, source: original, ...(problems.length ? { problems } : {}) },
+        input: {
+          target,
+          source: original,
+          ...(section ? { props: section.props } : {}),
+          ...(problems.length ? { problems } : {}),
+        },
         route,
         ...(host.signal ? { signal: host.signal } : {}),
       }),

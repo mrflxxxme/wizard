@@ -11,6 +11,7 @@ import { type Deps, jsonBody } from "../http/util.js";
 import { TERMINAL_STATUSES } from "../runs/queue.js";
 import { toRun } from "../services/serialize.js";
 import { IllegalTransition } from "../services/stage.js";
+import { manualEditsSinceBuild } from "./edit/manual.js";
 import { V3_BUILD_CAP_CREDITS } from "./host.js";
 import { startV3Build } from "./start.js";
 
@@ -31,7 +32,10 @@ export function buildV3Routes(d: Pick<Deps, "db" | "bus" | "engine" | "billing">
       .executeTakeFirst();
     if (!s) throw notFound("Система");
     checkOrgAccess(user, s.org_id, "editor", "Система");
-    const b = await jsonBody(c, z.strictObject({ version: z.number().int().min(1) }));
+    const b = await jsonBody(
+      c,
+      z.strictObject({ version: z.number().int().min(1), replaceEdits: z.boolean().optional() }),
+    );
     const lock = await d.db
       .selectFrom("platform.locks")
       .select("run_id")
@@ -46,6 +50,14 @@ export function buildV3Routes(d: Pick<Deps, "db" | "bus" | "engine" | "billing">
       .where("status", "not in", [...TERMINAL_STATUSES])
       .executeTakeFirst();
     if (lock || active || s.stage === "building") throw LOCKED();
+    // V4-24: a rebuild replaces the owner's manual edits of the draft — not silently: he chooses (rebuild or edit a block).
+    const edits = b.replaceEdits ? 0 : await manualEditsSinceBuild(d.db, s.id);
+    if (edits > 0)
+      throw new ApiError(
+        "REBUILD_REPLACES_EDITS",
+        `Пересборка заменит ваши правки (${edits}). Пересобрать или выбрать блок и поправить его?`,
+        { edits },
+      );
     try {
       const run = await startV3Build(d, { systemId: s.id, userId: user.id, briefVersion: b.version });
       return c.json({ run: toRun(run, 0), capCredits: V3_BUILD_CAP_CREDITS }, 202);

@@ -588,9 +588,15 @@ export function createApiClient(opts: ClientOptions = {}) {
       });
     },
     /** V3-06 approveSystemBrief: «Собрать» of a v3 system by the brief version the owner saw (cap — capCredits). */
-    approveBrief: (id: string, version: number, idempotencyKey = newIdempotencyKey()) =>
+    /** «Собрать»; replaceEdits — the owner agreed that the rebuild replaces his manual edits (V4-24, else 409). */
+    approveBrief: (
+      id: string,
+      version: number,
+      opts: { replaceEdits?: boolean } = {},
+      idempotencyKey = newIdempotencyKey(),
+    ) =>
       call<{ run: Run; capCredits: number }>("POST", `${sys(id)}/brief/approve`, {
-        body: { version },
+        body: { version, ...(opts.replaceEdits ? { replaceEdits: true } : {}) },
         idempotencyKey,
       }),
     /** V3-06 /admin: the monthly share of «пока не умею» over the capability maps of briefs (staff). */
