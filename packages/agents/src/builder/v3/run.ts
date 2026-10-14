@@ -1044,12 +1044,15 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
       // V4-21: the gates passed but promises of its «видит …» steps are not shown — one repair with the reasons, then
       // the better of the two layers (fewer promises not kept); never more than one round per scenario.
       const unkept = check.ok ? (check.unkept ?? []) : [];
-      if (unkept.length) {
+      // Only what the facts can keep is worth a model's round (specialists without facts, reviews, prices go to the
+      // requests as they are).
+      const repair = check.ok ? (check.repairable ?? unkept) : [];
+      if (repair.length) {
         const first = { r, check };
         let again: V3ComposeResult | null = null;
         try {
           again = await host.runStep(`v3:${key}:repair`, () =>
-            host.composer.scenario({ ...ctxFor(wallet), repair: unkept }, next.scenario),
+            host.composer.scenario({ ...ctxFor(wallet), repair }, next.scenario),
           );
         } catch (e) {
           if (!(e instanceof V3BudgetError)) throw e;
