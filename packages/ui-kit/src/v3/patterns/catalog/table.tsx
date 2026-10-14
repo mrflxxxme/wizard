@@ -12,7 +12,8 @@ type Fields = {
   title?: string;
   description?: string;
   price?: string;
-  duration?: string;
+  /** null — no duration on the cards (a menu or goods). */
+  duration?: string | null;
   photo?: string;
   category?: string;
 };
@@ -80,7 +81,7 @@ function itemOf(item: Item, f: Required<Fields>, width: 480 | 960 | 1600 = 960) 
     name: textOf(item[f.title]) ?? "",
     description: textOf(item[f.description]),
     price: priceOf(item[f.price]),
-    duration: durationOf(item[f.duration]),
+    duration: f.duration ? durationOf(item[f.duration]) : null,
     photo: photoOf(item[f.photo], width),
   };
 }
@@ -223,6 +224,8 @@ function Sections({
 export default function CatalogTable(props: CatalogTableProps) {
   const { entity = "service", categoryEntity, title, text, empty, pageSize = 10, action, preview } = props;
   const f = { ...FIELDS, ...props.fields };
+  // A menu or goods (fields.duration null): no duration column at all.
+  const timed = f.duration !== null;
   const m = useCatalog(entity, { pageSize, categoryField: f.category });
   const { items, growing } = useShown(m);
   const uid = useId();
@@ -241,12 +244,14 @@ export default function CatalogTable(props: CatalogTableProps) {
               <th scope="col" className="py-3 pr-4 text-small font-bold">
                 Название
               </th>
-              <th
-                scope="col"
-                className="hidden py-3 pr-4 text-small font-bold whitespace-nowrap sm:table-cell"
-              >
-                Длительность
-              </th>
+              {timed ? (
+                <th
+                  scope="col"
+                  className="hidden py-3 pr-4 text-small font-bold whitespace-nowrap sm:table-cell"
+                >
+                  Длительность
+                </th>
+              ) : null}
               <th scope="col" className="py-3 text-right text-small font-bold">
                 Цена
               </th>
@@ -270,9 +275,11 @@ export default function CatalogTable(props: CatalogTableProps) {
                       </span>
                     ) : null}
                   </th>
-                  <td className="hidden py-4 pr-4 text-body whitespace-nowrap text-muted-foreground sm:table-cell">
-                    {it.duration ?? "—"}
-                  </td>
+                  {timed ? (
+                    <td className="hidden py-4 pr-4 text-body whitespace-nowrap text-muted-foreground sm:table-cell">
+                      {it.duration ?? "—"}
+                    </td>
+                  ) : null}
                   <td className="py-4 text-right text-lead font-bold whitespace-nowrap tabular-nums">
                     {it.price ?? "—"}
                   </td>

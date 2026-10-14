@@ -39,6 +39,8 @@ export {
   generatePermissionChecks,
   selectG1,
 } from "./g1/checks.js";
+/** isGoodsNiche(text) — a niche or catalog noun of a menu or goods (a café, a shop): ordered, no duration (V4-29). */
+export { isGoodsNiche } from "./g1/realistic.js";
 /** M2-19: G1-RENDER-01 in the sandbox — render Worker modules, page-fetch bridge by token, one render over HTTP. */
 export { type RenderAnswer, RenderBridge, renderRemote, renderWorkerModules } from "./g1/render/remote.js";
 /** runG1(ctx, {timeBudgetMs?, renderTimeoutMs?, onRender?, goals?}) incl. G1-RENDER-01 (M1+), G1-GOAL-*, G1-MOBILE-01 (ctx.browser / ctx.goalScenarios); g1Checks(spec, qaChecks?) — the checks a G1 run executes. */

@@ -2,6 +2,7 @@
 // fact is missing the section gets an honest functional wording («Оставьте заявку») or is left out — never numbers,
 // reviews or claims the owner did not give (D49, catalog H.4). Props are the union of what the variants of a section
 // type may show; the slot schema of the chosen pattern keeps its part.
+import { isGoodsNiche } from "@wizard/gates";
 import {
   CONTENT_NAMES,
   CONTENT_SCREENS,
@@ -113,6 +114,8 @@ export function primaryAction(
 
 /** The label of the way to the shop's goods (V3-23). */
 const SHOP_ACTION = "Перейти в магазин";
+/** V4-29: the action on an item of a menu or goods (a cappuccino is ordered, not booked). */
+const ORDER_ACTION = "Заказать";
 
 /**
  * A second action for the first screen: the shop or the catalog when the main one is a form; the booking page when the
@@ -443,10 +446,10 @@ function contentProps(type: SectionType, c: SectionContext): Props | null {
       });
     }
     case "team": {
-      const p = planSection(f, ["team"], ["name", "role", "text"]);
-      const people = (p?.items ?? [])
-        .filter((x) => x.role)
-        .map((x) => defined({ name: x.name, role: x.role, bio: x.text }));
+      // V4-29: a person the owner gave by role only (no name, none invented) stays: the variant that shows roles alone
+      // (team-credits, one column) takes such a list.
+      const p = planSection(f, ["team"], ["role", "name", "text"]);
+      const people = (p?.items ?? []).map((x) => defined({ name: x.name, role: x.role, bio: x.text }));
       return p?.title && people.length ? defined({ title: p.title, intro: p.intro, people }) : null;
     }
     case "testimonials": {
@@ -554,11 +557,13 @@ function boundProps(type: SectionType, c: SectionContext): Props | null {
     const booking = c.pages.find((p) => p.kind === "booking");
     // V3-18: what the catalog shows in the brief's words («туры»), else the module's «услуги».
     const noun = f.copy.catalog;
+    // V4-29: a menu or goods (a coffee house, a bakery, a shop) are ordered, not booked, and have no duration.
+    const goods = isGoodsNiche(`${f.niche} ${noun ?? ""}`);
     // An item leads to its booking, else to the request form of the site (as the module's showcase, GS-catalog-4).
     const itemAction = booking
-      ? { label: "Записаться", path: booking.route }
+      ? { label: goods ? ORDER_ACTION : "Записаться", path: booking.route }
       : c.leadForm
-        ? { label: "Оставить заявку", path: c.leadForm }
+        ? { label: goods ? ORDER_ACTION : "Оставить заявку", path: c.leadForm }
         : null;
     const empty = (noun && fits(`${cap(noun)} скоро появятся`, 120)) || "В каталоге пока нет позиций";
     if (c.page.kind === "home") {
@@ -574,6 +579,8 @@ function boundProps(type: SectionType, c: SectionContext): Props | null {
         empty,
         pageSize: 6,
         preview: true,
+        // The catalog's own page keeps the duration the module has (GS-catalog-3 opens it).
+        ...(goods ? { fields: { duration: null } } : {}),
         ...(page ? { action: { label: all, href: page.route } } : {}),
         ...(itemAction ? { itemAction } : {}),
       };

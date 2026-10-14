@@ -1,9 +1,11 @@
 // Team «credits»: the team as the credits of a film, without photos — on one central axis the role set small to the
 // right edge of the left half and the name large in the display face to the left of the right half; on phones the
-// role sits above the name. For businesses without portraits of their people. Own composition.
+// role sits above the name. For businesses without portraits of their people. People the owner gave by role only (no
+// names, D79 (3): none invented) make one centred column — the role with a capital letter where the name would stand,
+// never an empty name column. Own composition.
 type Link = { label: string; href: string };
 type Image = { src: string; alt: string };
-type Person = { name: string; role: string; photo?: Image; bio?: string; facts?: string[]; link?: Link };
+type Person = { name?: string; role: string; photo?: Image; bio?: string; facts?: string[]; link?: Link };
 
 export type TeamCreditsProps = {
   title: string;
@@ -16,6 +18,9 @@ export type TeamCreditsProps = {
 const primaryClass =
   "inline-flex min-h-11 min-w-11 items-center justify-center rounded-control bg-primary px-6 text-center text-body font-bold text-primary-foreground transition-colors duration-200 hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 
+/** A role as a line of its own: the first letter capital («стилист-колорист» → «Стилист-колорист»). */
+const capital = (s: string) => s.charAt(0).toLocaleUpperCase("ru-RU") + s.slice(1);
+
 export default function TeamCredits({ title, intro, people, action, note }: TeamCreditsProps) {
   return (
     <section className="bg-background font-sans text-foreground">
@@ -24,19 +29,34 @@ export default function TeamCredits({ title, intro, people, action, note }: Team
           <h2 className="font-display text-h2 font-bold text-balance wrap-break-word">{title}</h2>
           {intro ? <p className="mt-4 text-body text-pretty text-muted-foreground">{intro}</p> : null}
         </div>
-        <dl className="mx-auto mt-12 grid max-w-4xl gap-y-6 border-y border-border py-10 sm:gap-y-5">
-          {people.map((p) => (
-            <div
-              key={p.name}
-              className="grid min-w-0 gap-1 text-center sm:grid-cols-2 sm:items-baseline sm:gap-8"
-            >
-              <dt className="text-small text-pretty text-muted-foreground sm:text-right">{p.role}</dt>
-              <dd className="font-display text-h2 font-bold text-balance wrap-break-word sm:text-left">
-                {p.name}
-              </dd>
-            </div>
-          ))}
-        </dl>
+        {people.every((p) => p.name?.trim()) ? (
+          <dl className="mx-auto mt-12 grid max-w-4xl gap-y-6 border-y border-border py-10 sm:gap-y-5">
+            {people.map((p) => (
+              <div
+                key={p.name}
+                className="grid min-w-0 gap-1 text-center sm:grid-cols-2 sm:items-baseline sm:gap-8"
+              >
+                <dt className="text-small text-pretty text-muted-foreground sm:text-right">{p.role}</dt>
+                <dd className="font-display text-h2 font-bold text-balance wrap-break-word sm:text-left">
+                  {p.name}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        ) : (
+          <ul className="mx-auto mt-12 grid max-w-2xl gap-y-6 border-y border-border py-10 text-center sm:gap-y-5">
+            {people.map((p) => (
+              <li key={`${p.name ?? ""}-${p.role}-${p.bio ?? ""}`} className="min-w-0">
+                <p className="font-display text-h2 font-bold text-balance wrap-break-word">
+                  {p.name?.trim() || capital(p.role)}
+                </p>
+                {p.name?.trim() ? (
+                  <p className="mt-1 text-small text-pretty text-muted-foreground">{p.role}</p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
         {note || action ? (
           <div className="mt-10 flex flex-col items-center gap-4 text-center">
             {action ? (

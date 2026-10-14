@@ -216,14 +216,30 @@ export function placeFacts(brief: Pick<SystemBrief, "qa">): {
   };
 }
 
-/** The specialists as the owner wrote them («Анна Смирнова — терапевт»), each one entry; [] — none given. */
+/**
+ * A name the answer no longer holds: the neutral word a scrubbed name leaves in the brief (addQa scrubs every answer:
+ * «Дарья Орлова — стилист» → «[ФИО_1] — стилист» → «имя — стилист», scrub-tokens.ts).
+ */
+const NO_NAME_RE = /^(?:имя|фио|name)\s*[—–-]\s*/iu;
+
+/**
+ * The specialists as the owner wrote them («Анна Смирнова — терапевт»), each one entry with a capital first letter; a
+ * specialist without his name (a role only, or a scrubbed name) is his role alone («Стилист-колорист»), never a word
+ * standing in for the name. [] — none given.
+ */
 export function staffFacts(brief: Pick<SystemBrief, "qa">): string[] {
   const a = ownAnswer(brief, STAFF_QUESTION_TEXT);
   if (!a) return [];
   return a
     .split(/[,;\n]+/)
-    .map((x) => x.replace(/^[\s\-–—•]+|[\s.]+$/g, "").trim())
-    .filter((x) => /\p{L}{2,}/u.test(x))
+    .map((x) =>
+      x
+        .replace(/^[\s\-–—•]+|[\s.]+$/g, "")
+        .trim()
+        .replace(NO_NAME_RE, ""),
+    )
+    .filter((x) => /\p{L}{2,}/u.test(x) && !/^(?:имя|фио|name)$/iu.test(x))
+    .map((x) => x.charAt(0).toLocaleUpperCase("ru-RU") + x.slice(1))
     .slice(0, 12);
 }
 

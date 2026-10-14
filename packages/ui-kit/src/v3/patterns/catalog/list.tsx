@@ -12,7 +12,8 @@ type Fields = {
   title?: string;
   description?: string;
   price?: string;
-  duration?: string;
+  /** null — no duration on the cards (a menu or goods). */
+  duration?: string | null;
   photo?: string;
   category?: string;
 };
@@ -82,7 +83,7 @@ function itemOf(item: Item, f: Required<Fields>, width: 480 | 960 | 1600 = 960) 
     name: textOf(item[f.title]) ?? "",
     description: textOf(item[f.description]),
     price: priceOf(item[f.price]),
-    duration: durationOf(item[f.duration]),
+    duration: f.duration ? durationOf(item[f.duration]) : null,
     photo: photoOf(item[f.photo], width),
   };
 }
