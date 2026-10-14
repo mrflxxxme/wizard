@@ -14,6 +14,9 @@ export type PageLintCode =
   | PatternLintCode
   | "layout-repeat"
   | "three-cards"
+  | "eyebrow"
+  | "ordinal"
+  | "filler"
   | "default-font"
   | "purple-gradient"
   | "emoji"
@@ -43,6 +46,12 @@ const MESSAGES: Record<Exclude<PageLintCode, PatternLintCode>, string> = {
   "layout-repeat": "Две секции подряд одной раскладки: возьмите другой вариант (каталог L06)",
   "three-cards":
     "Ряд из трёх одинаковых карточек «иконка + заголовок + текст» (каталог L01): прайс, доминанта со списком или таблица",
+  eyebrow:
+    "Подпись-eyebrow капсом над заголовком (каталог L04): уберите — заголовок говорит сам, раздел виден по раскладке",
+  ordinal:
+    "Нумерация 01/02/03 как украшение (каталог L05): номер нужен только у шагов процесса — обычной цифрой, без ведущего нуля",
+  filler:
+    "Секция-подпорка: одно фото без текста и действия (каталог L06, «нет факта — нет блока»): уберите секцию или поставьте фото в секцию с фактами",
   "default-font":
     "Шрифт по умолчанию (Inter, системный, Arial): только шрифты дизайн-системы (D64, каталог A3)",
   "purple-gradient": "Фиолетовый градиент — примета ИИ-палитры (каталог C01): сплошной цвет темы",
@@ -239,6 +248,33 @@ function sourceStrings(source: string): { text: string; jsx: boolean }[] {
   return out;
 }
 
+/** A class list of a small caps label: uppercase with letter spacing (catalog L04 eyebrow). */
+function eyebrowInSource(source: string): string | null {
+  for (const m of source.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\})/g)) {
+    const cls = m[1] ?? m[2] ?? "";
+    if (/(?:^|\s)uppercase(?:\s|$)/.test(cls) && /(?:^|\s)tracking-[\w-]+/.test(cls)) return cls;
+  }
+  return null;
+}
+
+/** A zero-padded ordinal of a list item: String(i + 1).padStart(2, "0"), `0${i + 1}` (catalog L05). */
+const ORDINAL_RE = /String\(\s*\w+\s*\+\s*1\s*\)\.padStart\(\s*2|`0\$\{\s*\w+\s*\+\s*1\s*\}`/;
+
+/** Props of a code section with a picture and no words besides alt texts and addresses: a filler. */
+function isFiller(props: unknown): boolean {
+  let picture = false;
+  let words = 0;
+  const visit = (v: unknown, key: string): void => {
+    if (typeof v === "string") {
+      if (key === "src") picture = true;
+      else if (key !== "alt" && key !== "href" && key !== "wzId" && v.trim()) words++;
+    } else if (Array.isArray(v)) for (const x of v) visit(x, key);
+    else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) visit(x, k);
+  };
+  visit(props, "");
+  return picture && words === 0;
+}
+
 /** A grid of three columns whose children come from a list or are three equal elements (catalog L01). */
 function threeCardsInSource(source: string): string | null {
   const sf = ts.createSourceFile("s.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
@@ -381,6 +417,11 @@ export function lintPage(input: LintPageInput): PageLintIssue[] {
       }
       const cards = threeCardsInSource(s.source);
       if (cards) out.push(issue("three-cards", "error", cards, s.id));
+      const brow = eyebrowInSource(s.source);
+      if (brow) out.push(issue("eyebrow", "error", brow, s.id));
+      const ordinal = ORDINAL_RE.exec(s.source);
+      if (ordinal) out.push(issue("ordinal", "error", ordinal[0], s.id));
+      if (isFiller(s.props)) out.push(issue("filler", "error", s.id, s.id));
     }
     for (const c of propsIssues(s.props, input.numbers)) out.push({ ...c, section: s.id });
     // A section written as code is judged by its markup (threeCardsInSource above): three steps or three facts are
