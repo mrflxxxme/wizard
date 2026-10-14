@@ -3,7 +3,7 @@
 // marked as an example («Пример: …») are dropped. Every number a page shows must be found here (fabricated check).
 import type { SystemBrief, SystemPlan } from "@wizard/appspec";
 import { type PhotoSectionType, PROVIDER_LABEL, photoSlots, photoSrc, SITE_PHOTO } from "@wizard/modules";
-import { placeFacts } from "../../../interview-v3/place.js";
+import { placeFacts, staffFacts } from "../../../interview-v3/place.js";
 import { isKeywordNiche } from "../../../planner/fallback.js";
 import type { V3BuildContext } from "../contract.js";
 import { type BriefCopy, briefCopy } from "./copy.js";
@@ -47,6 +47,8 @@ export interface SiteFacts {
   address?: string;
   /** V4-24: the opening hours the owner gave in the interview («пн–пт 9:00–20:00»). */
   hours?: string;
+  /** V4-24: the specialists the owner named in the interview («Анна Смирнова — терапевт»), as he wrote them. */
+  staff?: string[];
   policyPage: string;
   /**
    * Bookings wait for the staff's confirmation (the booking module's confirm = manual: a new booking's status is
@@ -180,6 +182,8 @@ export function siteFacts(ctx: Pick<V3BuildContext, "brief" | "plan" | "spec" | 
   const operator = contactOf(c.operatorContact);
   const contact = { ...operator, ...(!operator.phone && place.phone ? { phone: place.phone } : {}) };
   const address = c.operatorAddress || place.address;
+  // V4-24, D79 (3): the names of the specialists the owner gave to publish on his site, as he wrote them.
+  const staff = staffFacts(brief);
   const description = spec.app.description?.trim();
   const audience = brief.audience.trim();
   return {
@@ -206,6 +210,7 @@ export function siteFacts(ctx: Pick<V3BuildContext, "brief" | "plan" | "spec" | 
     ...contact,
     ...(address ? { address } : {}),
     ...(place.hours ? { hours: place.hours } : {}),
+    ...(staff.length ? { staff } : {}),
     policyPage: c.policyPage ?? "/privacy",
     bookingByRequest:
       spec.entities.find((e) => e.name === "booking")?.fields.find((f) => f.name === "status")?.default ===

@@ -34,6 +34,11 @@ export interface SeedHint {
   entity: string;
   field: string;
   values: (string | number | boolean)[];
+  /**
+   * "owner" — the owner's own words for his own site (V4-24, D79 (3): the specialists he named in the interview): a
+   * person's name passes; any other personal data is still SEED_PII.
+   */
+  source?: "owner";
 }
 
 export interface Scenario {

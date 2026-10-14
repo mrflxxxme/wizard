@@ -144,4 +144,41 @@ describe("V4-24 fact questions", () => {
       { entity: "service", field: "name", values: ["Терапия", "Хирургия"] },
     ]);
   });
+
+  test("D79 (3): the specialists the owner named — demo rows of the booking's specialists and a line of the page's facts", async () => {
+    const { spec } = await briefSite("v4-24-staff", DENTAL_BOOKING);
+    const withSpecialists = {
+      ...spec,
+      entities: [
+        ...spec.entities.filter((e) => e.name !== "specialist"),
+        {
+          name: "specialist",
+          label: "Врач",
+          fields: [
+            { name: "name", label: "Название", type: "string", required: true, maxLength: 120 },
+            { name: "description", label: "Описание", type: "text", maxLength: 1000 },
+          ],
+        },
+      ],
+    } as typeof spec;
+    const brief = withQa(
+      systemBriefSchema.parse(DENTAL_BOOKING),
+      qa(STAFF_QUESTION_TEXT, "Анна Смирнова — терапевт, Игорь Ким — хирург"),
+    );
+    const hints = seedHintsFromBrief(withSpecialists, brief);
+    expect(hints.filter((h) => h.entity === "specialist")).toEqual([
+      { entity: "specialist", field: "name", values: ["Анна Смирнова", "Игорь Ким"], source: "owner" },
+      { entity: "specialist", field: "description", values: ["Терапевт", "Хирург"] },
+    ]);
+    // No specialists' entity — no rows of them; the directions stay the offer as before.
+    expect(seedHintsFromBrief(spec, brief).some((h) => h.entity === "specialist")).toBe(false);
+    // The page's facts carry them as written; no answer — no line, no section of them.
+    const ctx = composeContext();
+    const f = siteFacts({
+      ...ctx,
+      brief: withQa(ctx.brief, qa(STAFF_QUESTION_TEXT, "Анна Смирнова — терапевт")),
+    });
+    expect(f.staff).toEqual(["Анна Смирнова — терапевт"]);
+    expect(siteFacts(ctx).staff).toBeUndefined();
+  });
 });

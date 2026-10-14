@@ -2730,7 +2730,7 @@ tasks:
     estimate_days: 1
     status: done
     claimed_by: session_01X8jgGUBZgh2j9RwccJpmf6
-    owns: ["packages/agents/src/interview-v3/place.ts (новый)", "packages/agents/src/interview-v3/interview.ts", "packages/agents/src/interview-v3/index.ts", "packages/agents/src/builder/v3/compose/facts.ts", "packages/agents/src/builder/v3/compose/seed-hints.ts", "packages/agents/src/builder/v3/compose/page-code.ts", "packages/agents/test/v4-place-facts.test.ts (новый)", "packages/agents/test/interview-v3/**", "apps/platform-api/test/v3-interview.test.ts", "packages/e2e/specs/v3/owner.spec.ts"]
+    owns: ["packages/agents/src/interview-v3/place.ts (новый)", "packages/agents/src/interview-v3/interview.ts", "packages/agents/src/interview-v3/index.ts", "packages/agents/src/builder/v3/compose/facts.ts", "packages/agents/src/builder/v3/compose/seed-hints.ts", "packages/agents/src/builder/v3/compose/page-code.ts", "packages/agents/test/v4-place-facts.test.ts (новый)", "packages/agents/test/interview-v3/**", "apps/platform-api/test/v3-interview.test.ts", "packages/e2e/specs/v3/owner.spec.ts", "packages/agents/src/builder/v3/compose/page-sections.ts", "packages/agents/test/v3-compose-scenario.test.ts", "packages/gates/src/g1/seed.ts", "packages/gates/src/g1/types.ts", "packages/gates/test/seed-hints.test.ts"]
     description: >
       Поток В. Репетиция №2 (клиника): на сайте нет контактов, врачей и «как проходит запись» — в брифе не было фактов,
       интервью задало 1 вопрос. Теперь блокирующие вопросы первых экранов собирают факты, без которых сайт пустой, кодом
@@ -2741,6 +2741,7 @@ tasks:
       - "Клиника без адреса в брифе: после блокирующих тем — вопрос «Где вас найти», ответ своим текстом даёт адрес и часы в фактах сайта; модель на этот ответ не вызывается"
       - "Сценарий «показывает врачей» без списка врачей — вопрос о специалистах; их специализации становятся демо-строками каталога"
       - "Интернет-магазин и бриф, где адрес уже есть, — без вопроса; не больше BLOCKING_QUESTIONS_CAP вопросов"
+      - "D79 (3): специалисты из своего ответа владельца — демо-строки сущности specialist (имя — name с source owner, гейт сида пропускает только имя; специализация — description) и строка «Специалисты» в фактах страницы; секция специалистов только по ней, без фото людей; без ответа — секции нет"
   - id: M4-01
     title: "Лендинг под финальным именем, самостоятельная регистрация, нагрузочный тест 200 одновременных прогонов"
     milestone: M4

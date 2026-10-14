@@ -22,6 +22,17 @@ const ok: SeedHint[] = [
 ];
 
 describe("validateSeedHint", () => {
+  test("V4-24, D79 (3): a person's name passes only as the owner's own words (source owner); other PII never does", () => {
+    const name = { entity: "stream", field: "name", values: ["Анна Смирнова"] } as const;
+    expect(validateSeedHint(spec, { ...name, values: [...name.values] })).toEqual([
+      "seedHints stream.name[0]: похоже на персональные данные (SEED_PII)",
+    ]);
+    expect(validateSeedHint(spec, { ...name, values: [...name.values], source: "owner" })).toEqual([]);
+    expect(
+      validateSeedHint(spec, { ...name, values: ["Анна Смирнова +7 912 345-67-89"], source: "owner" }),
+    ).toEqual(["seedHints stream.name[0]: похоже на персональные данные (SEED_PII)"]);
+  });
+
   test("accepts plausible non-personal values of pii=none fields", () => {
     for (const h of ok) expect(validateSeedHint(spec, h), JSON.stringify(h)).toEqual([]);
   });

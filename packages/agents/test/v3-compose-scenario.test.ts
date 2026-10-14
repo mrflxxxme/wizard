@@ -172,6 +172,25 @@ describe("V4-06: the page as free code", () => {
     expect(user?.content).toContain(ctx.design.fonts.display.family);
   });
 
+  test("V4-24: the specialists the owner named and the hours — lines of the facts; none given — no line", async () => {
+    const { ctx, site, facts } = await prepared();
+    const o = { site, page: site.pages[0] as SitePage, scenario: LEAD, design: ctx.design };
+    const bare = String(pageCodeMessages({ ...o, facts })[1]?.content ?? "");
+    expect(bare).not.toContain("Специалисты:");
+    const user = String(
+      pageCodeMessages({
+        ...o,
+        facts: {
+          ...facts,
+          staff: ["Анна Смирнова — терапевт", "Игорь Ким — хирург"],
+          hours: "пн–пт 9:00–20:00",
+        },
+      })[1]?.content ?? "",
+    );
+    expect(user).toContain("Специалисты: Анна Смирнова — терапевт; Игорь Ким — хирург");
+    expect(user).toContain("Часы работы: пн–пт 9:00–20:00");
+  });
+
   test("V4-21: the block «Что исправить» is in the prompt only when the scenario is composed again", async () => {
     const { ctx, site, facts } = await prepared();
     const o = { facts, site, page: site.pages[0] as SitePage, scenario: LEAD, design: ctx.design };
