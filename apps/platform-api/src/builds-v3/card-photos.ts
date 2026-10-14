@@ -159,26 +159,28 @@ export async function semanticSeedHints(
   const out: SeedHint[] = [];
   let k = 0;
   for (const x of fields) {
-    const values: string[] = [];
+    const values: (string | null)[] = [];
     for (const r of x.rows) {
       const i = k++;
       const e = verdict && i < verdict.length ? verdict[i] : r.candidates[0];
+      // A named row the check rejected keeps its place without a photo (null): never a wrong one.
       if (!e) {
-        if (x.named) break;
+        if (x.named) values.push(null);
         continue;
       }
       values.push(`/_wizard/photos/${e.file}/960`);
     }
-    const ok = values.filter((v) => LIBRARY_PHOTO_HINT.test(v)).slice(0, SEED_HINT_MAX_VALUES);
-    if (ok.length) out.push({ entity: x.entity, field: x.field, values: ok });
+    while (values.length && values.at(-1) === null) values.pop();
+    const ok = values.filter((v) => v === null || LIBRARY_PHOTO_HINT.test(v)).slice(0, SEED_HINT_MAX_VALUES);
+    if (ok.some((v) => v !== null)) out.push({ entity: x.entity, field: x.field, values: ok });
   }
   return out;
 }
 
 /**
  * V4-27: the check of the card rows by the vision model (photo_pick): a slot per row with its candidates, the niche of
- * the site. Each row takes the model's photo, else its first candidate the model did not mark with text (the model left
- * the slot empty: nothing better among two), else none. Photos with text are flagged in the library. null — the model
+ * the site. Each row takes the model's photo; a row the model left empty (nothing shows what the card names) or gave a
+ * photo with text gets none — the card stays without a photo rather than with a wrong one. Photos with text are flagged in the library. null — the model
  * failed (the rows take their first candidates, as without a check).
  */
 export function pickerCardCheck(o: {
@@ -223,10 +225,10 @@ export function pickerCardCheck(o: {
       )[0];
       const own = (e: LibraryPhotoEntry | undefined): e is LibraryPhotoEntry =>
         !!e && r.candidates.some((c) => c.file === e.file) && !text.has(e.file) && !taken.has(e.file);
-      const e = own(chosen) ? chosen : r.candidates.find((c) => own(c));
-      if (!e) return null;
-      taken.add(e.file);
-      return e;
+      // The model left the card empty or chose a photo with text: the card shows none (rule 6), not a wrong one.
+      if (!own(chosen)) return null;
+      taken.add(chosen.file);
+      return chosen;
     });
   };
 }
