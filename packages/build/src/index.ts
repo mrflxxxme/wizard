@@ -65,4 +65,16 @@ export type {
   HostModules,
   V3HostModules,
 } from "./types.js";
-export { fileKey, injectWzIds, type WzEntry, type WzMap, type WzTransform } from "./wz-id.js";
+/**
+ * wz-id (ui-kit.yaml#wz_id): fileKey, injectWzIds of the build; kitElements — the ui-kit, pattern and section elements of
+ * a file in wzId order (V4-24: a chat edit finds the element of a section without a click).
+ */
+export {
+  fileKey,
+  injectWzIds,
+  type KitElement,
+  kitElements,
+  type WzEntry,
+  type WzMap,
+  type WzTransform,
+} from "./wz-id.js";

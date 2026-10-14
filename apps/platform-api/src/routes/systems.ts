@@ -6,6 +6,7 @@ import { type Context, Hono } from "hono";
 import type { Selectable } from "kysely";
 import { z } from "zod";
 import { getLatestBrief } from "../briefs/store.js";
+import { chatEditTarget, chatGoal } from "../builds-v3/edit/chat-target.js";
 import { V3_BUILD_CAP_CREDITS } from "../builds-v3/host.js";
 import { techreviewBlockersOf } from "../builds-v3/techreview-verdict.js";
 import { json } from "../db/index.js";
@@ -299,6 +300,12 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
     // V3-21: a key typed as text is refused (not stored, not sent to a model); the page offers the key window.
     assertNoSecretInText(b.text);
     if (b.target) return pointEdit(c, user, s0, b.text, b.target);
+    // V4-24: a built site and a clear goal in words («сделай первый экран короче») — «Укажи и измени» of that section,
+    // not the brief and a rebuild (which would replace the owner's manual edits of the draft).
+    if (!b.block && s0.stage === "ready" && s0.preview_revision !== null) {
+      const chat = await chatTargetOf(s0, b.text);
+      if (chat) return pointEdit(c, user, s0, b.text, chat);
+    }
     const block = b.block;
     const out = await tx(async (t) => {
       const s = await lockSystem(t, s0.id);
@@ -340,6 +347,18 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
     d.engine.enqueue(out.run);
     return c.json({ message: toMessage(out.message), run: toRun(out.run, 0) }, 202);
   });
+
+  /** V4-24: the section a chat message names on the home page of the draft (chatEditTarget), or null. */
+  async function chatTargetOf(s: Selectable<SystemsTable>, text: string) {
+    if (text.length > POINT_EDIT_MAX_TEXT || !chatGoal(text)) return null;
+    const manifest = await loadManifest(d.db, d.blobs, s.id, s.draft_revision);
+    const site = manifest["ui/site.json"];
+    if (!site) return null;
+    const files = new Map<string, string>([["ui/site.json", (await d.blobs.get(site)).toString("utf8")]]);
+    for (const [path, sha] of Object.entries(manifest))
+      if (path.startsWith("ui/pages/site/")) files.set(path, (await d.blobs.get(sha)).toString("utf8"));
+    return chatEditTarget(text, files);
+  }
 
   /**
    * «Укажи и измени»: the request goes straight to a build run mode=point_edit (the click and «Применить» are the

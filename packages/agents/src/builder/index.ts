@@ -272,8 +272,12 @@ export type {
 export * from "./v3/critic/index.js";
 /** V3-09 «Три направления»: three first screens with the client's texts, refinement by words, references → principles. */
 export * from "./v3/directions/index.js";
-/** V4-15 «Укажи и измени» for v3: the file of the clicked element rewritten by one model call, checked. */
+/**
+ * V4-15 «Укажи и измени» for v3: the file of the clicked element rewritten by one model call, checked; V4-24
+ * codeSectionTarget — a section written as code is edited in its own file.
+ */
 export {
+  codeSectionTarget,
   POINT_EDIT_CALL_TYPE,
   POINT_EDIT_MAX_FILE,
   type PointEditInput,

@@ -1,13 +1,17 @@
 // wz-id injection (specs/ui/ui-kit.yaml#wz_id): every JSX element imported from @wizard/ui-kit gets
 // wzId="<fileKey>:<ordinal>"; the map entry {file, line, componentName} goes to wz-map.json. A v3 system's copies of
 // the ui-kit pattern library (ui/patterns/<id>.tsx, builder-v3.md C3) count as ui-kit too: the sections a page file
-// imports from there get the prop the same way (their roots carry data-wz-component and data-wz-id).
+// imports from there get the prop the same way (their roots carry data-wz-component and data-wz-id). The sections the
+// model wrote as code (ui/sections/<page>-<id>.tsx, V4-06) know nothing of wzId: their element is wrapped in a div that
+// carries both attributes, so the owner can point at them and tell their texts apart.
 import ts from "typescript";
 import { sha256Hex } from "./hash.js";
 
 export const UI_KIT = "@wizard/ui-kit";
 /** Folder of the v3 pattern library copied into a system (the composer's page files import their sections from it). */
 export const PATTERNS_DIR = "ui/patterns/";
+/** Folder of the v3 sections written as code (V4-06): their elements are wrapped, not given the prop. */
+export const SECTIONS_DIR = "ui/sections/";
 
 export interface WzEntry {
   file: string;
@@ -24,6 +28,8 @@ export function fileKey(file: string): string {
 interface KitImports {
   named: Map<string, string>; // local name -> exported name
   namespaces: Set<string>;
+  /** Local names of the sections written as code (wrapped). */
+  sections: Set<string>;
 }
 
 /** A relative import of a system file resolved against the importing file («ui/pages/site» + «../../patterns/x»). */
@@ -39,13 +45,17 @@ function resolveRelative(file: string, spec: string): string {
 function collectKitImports(sf: ts.SourceFile, file: string): KitImports {
   const named = new Map<string, string>();
   const namespaces = new Set<string>();
+  const sections = new Set<string>();
   for (const st of sf.statements) {
     if (!ts.isImportDeclaration(st) || !ts.isStringLiteral(st.moduleSpecifier)) continue;
     const spec = st.moduleSpecifier.text;
-    // v3: the default import of a pattern of the system's library (ui/patterns/<id>) — the section component.
-    if (spec.startsWith(".") && resolveRelative(file, spec).startsWith(PATTERNS_DIR)) {
-      const local = st.importClause?.isTypeOnly ? undefined : st.importClause?.name?.text;
+    // v3: the default import of a pattern of the system's library (ui/patterns/<id>) — the section component; of a
+    // section written as code (ui/sections/<page>-<id>) — wrapped.
+    const local = st.importClause?.isTypeOnly ? undefined : st.importClause?.name?.text;
+    const target = spec.startsWith(".") ? resolveRelative(file, spec) : "";
+    if (target.startsWith(PATTERNS_DIR) || target.startsWith(SECTIONS_DIR)) {
       if (local) named.set(local, local);
+      if (local && target.startsWith(SECTIONS_DIR)) sections.add(local);
       continue;
     }
     if (spec !== UI_KIT) continue;
@@ -60,7 +70,7 @@ function collectKitImports(sf: ts.SourceFile, file: string): KitImports {
       }
     }
   }
-  return { named, namespaces };
+  return { named, namespaces, sections };
 }
 
 /** "AppShell.Login" for `<AppShell.Login>`, "Button" for `<Kit.Button>`; null if not from ui-kit. */
@@ -91,10 +101,18 @@ export interface WzTransform {
 export function injectWzIds(file: string, source: string): WzTransform {
   const elements = kitElements(file, source);
   const entries: Array<[string, WzEntry]> = elements.map((e) => [e.id, e.entry]);
-  let code = source;
-  for (const e of [...elements].sort((a, b) => b.attrsEnd - a.attrsEnd)) {
-    code = `${code.slice(0, e.attrsEnd)} wzId="${e.id}"${code.slice(e.attrsEnd)}`;
+  // Insertions from the end of the file, so the offsets before each stay valid.
+  const edits: Array<{ at: number; text: string }> = [];
+  for (const e of elements) {
+    if (e.wrap) {
+      const name = e.entry.componentName;
+      edits.push({ at: e.start, text: `<div data-wz-component="${name}" data-wz-id="${e.id}">` });
+      edits.push({ at: e.end, text: "</div>" });
+    } else edits.push({ at: e.attrsEnd, text: ` wzId="${e.id}"` });
   }
+  let code = source;
+  for (const ed of edits.sort((a, b) => b.at - a.at))
+    code = `${code.slice(0, ed.at)}${ed.text}${code.slice(ed.at)}`;
   return { code, entries };
 }
 
@@ -106,6 +124,8 @@ export interface KitElement {
   end: number;
   /** Where injectWzIds writes the prop: the end of the element's attributes. */
   attrsEnd: number;
+  /** A section written as code: wrapped in a div with data-wz-component and data-wz-id instead of the prop. */
+  wrap?: boolean;
 }
 
 /** The ui-kit and pattern elements of a file in document order — the ordinals of their wzIds. */
@@ -127,6 +147,7 @@ export function kitElements(file: string, source: string): KitElement[] {
           start: whole.getStart(sf),
           end: whole.getEnd(),
           attrsEnd: node.attributes.end,
+          ...(ts.isIdentifier(node.tagName) && kit.sections.has(node.tagName.text) ? { wrap: true } : {}),
         });
       }
     }
