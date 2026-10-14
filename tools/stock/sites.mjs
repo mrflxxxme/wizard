@@ -55,14 +55,22 @@ export const SURVEY = [
   { id: "driving", niche: "автошкола", entity: "service", rows: ["Категория B", "Вождение с инструктором", "Теория"] },
 ];
 
+/** V4-30: niches the catalog does not name — their sites take neutral photos, never a neighbour's. */
+export const OFF_CATALOG = [
+  { id: "cobbler", niche: "ремонт обуви", entity: "service", rows: ["Замена набоек", "Ремонт молнии", "Покраска"] },
+  { id: "vetabbr", niche: "ветклиника «Хвост»", entity: "service", rows: ["Приём", "Вакцинация", "Чипирование"] },
+];
+
 /** The sites of a run: the acceptance ones by default, the survey, or the survey niches named. */
 export function sitesOf(set) {
   if (!set || set === "acceptance") return SITES;
-  if (set === "survey") return SURVEY;
-  const ids = new Set(set.split(",").map((x) => x.trim()));
-  return [...SITES, ...SURVEY].filter((x) => ids.has(x.id));
+  const out = [];
+  for (const id of set.split(",").map((x) => x.trim())) {
+    if (id === "survey") out.push(...SURVEY);
+    else out.push(...[...SITES, ...SURVEY, ...OFF_CATALOG].filter((x) => x.id === id));
+  }
+  return out;
 }
-
 const planOf = (niche) => ({
   version: 1,
   niche,

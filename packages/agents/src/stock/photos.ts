@@ -5,10 +5,12 @@
 // photo twice on a site. Too few photos on the topic queue the niche for backfill (CI) — the build takes what there is.
 import type { PlanPhoto, SystemPlan } from "@wizard/appspec";
 import type { PhotoSlot } from "@wizard/modules";
+import { CATALOG, catalogNiche, GENERIC_GROUP, ownNiches } from "./catalog.js";
 import { STOCK_LICENSES } from "./client.js";
 import {
   type Candidate,
   flagTextPhotos,
+  GOOD_SCORE,
   type LibraryObjects,
   type LibraryPhotoEntry,
   loadSemanticLibrary,
@@ -102,15 +104,28 @@ export function fitsPhotoSlot(
 const LEAD_CANDIDATES = 10;
 
 /**
- * The niche shards of a site: the first shard of the first screen's best candidates and every shard at least two of them
- * come from; undefined — no candidates (no restriction).
+ * The niche shards of a site. V4-30: a niche the catalog names takes its own shard only (ownNiches: SigLIP ranks
+ * «ветеринарная клиника» near a human clinic, «клининг» near air conditioners); else the first shard of the first
+ * screen's best candidates and the shards of its catalog group at least two of them come from (never a shard of
+ * another group: an optician's site took a printing house); a niche the library lacks (most of those candidates under
+ * GOOD_SCORE) takes the generic shards — neutral photos, never a neighbour's. undefined — no candidates (no restriction).
  */
-export function siteShards(lead: readonly Candidate[]): Set<string> | undefined {
+export function siteShards(lead: readonly Candidate[], niche = ""): Set<string> | undefined {
+  const own = ownNiches(niche);
+  if (own.length) return new Set(own.map((c) => c.slug));
   const top = lead.slice(0, LEAD_CANDIDATES);
-  if (top.length === 0) return undefined;
+  const first = top[0]?.entry.niche;
+  if (!first) return undefined;
+  // Most of the best candidates off the topic: the library lacks the niche.
+  if (top.filter((c) => c.score >= GOOD_SCORE).length * 2 < top.length)
+    return new Set(CATALOG.filter((c) => c.group === GENERIC_GROUP).map((c) => c.slug));
+  const group = catalogNiche(first)?.group;
   const count = new Map<string, number>();
   for (const c of top) count.set(c.entry.niche, (count.get(c.entry.niche) ?? 0) + 1);
-  return new Set([top[0]?.entry.niche as string, ...[...count].filter(([, n]) => n >= 2).map(([s]) => s)]);
+  return new Set([
+    first,
+    ...[...count].filter(([s, n]) => n >= 2 && !!group && catalogNiche(s)?.group === group).map(([s]) => s),
+  ]);
 }
 
 export interface SemanticPhotosResult {
@@ -157,11 +172,17 @@ export async function semanticPhotos(o: {
   let shards: Set<string> | undefined;
   if (lead) {
     const found = await search(lead[1][0] as PhotoSlot);
-    shards = siteShards(found);
-    byKind.set(
-      lead[0],
-      found.filter((c) => !shards || shards.has(c.entry.niche)),
-    );
+    shards = siteShards(found, o.plan.niche);
+    const within = (s?: Set<string>) => found.filter((c) => !s || s.has(c.entry.niche));
+    let kept = within(shards);
+    // The site's own or generic shards may hold few of the first search's candidates: search them again.
+    if (kept.length * 2 < found.length) kept = await search(lead[1][0] as PhotoSlot, shards);
+    // Its own shard not filled yet (a new library): the shards of the candidates, as for a niche the catalog lacks.
+    if (kept.length === 0 && found.length > 0) {
+      shards = siteShards(found);
+      kept = within(shards);
+    }
+    byKind.set(lead[0], kept);
   }
   for (const [k, group] of groups)
     if (!byKind.has(k)) byKind.set(k, await search(group[0] as PhotoSlot, shards));
