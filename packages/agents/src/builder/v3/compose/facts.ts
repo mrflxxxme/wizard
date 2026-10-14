@@ -54,7 +54,12 @@ export interface SiteFacts {
   year: number;
   /** Every number of the facts, normalised (digits, one decimal separator). */
   numbers: Set<string>;
+  /** The facts name a price (an amount in roubles): only then may a heading promise prices (D49). */
+  prices: boolean;
 }
+
+/** An amount in roubles: «от 2 500 ₽», «1800 руб.». */
+const PRICE_RE = /\d[\d\s\u00a0]*\s?(?:₽|руб)/i;
 
 const EXAMPLE_RE = /^\s*пример\b/i;
 /** The planner's placeholder of a button (planner/edits.ts sectionContent): the owner did not write it. */
@@ -199,6 +204,7 @@ export function siteFacts(ctx: Pick<V3BuildContext, "brief" | "plan" | "spec" | 
       "new",
     year,
     numbers,
+    prices: corpus.some((t) => PRICE_RE.test(t)),
   };
 }
 

@@ -164,7 +164,7 @@ describe("V3-18: home previews the modules' data and the brief's services; the c
         expect(own.empty).toBe(`${want.catalog} скоро появятся`);
         // The page's first screen says what the page holds, not only its title and a button.
         expect(typeof sectionOf(catalog, "hero").props.lead).toBe("string");
-      } else if (catalog) expect(catalog.title).toBe("Каталог и цены");
+      } else if (catalog) expect(catalog.title).toBe("Услуги");
       // The shop's goods on home: a preview of six with the way to all of them, no filter (V3-18).
       const shop = sectionOf(page, "shop")?.props;
       if (shop) {

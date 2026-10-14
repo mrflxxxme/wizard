@@ -48,7 +48,7 @@ const HOME: PageCodeAnswer = {
       props: SIGNATURE_OK.props,
     },
     // V3-18: the preview of the catalog on home is bound to the module — the model keeps it, writes its texts.
-    { kind: "keep", id: "catalog", props: { title: "Услуги и цены" } },
+    { kind: "keep", id: "catalog", props: { title: "Услуги" } },
     {
       kind: "keep",
       id: "form",
@@ -114,6 +114,8 @@ beforeAll(async () => {
     patterns: PATTERNS,
     verify: async () => ({ ok: true, problems: [] }),
     firstScreen: false,
+    // The recorded answer below is one page in one call (submit_page_code), not a plan and sections.
+    sections: false,
   });
   const skeleton = await composer.skeleton(base);
   const ctx: V3BuildContext = { ...base, files: apply(base.files, skeleton), route };
@@ -238,10 +240,10 @@ describe.skipIf(!hasChromium)("composed v3 site in chromium", () => {
 
   test("navigation: the header menu leads to the catalog page and back, the footer lists every page", async () => {
     const { page } = await open("/", { width: 1280, height: 800 }, "light");
-    await page.locator("header").getByRole("link", { name: "Каталог и цены" }).first().click();
+    await page.locator("header").getByRole("link", { name: "Услуги" }).first().click();
     await page.waitForURL("**/services");
     await page.waitForSelector("#main");
-    await expect.poll(() => page.title()).toBe("Каталог и цены — Белая линия");
+    await expect.poll(() => page.title()).toBe("Услуги — Белая линия");
     const footer = await page.locator("footer a").evaluateAll((as) => as.map((a) => a.getAttribute("href")));
     expect(footer).toEqual(expect.arrayContaining(["/", "/services", "/photos", "/privacy"]));
     await page.locator("header").getByRole("link", { name: "Главная" }).first().click();
