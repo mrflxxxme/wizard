@@ -329,6 +329,26 @@ function rank(slot: string): number {
 }
 
 /**
+ * V4-29: the niche of a system's site — the art director's (checkpoint «design», from the brief), else the one its photos
+ * were picked for; null — no v3 build yet. The demo prices go by it (a coffee house is not priced by its name).
+ */
+export async function draftNiche(db: Db, systemId: string): Promise<string | null> {
+  try {
+    const r = await sql<{ niche: string | null; photos: unknown }>`
+      select (select c.checkpoint -> 'data' ->> 'niche' from platform.system_build_checkpoints c
+               where c.system_id = ${systemId} and c.key = 'design') as niche,
+             (select c.checkpoint -> 'data' -> 'photos' from platform.system_build_checkpoints c
+               where c.system_id = ${systemId} and c.key = 'photos') as photos`.execute(db);
+    const row = r.rows[0];
+    const niche = row?.niche?.trim();
+    if (niche) return niche;
+    return planNiche(Array.isArray(row?.photos) ? row.photos : []);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * V3-40: the demo rows of a system's draft for the critic's browser — draftDemoRows of the spec with the system's schema
  * key and the seed hints of its brief, as onG0Passed seeds the draft (agents/executors.ts → seedDraft): the critic sees
  * the filled catalog, shop and blog the visitor sees, not empty lists. {} — no such system.
@@ -345,7 +365,12 @@ export async function draftCriticRows(
     .where("id", "=", systemId)
     .executeTakeFirst();
   if (!sys) return {};
-  return draftDemoRows(spec, sys.schema_key, await draftSeedHints(db, systemId, spec, storage));
+  return draftDemoRows(
+    spec,
+    sys.schema_key,
+    await draftSeedHints(db, systemId, spec, storage),
+    await draftNiche(db, systemId),
+  );
 }
 
 /**

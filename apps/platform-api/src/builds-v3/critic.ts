@@ -104,10 +104,19 @@ export type CriticDemoRows = Readonly<Record<string, readonly Readonly<Record<st
  * makes them (agents/draft.ts seedDraft): the critic's browser lists the same records with the same names the visitor
  * sees.
  */
-export function draftDemoRows(spec: AppSpec, systemKey: string, hints: readonly SeedHint[]): CriticDemoRows {
+export function draftDemoRows(
+  spec: AppSpec,
+  systemKey: string,
+  hints: readonly SeedHint[],
+  niche?: string | null,
+): CriticDemoRows {
   const key = createHash("sha256").update(systemKey).digest("hex");
   return withoutDemoArticles(
-    generateSeed(spec, key, { showcase: true, ...(hints.length ? { hints } : {}) }).rows,
+    generateSeed(spec, key, {
+      showcase: true,
+      ...(hints.length ? { hints } : {}),
+      ...(niche ? { niche } : {}),
+    }).rows,
     hints,
   );
 }

@@ -2677,6 +2677,26 @@ tasks:
       - "Фото, отмеченное моделью как фото с текстом, не попадает на сайт, флаг сохраняется в библиотеке и исключает фото из поиска (тесты)"
       - "Фото карточек — по нише и только из шардов ниши фото сайта (тест)"
       - "Живая проба photo_pick: вывеска найдена и не стоит на месте, выбор по теме на 3 нишах × 2 моделях"
+  - id: V4-29
+    title: "Демо-цены черновика — по нише сайта (как фото), а не по названию: кофе не за 1 800 ₽"
+    milestone: V4
+    deps: [V4-26]
+    specs: [docs/plans/2026-10-11-v4.md, "specs/product.yaml#decisions.D49_no_fabrication"]
+    owner: platform
+    parallel_group: v4-c
+    estimate_days: 0.3
+    status: in_progress
+    claimed_by: session_01HWKT1m6cHQBBtUV7d9pQhf
+    owns: ["packages/gates/src/g1/realistic.ts (moneyValue, nichePrices)", "packages/gates/src/g1/seed.ts (SeedOptions.niche)", "packages/gates/test/seed-plausible.test.ts", "apps/platform-api/src/agents/draft.ts (seedDraft niche)", "apps/platform-api/src/agents/executors.ts (onG0Passed)", "apps/platform-api/src/builds-v3/critic.ts (draftDemoRows niche)", "apps/platform-api/src/builds-v3/host.ts (draftNiche)", "apps/platform-api/test/v3-seed-hints.test.ts"]
+    description: >
+      Поток Б, по пробе А (прогон 38506789162): каталог кофейни «Зерно и пар» показывал «Кофе 1 800 ₽» — цены ниши
+      брались по названию и описанию приложения, а в «Зерно и пар» ниши нет. Генератор засева получает нишу сайта
+      (SeedOptions.niche: чекпоинт «design», иначе ниша фото сайта) и берёт цены её ниши; необязательная цена без
+      словаря по-прежнему пустая («по запросу»), обязательная цена неизвестной ниши — круглая по умолчанию (пустой быть
+      не может).
+    acceptance:
+      - "Цены обязательного поля по нише: кофейня 300–900, стоматология 1 500–7 000, салон 1 200–4 500 при названии «Зерно и пар» (тест)"
+      - "Ниша черновика: из «design», иначе из подписи фото, иначе нет (тест с базой)"
   - id: V4-19
     title: "Записи e2e v3 по этапам и частичная перезапись record-stale"
     milestone: V4
