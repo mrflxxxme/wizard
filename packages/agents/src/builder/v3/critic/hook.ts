@@ -114,6 +114,8 @@ export interface CriticCycle {
   top: { severity: string; sign: string; where: string }[];
   applied: string[];
   rejected: { edit: string; reason_ru: string }[];
+  /** Findings that came with no edit, no patch and no implied one («P1 · L13 … · /@390#hero»): nothing to apply. */
+  noEdit?: string[];
   costRub: number;
   model?: string;
   tier?: string;
@@ -757,11 +759,13 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
     // A finding's code edit (V4-09) or closed edit; without either — the one its catalog sign implies (V3-40); one
     // edit per section or fragment, the most severe first.
     const seen = new Set<string>();
+    const noEdit: string[] = [];
     const edits = [...critique.findings]
       .sort((a, b) => SEV_ORDER(a.severity) - SEV_ORDER(b.severity))
       .map((f): Change | null => {
         if (f.patch) return { kind: "patch", patch: f.patch };
         const op = f.edit ?? impliedEdit(f, state, library, seed);
+        if (!op) noEdit.push(`${f.severity} · ${f.sign} · ${f.where}`);
         return op ? { kind: "op", op } : null;
       })
       .filter((ch): ch is Change => {
@@ -772,6 +776,7 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
         return true;
       })
       .slice(0, maxEdits);
+    if (noEdit.length) cycle.noEdit = noEdit;
     // Edits one by one on the model (cheap: slot schemas, copy rules, the linter of the page; a code edit — it parses,
     // keeps the file's imports and data bindings, no raw colours or fonts).
     let cand = state;

@@ -211,6 +211,16 @@ export function renderSummary(rows: readonly Row[], meta: { runUrl: string; shot
       ...(r.report?.gates ?? []).flatMap((g) => g.failed.filter((f) => /^S0[1-4]/.test(f.id)).map((f) => `${f.id} ${f.message}`)),
     ];
     out.push(`Заглушки S01–S04: ${stubs.length ? stubs.slice(0, 8).join("; ") : "не найдены"}.`);
+    const why = r.report?.critic?.why;
+    if (why && (why.noEdit.length || why.rejected.length))
+      out.push(
+        `Критик без правок: ${[
+          why.noEdit.length ? `без правки — ${why.noEdit.join("; ")}` : "",
+          why.rejected.length ? `отклонены — ${why.rejected.join("; ")}` : "",
+        ]
+          .filter(Boolean)
+          .join(". ")}.`,
+      );
     if (r.report?.techreview) out.push(`Техревью: ${r.report.techreview.status ?? "—"}, блокеров ${r.report.techreview.blockers.length}.`);
     if (r.report?.gaps.length) out.push(`Пробелы отчёта: ${r.report.gaps.join("; ")}.`);
     out.push("");
