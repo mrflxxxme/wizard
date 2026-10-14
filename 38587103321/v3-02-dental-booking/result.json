@@ -1,0 +1,304 @@
+{
+  "id": "v3-02-dental-booking",
+  "class": "booking",
+  "title": "Стоматология: онлайн-запись к врачам и кабинет пациента",
+  "beyond": null,
+  "status": "ready",
+  "ready": true,
+  "systemId": "71ecb08b-cc5f-41a7-96f4-6267f61e508e",
+  "pipeline": "modules",
+  "error": null,
+  "interview": {
+    "turns": 4,
+    "questions": 3,
+    "retries": 0,
+    "free": 0,
+    "restAt": null,
+    "by": {
+      "recommended": 1,
+      "option": 0,
+      "delegate": 0,
+      "text": 2
+    },
+    "minutes": 3.9
+  },
+  "card": null,
+  "build": {
+    "runId": "3c9c083e-7f6f-4106-93a0-6f50530e4e8d",
+    "status": "succeeded",
+    "startedAt": "2026-10-14T15:16:46.960Z",
+    "finishedAt": "2026-10-14T15:23:42.861Z",
+    "minutes": 6.9,
+    "previewMinutes": 0.7,
+    "stages": [
+      {
+        "id": "brief",
+        "label": "Перечитываю бриф",
+        "status": "done",
+        "sec": 0
+      },
+      {
+        "id": "design",
+        "label": "Подбираю стиль",
+        "status": "done",
+        "sec": 0
+      },
+      {
+        "id": "backend",
+        "label": "Собираю данные, права и автоматизации",
+        "status": "done",
+        "sec": 18
+      },
+      {
+        "id": "skeleton",
+        "label": "Собираю каркас страниц",
+        "status": "done",
+        "sec": 5
+      },
+      {
+        "id": "scenarios",
+        "label": "Довожу сценарии по одному",
+        "status": "done",
+        "sec": 222
+      },
+      {
+        "id": "critic",
+        "label": "Смотрю на страницы глазами дизайнера",
+        "status": "done",
+        "sec": 73
+      },
+      {
+        "id": "template_gate",
+        "label": "Проверяю, что сайт не похож на шаблон",
+        "status": "done",
+        "sec": 4
+      },
+      {
+        "id": "techreview",
+        "label": "Провожу техревью",
+        "status": "done",
+        "sec": 38
+      },
+      {
+        "id": "gates",
+        "label": "Проверяю, что всё работает",
+        "status": "done",
+        "sec": 30
+      }
+    ],
+    "spentRub": 18.68,
+    "reusedRub": 0,
+    "capRub": 500,
+    "scenarios": {
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "stopped": 0,
+      "toRequests": 0,
+      "mustNotPassed": 0,
+      "list": [
+        {
+          "id": "s1",
+          "title": "Когда Пациент заходит на сайт клиники — система Видит услуги с ценами от, Видит врачей с фото и опытом, Видит отзывы, контакты и адрес",
+          "priority": "must",
+          "status": "passed"
+        },
+        {
+          "id": "s2",
+          "title": "Когда Пациент выбирает услугу или врача — система Выбирает услугу, Видит доступных врачей, Выбирает врача, Видит свободные слоты, Записывается на приём онлайн",
+          "priority": "must",
+          "status": "passed"
+        },
+        {
+          "id": "s3",
+          "title": "Когда За день до приёма — система Отправляет пациенту напоминание о записи",
+          "priority": "must",
+          "status": "passed"
+        },
+        {
+          "id": "s4",
+          "title": "Когда Пациент в личном кабинете — система Видит свои записи, Может перенести или отменить запись не позже чем за 12 часов",
+          "priority": "must",
+          "status": "passed"
+        },
+        {
+          "id": "s5",
+          "title": "Когда Администратор работает в системе — система Видит расписание всех врачей, Может записать пациента по звонку, Получает уведомления о новых записях на почту",
+          "priority": "must",
+          "status": "passed"
+        },
+        {
+          "id": "s6",
+          "title": "Когда Врач работает в системе — система Видит только своё расписание",
+          "priority": "must",
+          "status": "passed"
+        }
+      ]
+    }
+  },
+  "fixes": 0,
+  "inputs": [],
+  "publish": {
+    "status": "skipped"
+  },
+  "gates": {
+    "G0": {
+      "passed": true,
+      "revision": 4,
+      "blockers": [],
+      "ownerActions": [],
+      "warnings": 7
+    },
+    "G1": {
+      "passed": true,
+      "revision": 4,
+      "blockers": [],
+      "ownerActions": [],
+      "warnings": 1
+    },
+    "G2": {
+      "passed": false,
+      "revision": 4,
+      "blockers": [],
+      "ownerActions": [
+        {
+          "id": "G2-PII-06",
+          "message": "Не указано: название оператора ПДн (юрлицо, ИП или ФИО). Без этого систему с персональными данными нельзя опубликовать"
+        },
+        {
+          "id": "G2-PII-06",
+          "message": "Не указано: контакт оператора для обращений. Без этого систему с персональными данными нельзя опубликовать"
+        }
+      ],
+      "warnings": 6
+    }
+  },
+  "gaps": {
+    "outOfScope": [],
+    "reported": [],
+    "mentions": []
+  },
+  "plan": null,
+  "photos": null,
+  "browser": null,
+  "screenshots": [],
+  "runs": [
+    {
+      "id": "191551ff-bc8a-4980-b295-2357fe605c82",
+      "kind": "interview_turn",
+      "status": "succeeded",
+      "creditsUsed": 0.662
+    },
+    {
+      "id": "79c0a230-e3e8-4009-ad67-1ecb9369674a",
+      "kind": "interview_turn",
+      "status": "succeeded",
+      "creditsUsed": 0.472
+    },
+    {
+      "id": "04a999cf-3876-4125-8ec7-aee1bede31f6",
+      "kind": "interview_turn",
+      "status": "succeeded",
+      "creditsUsed": 0
+    },
+    {
+      "id": "b3df879f-ecd9-4a9c-8d0f-a8cf781bfdd1",
+      "kind": "interview_turn",
+      "status": "succeeded",
+      "creditsUsed": 0
+    },
+    {
+      "id": "3c9c083e-7f6f-4106-93a0-6f50530e4e8d",
+      "kind": "build",
+      "mode": "create",
+      "status": "succeeded",
+      "creditsUsed": 3.735
+    }
+  ],
+  "creditsUsed": 4.869,
+  "costRubEstimate": 24.35,
+  "minutes": 11.5,
+  "buildMinutes": 6.9,
+  "startedAt": "2026-10-14T15:12:10.887Z",
+  "finishedAt": "2026-10-14T15:23:42.943Z",
+  "tz": null,
+  "direction": {
+    "proposalId": "9d9e9b40a7074070edb9e9aaf36bc8dc7b9a95f8afe85dd9cd1e56bc373ef038",
+    "names": [
+      "Спокойная клиника",
+      "Вечерняя точность",
+      "Запись без звонков"
+    ],
+    "archetypes": [
+      "calm_medical",
+      "night_contrast",
+      "tech_minimal"
+    ],
+    "costRub": 10.43,
+    "fallback": false,
+    "n": null,
+    "archetype": "calm_medical",
+    "pinned": false,
+    "briefVersion": 5
+  },
+  "brief": {
+    "version": 5,
+    "goals": 7,
+    "scenarios": {
+      "must": 6,
+      "should": 0
+    },
+    "roles": 3,
+    "data": 4,
+    "integrations": 1,
+    "outOfScope": 5,
+    "assumptions": 5,
+    "qa": 3,
+    "capability": {
+      "modules": 7,
+      "custom": 0,
+      "not_yet": 0
+    },
+    "canariesKept": 1
+  },
+  "coverage": {
+    "roles": {
+      "total": 3,
+      "found": 3,
+      "missing": []
+    },
+    "entities": {
+      "total": 3,
+      "found": 3,
+      "missing": []
+    },
+    "features": {
+      "total": 4,
+      "found": 4,
+      "missing": []
+    },
+    "acceptance": {
+      "total": 2,
+      "found": 2,
+      "missing": []
+    },
+    "score": 1
+  },
+  "techreview": {
+    "status": "done",
+    "blocked": false
+  },
+  "owner": {
+    "operator": {
+      "filled": true,
+      "revision": 5,
+      "blockers": [
+        "OPERATOR_NAME_REQUIRED",
+        "OPERATOR_CONTACT_REQUIRED",
+        "OPERATOR_ADDRESS_REQUIRED"
+      ]
+    }
+  },
+  "briefAt": "2026-10-14T15:16:06.357Z",
+  "fromBriefMinutes": 7.6
+}
