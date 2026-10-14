@@ -11,8 +11,10 @@ import type { FallbackQuestion } from "./fallback.js";
 export const PLACE_QUESTION_TEXT = "Где вас найти: адрес, телефон и часы работы?";
 /** The question of the specialists: its text is the key of the answer in brief.qa. */
 export const STAFF_QUESTION_TEXT = "Кого из специалистов показать на сайте: имя и специализация?";
+/** The question of the prices «от» of the main services: its text is the key of the answer in brief.qa. */
+export const PRICE_QUESTION_TEXT = "Цены «от» на основные услуги: название — цена?";
 
-export type FactQuestionKind = "place" | "staff";
+export type FactQuestionKind = "place" | "staff" | "prices";
 
 /** Businesses with a place the visitor comes to (a clinic, a café, a salon, a studio…). */
 const PLACE_RE =
@@ -33,6 +35,12 @@ const VIEW_RE =
 /** A list of the staff already in the owner's words («врачи: терапевт, хирург»). */
 const STAFF_LIST_RE = /(?:врач|специалист|мастер|сотрудник|тренер)\S*\s*:\s*\S/i;
 const PUBLIC = new Set(["visitor", "client"]);
+/** A catalog of services or a menu the visitor chooses from (a shop's products carry their own prices). */
+const SERVICES_RE = /услуг|меню|прайс|процедур|блюд|напитк/i;
+/** Goods with a cart: the shop prices them itself. */
+const GOODS_RE = /товар|корзин/i;
+/** A price already in the owner's words: an amount in roubles or «от 3500». */
+const PRICE_TEXT_RE = /\d[\d\s\u00a0]*\s?(?:₽|руб)|(?<!\p{L})от\s+\d/iu;
 
 function texts(brief: SystemBrief, prompt: string | null): string[] {
   return [
@@ -62,6 +70,20 @@ export function needsStaff(brief: SystemBrief, prompt: string | null): boolean {
     (s) => PUBLIC.has(s.actor) && [s.when, ...s.then].some((t) => VIEW_RE.test(t) && STAFF_RE.test(t)),
   );
   return shows && !texts(brief, prompt).some((t) => STAFF_LIST_RE.test(t));
+}
+
+/**
+ * Whether the brief needs the prices question: a business with services or a menu (a clinic, a salon, a café) whose
+ * brief names no price yet. A shop's products are priced in the shop itself.
+ */
+export function needsPrices(brief: SystemBrief, prompt: string | null): boolean {
+  if (answered(brief, PRICE_QUESTION_TEXT)) return false;
+  const all = texts(brief, prompt).join("\n");
+  if (GOODS_RE.test(all)) return false;
+  const booking = brief.scenarios.some((s) => s.moduleHint === "booking");
+  const catalog = brief.scenarios.some((s) => s.moduleHint === "catalog");
+  const offer = booking || ((catalog || PLACE_RE.test(all)) && SERVICES_RE.test(all));
+  return offer && !PRICE_TEXT_RE.test(all);
 }
 
 /** The question of the place: the owner writes it in his words; the options are what to do without it. */
@@ -102,6 +124,25 @@ export function staffQuestion(): FallbackQuestion {
   };
 }
 
+/** The question of the prices «от»: each main service with its starting price, as the owner writes them. */
+export function priceQuestion(): FallbackQuestion {
+  return {
+    topic: "content",
+    text: PRICE_QUESTION_TEXT,
+    whyItMatters:
+      "Цена «от» — первое, что ищет клиент. Без цен покажем услуги без них: выдумывать цены мы не будем.",
+    recommendation:
+      "Напишите через точку с запятой, например: «Лечение кариеса — от 3500; Профессиональная чистка — 4000». Не готовы — соберём без цен, добавите потом правкой.",
+    options: [
+      { id: "later", label: "Добавлю потом — пока без цен", recommended: true },
+      { id: "request", label: "Цены по запросу", recommended: false },
+      { id: "none", label: "Цены на сайте не показываем", recommended: false },
+    ],
+    allowDelegate: true,
+    patches: {},
+  };
+}
+
 /** The next question of the facts the brief still needs (the place first), or null. */
 export function nextFactQuestion(
   brief: SystemBrief,
@@ -109,12 +150,13 @@ export function nextFactQuestion(
 ): { kind: FactQuestionKind; question: FallbackQuestion } | null {
   if (needsPlace(brief, prompt)) return { kind: "place", question: placeQuestion() };
   if (needsStaff(brief, prompt)) return { kind: "staff", question: staffQuestion() };
+  if (needsPrices(brief, prompt)) return { kind: "prices", question: priceQuestion() };
   return null;
 }
 
 /** Whether a question text is one of the fact questions (its answer ends the turn without a model call). */
 export const isFactQuestion = (text: string): boolean =>
-  text === PLACE_QUESTION_TEXT || text === STAFF_QUESTION_TEXT;
+  text === PLACE_QUESTION_TEXT || text === STAFF_QUESTION_TEXT || text === PRICE_QUESTION_TEXT;
 
 /**
  * The phone of the business in the owner's answer to the place question, taken out of the text before it is scrubbed
@@ -183,4 +225,27 @@ export function staffFacts(brief: Pick<SystemBrief, "qa">): string[] {
     .map((x) => x.replace(/^[\s\-–—•]+|[\s.]+$/g, "").trim())
     .filter((x) => /\p{L}{2,}/u.test(x))
     .slice(0, 12);
+}
+
+/** One priced service of the owner's answer: «Лечение кариеса — от 3 500 ₽» → {name, price: 3500}. */
+const PRICED_RE =
+  /^(.+?)[\s—–:-]*(?<!\p{L})(?:от\s*)?(\d{1,3}(?:[\s\u00a0]\d{3})+|\d+)(?:[.,]\d{1,2})?\s*(?:₽|руб\.?|рублей|р\.?)?$/iu;
+
+/** The services with their prices «от» as the owner wrote them, in his order; [] — none given (a button is no fact). */
+export function priceFacts(brief: Pick<SystemBrief, "qa">): { name: string; price: number }[] {
+  const a = ownAnswer(brief, PRICE_QUESTION_TEXT);
+  if (!a) return [];
+  const out: { name: string; price: number }[] = [];
+  for (const part of a.split(/[;\n]+|,(?=\s*\p{Lu})/u)) {
+    const m = PRICED_RE.exec(part.trim());
+    if (!m) continue;
+    const name = (m[1] as string)
+      .replace(/[\s—–:-]+$/u, "")
+      .replace(/\s+от$/iu, "")
+      .trim();
+    const price = Number((m[2] as string).replace(/[\s\u00a0]/g, ""));
+    if (/\p{L}{2,}/u.test(name) && price > 0 && !out.some((x) => x.name.toLowerCase() === name.toLowerCase()))
+      out.push({ name, price });
+  }
+  return out.slice(0, 12);
 }
