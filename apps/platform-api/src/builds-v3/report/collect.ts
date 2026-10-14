@@ -85,6 +85,19 @@ export function criticTop(cycle: unknown): string[] {
   );
 }
 
+/** Why the critic's last cycle applied nothing: its findings without an edit and its refused edits with the reason. */
+export function criticWhy(cycle: unknown): { noEdit: string[]; rejected: string[] } {
+  const c = cycle && typeof cycle === "object" ? (cycle as { noEdit?: unknown; rejected?: unknown }) : {};
+  return {
+    noEdit: strs(c.noEdit).slice(0, 5),
+    rejected: (Array.isArray(c.rejected) ? c.rejected : [])
+      .map(obj)
+      .map((r) => [str(r.edit), str(r.reason_ru)].filter(Boolean).join(": "))
+      .filter(Boolean)
+      .slice(0, 5),
+  };
+}
+
 export async function collectBuildReport(pg: postgres.Sql, o: CollectInput): Promise<BuildReport | null> {
   const [run] = await pg<
     {
@@ -206,6 +219,7 @@ export async function collectBuildReport(pg: postgres.Sql, o: CollectInput): Pro
           stop: str(review.stop),
           note: str(critic.note) ?? strs(critic.notes)[0] ?? null,
           top: criticTop(cycles.at(-1)),
+          why: criticWhy(cycles.at(-1)),
           left: (Array.isArray(review.left) ? (review.left as unknown[]).map(obj) : [])
             .map((p) => ({
               code: str(p.code) ?? "",
