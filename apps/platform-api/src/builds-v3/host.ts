@@ -27,7 +27,7 @@ import {
   type V3StageHook,
 } from "@wizard/agents/builder";
 import type { ModuleRegistry } from "@wizard/agents/planner";
-import type { SemanticPhotoSource } from "@wizard/agents/stock";
+import type { PhotoPicker, SemanticPhotoSource } from "@wizard/agents/stock";
 import type { AppSpec } from "@wizard/appspec";
 import {
   type GateReport,
@@ -57,6 +57,14 @@ import type { EventType } from "../runs/events.js";
 import { type BuildHost, type BuildParams, RunFailure } from "../runs/types.js";
 import { withKeyWindow } from "../secrets-v3/agent.js";
 import { loadBrief } from "../services/plans.js";
+import {
+  cardPhotosKey,
+  isPersonEntity,
+  pickerCardCheck,
+  planNiche,
+  SITE_PHOTO_ENTITY,
+  semanticSeedHints,
+} from "./card-photos.js";
 import { type DurableRead, pgCheckpointStore, recentArchetypes } from "./checkpoints.js";
 import {
   type CriticDemoRows,
@@ -97,6 +105,8 @@ export interface V3BuildOptions {
   mailer?: Mailer;
 }
 
+export { planNiche, semanticSeedHints } from "./card-photos.js";
+
 /** Kysely over the executors' connection (no pool of its own: never destroyed). */
 export const kyselyOver = (pg: postgres.Sql): Db =>
   new Kysely<DB>({ dialect: new PostgresJSDialect({ postgres: pg }) });
@@ -116,11 +126,57 @@ export async function isV3Build(
   return (await getLatestBrief(db, systemId)) !== null;
 }
 
+/** What the photos of the draft's rows start from: the brief's hints, the plan's photos and what the index covers. */
+interface DraftPhotoContext {
+  /** The brief's hints and the index photos (photoSeedHints). */
+  hints: SeedHint[];
+  used: Set<string>;
+  covered: Set<string>;
+  niche: string | null;
+}
+
+async function draftPhotoContext(
+  db: Db,
+  systemId: string,
+  spec: AppSpec,
+  storage: FileStorage | null | undefined,
+): Promise<DraftPhotoContext> {
+  let hints: SeedHint[] = [];
+  try {
+    const brief = await getLatestBrief(db, systemId);
+    if (brief) hints = seedHintsFromBrief(spec, brief.brief, await loadBrief(db, systemId));
+  } catch {}
+  const r = await sql<{ photos: unknown }>`
+    select c.checkpoint -> 'data' -> 'photos' as photos
+      from platform.system_build_checkpoints c
+     where c.system_id = ${systemId} and c.key = 'photos'`
+    .execute(db)
+    .catch(() => ({ rows: [] as { photos: unknown }[] }));
+  const photos = r.rows[0]?.photos;
+  const plan = Array.isArray(photos) ? photos : [];
+  const library = storage ? parseLibraryIndex(await readLibraryIndex(storage).catch(() => null)) : null;
+  // V4-23: the draft has no demo articles unless the brief names them — their covers take no photos then.
+  const skip = new Set(hints.some((h) => h.entity === "article" && h.field === "title") ? [] : ["article"]);
+  const fromIndex = photoSeedHints(spec, plan, library, skip);
+  return {
+    hints: [...hints, ...fromIndex],
+    covered: new Set([...fromIndex.map((h) => `${h.entity}.${h.field}`), ...skip]),
+    used: new Set(plan.map((p) => String((p as { file?: unknown })?.file ?? ""))),
+    niche: planNiche(plan),
+  };
+}
+
+/** The checkpoint of the build's card check (V4-27): its key and the hints it gave. */
+const CARD_PHOTOS = "card_photos";
+
 /**
  * V3-18: seed hints of the draft of a system with a brief — the names of the offer its latest brief (else the owner's
  * first words) lists, for the preview's demo rows; [] without a brief or when reading it fails (the seed goes on).
  * V3-40: and the photos of the goods — the image fields a visitor reads take the library photos the photos stage
  * picked for the niche (photoSeedHints): a demo shop shows its goods with pictures, not empty cards.
+ * V4-22: the semantic library (V4-10) is not in the index: the image fields still without photos get the library's
+ * photos found by each row's name (the brief's «Терапия» → a photo of it), never a photo already on the site.
+ * V4-27: the photos the build's card check chose, when it checked the same rows.
  */
 export async function draftSeedHints(
   db: Db,
@@ -129,128 +185,78 @@ export async function draftSeedHints(
   storage?: FileStorage | null,
   semanticSource: ((s: FileStorage) => Pick<SemanticPhotoSource, "search">) | null = semanticPhotoSource,
 ): Promise<SeedHint[]> {
-  let out: SeedHint[] = [];
+  let ctx: DraftPhotoContext;
   try {
-    const brief = await getLatestBrief(db, systemId);
-    if (brief) out = seedHintsFromBrief(spec, brief.brief, await loadBrief(db, systemId));
-  } catch {}
+    ctx = await draftPhotoContext(db, systemId, spec, storage);
+  } catch {
+    return [];
+  }
+  const out = ctx.hints;
+  if (!storage || !semanticSource) return out;
   try {
-    const r = await sql<{ photos: unknown }>`
-      select c.checkpoint -> 'data' -> 'photos' as photos
-        from platform.system_build_checkpoints c
-       where c.system_id = ${systemId} and c.key = 'photos'`.execute(db);
-    const photos = r.rows[0]?.photos;
-    const plan = Array.isArray(photos) ? photos : [];
-    const library = storage ? parseLibraryIndex(await readLibraryIndex(storage).catch(() => null)) : null;
-    // V4-23: the draft has no demo articles unless the brief names them — their covers take no photos then.
-    const skip = new Set(out.some((h) => h.entity === "article" && h.field === "title") ? [] : ["article"]);
-    const fromIndex = photoSeedHints(spec, plan, library, skip);
-    out = [...out, ...fromIndex];
-    // V4-22: the semantic library (V4-10) is not in the index: the image fields still without photos get the library's
-    // photos found by each row's name (the brief's «Терапия» → a photo of it), never a photo already on the site.
-    if (storage && semanticSource) {
-      const covered = new Set([...fromIndex.map((h) => `${h.entity}.${h.field}`), ...skip]);
-      const used = new Set(plan.map((p) => String((p as { file?: unknown })?.file ?? "")));
-      const niche = planNiche(plan);
-      out = [
-        ...out,
-        ...(await semanticSeedHints(
-          spec,
-          out,
-          used,
-          covered,
-          semanticSource(storage),
-          niche ? { niche } : {},
-        )),
-      ];
-    }
-  } catch {}
-  return out;
-}
-
-/** Image fields of the entities a public role reads (goods, catalog items, article covers); never the site's own photos. */
-function publicImageFields(spec: AppSpec): { entity: string; field: string }[] {
-  const publicRoles = new Set(spec.roles.filter((r) => r.access === "public").map((r) => r.name));
-  const fields: { entity: string; field: string }[] = [];
-  for (const e of spec.entities) {
-    if (e.name === SITE_PHOTO_ENTITY) continue;
-    const readable = spec.permissions.some(
-      (p) => p.entity === e.name && publicRoles.has(p.role) && p.ops.includes("read"),
-    );
-    if (!readable) continue;
-    for (const f of e.fields) if (f.type === "image") fields.push({ entity: e.name, field: f.name });
+    const key = cardPhotosKey({ spec, ...ctx });
+    const r = await sql<{ checkpoint: { fingerprint?: unknown; data?: { hints?: unknown } } }>`
+      select c.checkpoint from platform.system_build_checkpoints c
+       where c.system_id = ${systemId} and c.key = ${CARD_PHOTOS}`.execute(db);
+    const saved = r.rows[0]?.checkpoint;
+    if (saved?.fingerprint === key && Array.isArray(saved.data?.hints))
+      return [...out, ...(saved.data.hints as SeedHint[])];
+    const niche = ctx.niche ? { niche: ctx.niche } : {};
+    return [
+      ...out,
+      ...(await semanticSeedHints(spec, out, ctx.used, ctx.covered, semanticSource(storage), niche)),
+    ];
+  } catch {
+    return out;
   }
-  return fields;
-}
-
-/** Rows a field without name hints gets photos for. */
-const UNNAMED_ROWS = 6;
-
-/** The niche the photos stage searched for (its alt «… — фото по теме «<niche>»», photos.ts semanticPhotos). */
-export function planNiche(plan: readonly unknown[]): string | null {
-  for (const p of plan) {
-    const alt = (p as { alt?: unknown })?.alt;
-    const m = typeof alt === "string" ? /по теме «([^»]{2,120})»$/.exec(alt) : null;
-    if (m?.[1]) return m[1];
-  }
-  return null;
 }
 
 /**
- * V4-22: image hints from the semantic library — one photo per row, searched by the site's niche (else its name) and
- * the row's name (the name hints of the same entity, in row order), else by the niche alone; landscape, never twice,
- * never one of `used` (the plan's photos). V4-26: only from the niche shards the plan's photos came from — «Терапия» of
- * a dental clinic is a dentist's chair, not a gynecologist's. [] — no library or nothing fits.
+ * V4-27: the build's check of the card photos (PhotoHost.cards): the rows the seed would show, one photo_pick call over
+ * their candidates, the verdict kept in the checkpoint «card_photos» for the seed of the draft. Nothing to check
+ * (no rows, no semantic photos) — nothing saved.
  */
-export async function semanticSeedHints(
-  spec: AppSpec,
-  hints: readonly SeedHint[],
-  used: ReadonlySet<string>,
-  covered: ReadonlySet<string>,
-  source: Pick<SemanticPhotoSource, "search">,
-  topic: { niche?: string } = {},
-): Promise<SeedHint[]> {
-  const site = topic.niche?.trim() || spec.app.name.trim();
-  const taken = new Set(used);
-  const own = [...used].filter(Boolean);
-  const shards = new Set(
-    own.length
-      ? (
-          await source
-            .search(site.slice(0, 200), { limit: own.length, filter: (e) => used.has(e.file) })
-            .catch(() => [])
-        ).map((c) => c.entry.niche)
-      : [],
-  );
-  const inNiche = (e: { niche: string }) => shards.size === 0 || shards.has(e.niche);
-  const out: SeedHint[] = [];
-  for (const f of publicImageFields(spec)) {
-    if (covered.has(`${f.entity}.${f.field}`) || covered.has(f.entity)) continue;
-    const names = hints.find((h) => h.entity === f.entity && h.field === "name")?.values.map(String) ?? [];
-    const queries = names.length ? names.map((n) => `${site}, ${n}`) : [site];
-    const values: string[] = [];
-    for (const q of queries) {
-      const want = names.length ? 1 : UNNAMED_ROWS;
-      const found = await source
-        .search(q.slice(0, 200), {
-          limit: want + 4,
-          filter: (e) => e.width >= e.height * 1.15 && !taken.has(e.file) && inNiche(e),
-        })
-        .catch(() => []);
-      for (const c of found.filter((x) => !taken.has(x.entry.file)).slice(0, want)) {
-        taken.add(c.entry.file);
-        values.push(`/_wizard/photos/${c.entry.file}/960`);
-      }
-      if (names.length && values.length < queries.indexOf(q) + 1) break;
-    }
-    const ok = values.filter((v) => LIBRARY_PHOTO_HINT.test(v)).slice(0, SEED_HINT_MAX_VALUES);
-    if (ok.length) out.push({ ...f, values: ok });
-  }
-  return out;
+export async function checkCardPhotos(o: {
+  db: Db;
+  pg: postgres.Sql;
+  systemId: string;
+  runId: string;
+  spec: AppSpec;
+  storage: FileStorage;
+  picker: PhotoPicker;
+  source?: Pick<SemanticPhotoSource, "search" | "thumbnail" | "flagText">;
+  now?: () => number;
+}): Promise<void> {
+  const now = o.now ?? Date.now;
+  const t0 = now();
+  const ctx = await draftPhotoContext(o.db, o.systemId, o.spec, o.storage);
+  if (!ctx.niche) return;
+  const key = cardPhotosKey({ spec: o.spec, ...ctx });
+  // The same rows were checked by an earlier build: its verdict stands, nothing is paid.
+  const prev = await sql<{ f: string | null }>`
+    select c.checkpoint ->> 'fingerprint' as f from platform.system_build_checkpoints c
+     where c.system_id = ${o.systemId} and c.key = ${CARD_PHOTOS}`.execute(o.db);
+  if (prev.rows[0]?.f === key) return;
+  const source = o.source ?? semanticPhotoSource(o.storage);
+  let checked = 0;
+  const check = pickerCardCheck({ picker: o.picker, niche: ctx.niche, source });
+  const hints = await semanticSeedHints(o.spec, ctx.hints, ctx.used, ctx.covered, source, {
+    niche: ctx.niche,
+    check: async (rows) => {
+      checked = rows.length;
+      return check(rows);
+    },
+  });
+  if (checked === 0) return;
+  await pgCheckpointStore(o.pg, o.systemId, o.runId).save({
+    key: CARD_PHOTOS,
+    fingerprint: key,
+    data: { hints, rows: checked },
+    costMilli: 0,
+    durationMs: Math.max(0, now() - t0),
+    runId: o.runId,
+  });
 }
-
-/** @wizard/modules SITE_PHOTO.entity: one row per place the owner replaced — never a demo row with a photo. */
-const SITE_PHOTO_ENTITY = "site_photo";
 
 /** Places whose photos show the work itself, in this order; the first screen («top», «top-2») is never a card's. */
 const PHOTO_SLOT_ORDER = ["gallery", "features", "about"];
@@ -304,7 +310,7 @@ export function photoSeedHints(
   const fields: { entity: string; field: string }[] = [];
   for (const e of spec.entities) {
     // The owner's replacements of the site's own photos (landing «Фото сайта») keep the plan's photos in their places.
-    if (e.name === SITE_PHOTO_ENTITY || skip.has(e.name)) continue;
+    if (e.name === SITE_PHOTO_ENTITY || isPersonEntity(e.name) || skip.has(e.name)) continue;
     const readable = spec.permissions.some(
       (p) => p.entity === e.name && publicRoles.has(p.role) && p.ops.includes("read"),
     );
@@ -458,7 +464,14 @@ export async function checkScenario(
   // V4-21: what the scenario promises the visitor sees is on the site and shows it.
   // Not kept: the system works, so the layer stays (the build tries one repair; the rest goes to the requests).
   const kept = promises ? await promises(input) : null;
-  if (kept?.problems.length) return { ok: true, problems: [], browser: withBrowser, unkept: kept.problems };
+  if (kept?.problems.length)
+    return {
+      ok: true,
+      problems: [],
+      browser: withBrowser,
+      unkept: kept.problems,
+      repairable: kept.repairable,
+    };
   return { ok: true, problems: [], browser: withBrowser };
 }
 
@@ -475,7 +488,8 @@ export function scenarioPromiseCheck(
   },
 ): (input: ScenarioCheckInput) => Promise<PromiseCheck> {
   return async (input) => {
-    if (!scenarioPromises(input.scenario).length) return { promises: [], problems: [], browser: false };
+    if (!scenarioPromises(input.scenario).length)
+      return { promises: [], problems: [], repairable: [], browser: false };
     const files = await draftFiles(host.store);
     const contacts = await o.contacts();
     const views = browser
@@ -704,7 +718,28 @@ export async function buildByBrief(
         o.log,
       ),
     recentArchetypes: (niche) => once("v3_recent_archetypes", () => recentArchetypes(o.pg, systemId, niche)),
-    ...(o.photos ? { photos: o.photos } : {}),
+    ...(o.photos
+      ? {
+          photos: {
+            ...o.photos,
+            // V4-27: the card photos of the draft, checked by the vision model before the seed.
+            ...(o.files
+              ? {
+                  cards: ({ spec, picker }: { spec: AppSpec; picker: PhotoPicker }) =>
+                    checkCardPhotos({
+                      db: o.db,
+                      pg: o.pg,
+                      systemId,
+                      runId: host.run.id,
+                      spec,
+                      storage: o.files as FileStorage,
+                      picker,
+                    }),
+                }
+              : {}),
+          },
+        }
+      : {}),
     once,
     // V3-20: the brief's integrations (stored contracts: mock until the key check, then live) over the backend;
     // V3-21: window keys stay within their hosts, and the agent opens key windows for the keys still missing.

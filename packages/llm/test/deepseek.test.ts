@@ -488,3 +488,14 @@ describe("transformBody(zai): a model with reasoning off (glm-5v-turbo)", () => 
     expect(getModel(createRegistry({}, {}), "glm-5v-turbo").thinking).toBe("off");
   });
 });
+
+describe("transformBody(moonshot): Kimi K3 with tools thinks off", () => {
+  test("with tools: thinking disabled, temperature 0.6; without tools the request stays as it was", () => {
+    const tools = transformBody("moonshot", { messages: [], tools: [{}], temperature: 1 });
+    expect(tools.thinking).toEqual({ type: "disabled" });
+    expect(tools.temperature).toBe(0.6);
+    const plain = transformBody("moonshot", { messages: [], temperature: 1 });
+    expect(plain.thinking).toBeUndefined();
+    expect(plain.temperature).toBe(1);
+  });
+});

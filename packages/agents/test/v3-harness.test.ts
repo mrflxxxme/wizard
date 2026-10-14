@@ -15,7 +15,7 @@ import {
 import type { GateReport, GoalScenarioInput } from "@wizard/gates";
 import { createRegistry, createRouter, LlmError, type RouteInput } from "@wizard/llm";
 import { type DesignSystemV3, designSystemV3 } from "@wizard/ui-kit/v3/design";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
   briefNiche,
   CHECKS_UNAVAILABLE_RU,
@@ -34,7 +34,7 @@ import {
   type V3ReadyNotice,
   type V3StageHook,
 } from "../src/builder/index.js";
-import { photoSwap, swapIds } from "../src/builder/v3/run.js";
+import { CARD_CHECK_WAIT_MS, photoSwap, swapIds } from "../src/builder/v3/run.js";
 import type { DevelopmentRequestInput } from "../src/gaps.js";
 import {
   CLINIC_MUST,
@@ -438,6 +438,68 @@ describe("harness v3: browser check, stop rules, «Запросы на разв�
     expect(lines.some((t) => t.includes("Не всё обещанное показано"))).toBe(true);
   });
 
+  test("promises the facts cannot keep (doctors, reviews): no repair round, straight to the requests", async () => {
+    const sys = newSys();
+    const DOCTORS = "Обещано в сценарии «видит врачей»: в секции специалистов нет настоящих имён.";
+    const { out, rec, composer } = await build(sys, {
+      check: (c) =>
+        c.scenario.id === "s_prices"
+          ? { ok: true, problems: [], browser: true, unkept: [DOCTORS], repairable: [] }
+          : { ok: true, problems: [], browser: true },
+    });
+    const r = ok(out);
+    expect(composer.log.filter((l) => l.id === "s_prices")).toHaveLength(1);
+    expect(rec.calls).toHaveLength(6);
+    expect(r.scenarios.find((s) => s.id === "s_prices")).toMatchObject({
+      status: "passed",
+      unkept: [DOCTORS],
+    });
+    expect(sys.requests).toEqual([
+      expect.objectContaining({ quote: expect.stringContaining("нет настоящих имён") }),
+    ]);
+  });
+
+  test("the repair round gets only the promises the facts keep", async () => {
+    const sys = newSys();
+    const DOCTORS = "Обещано в сценарии «видит врачей»: в секции специалистов нет настоящих имён.";
+    let n = 0;
+    const { composer } = await build(sys, {
+      check: (c) =>
+        c.scenario.id === "s_prices" && n++ === 0
+          ? { ok: true, problems: [], browser: true, unkept: [PRICES, DOCTORS], repairable: [PRICES] }
+          : { ok: true, problems: [], browser: true },
+    });
+    expect(composer.log.filter((l) => l.id === "s_prices").map((l) => l.repair ?? null)).toEqual([
+      null,
+      [PRICES],
+    ]);
+  });
+
+  test("a repair that changes nothing (the composer returns no files): the first layer stays, not the skeleton", async () => {
+    const sys = newSys();
+    let n = 0;
+    const { out, rec } = await build(sys, {
+      composer: { repairChangesNothing: true },
+      check: (c) =>
+        c.scenario.id === "s_prices" && n++ === 0
+          ? { ok: true, problems: [], browser: true, unkept: [PRICES] }
+          : { ok: true, problems: [], browser: true },
+    });
+    const r = ok(out);
+    // Rehearsal №4: the empty repair layer replaced the first one and the skeleton home came back; now it is not even
+    // checked again, and the scenario's page stays.
+    expect(rec.checks.filter((c) => c.scenario.id === "s_prices")).toHaveLength(1);
+    expect(r.scenarios.find((s) => s.id === "s_prices")).toMatchObject({
+      status: "passed",
+      unkept: [PRICES],
+    });
+    expect(Object.values(sys.files).some((src) => src.includes("показывает услуги с ценами"))).toBe(true);
+    // The promises of the first check are not lost: they go to «Запросы на развитие».
+    expect(sys.requests).toEqual([
+      expect.objectContaining({ quote: expect.stringContaining("цены не показаны — нужны цены у услуг") }),
+    ]);
+  });
+
   test("a repair that breaks the gates: the first layer is put back, its promises go to the requests", async () => {
     const sys = newSys();
     let n = 0;
@@ -822,6 +884,48 @@ describe("harness v3: the vision pick of the photos next to the skeleton (V4-10)
     };
     expect(cp.picked).toBeUndefined();
     expect(sys.files["ui/pages/SitePhotos.tsx"]).toContain(entries[0]?.file as string);
+  });
+
+  test("V4-27: the card check gets the compiled spec and a picker, and the preview waits for it", async () => {
+    const sys = newSys();
+    const { host: photos } = library(async () => null);
+    const seen: { entities: number; picker: boolean }[] = [];
+    let checked = false;
+    photos.cards = async ({ spec, picker }) => {
+      seen.push({ entities: spec.entities.length, picker: typeof picker === "function" });
+      await new Promise((r) => setTimeout(r, 20));
+      checked = true;
+    };
+    let atPreview: boolean | null = null;
+    ok(
+      (
+        await build(sys, {
+          photos,
+          preview: () => {
+            atPreview ??= checked;
+            return { ok: true, problems: [] };
+          },
+        })
+      ).out,
+    );
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.entities).toBeGreaterThan(0);
+    expect(seen[0]?.picker).toBe(true);
+    expect(atPreview).toBe(true);
+  });
+
+  test("V4-27: a card check that never ends does not hold the preview past its wait", async () => {
+    const sys = newSys();
+    const { host: photos } = library(async () => null);
+    photos.cards = () => new Promise(() => {});
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const run = build(sys, { photos });
+      await vi.advanceTimersByTimeAsync(CARD_CHECK_WAIT_MS + 1000);
+      ok((await run).out);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("photoSwap and swapIds: only changed slots, and a swap of two photos stays a swap", () => {

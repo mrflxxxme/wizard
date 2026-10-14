@@ -27,9 +27,11 @@ import {
 } from "./policy.js";
 import { type Env, LiveCallError, liveCall, providerBaseUrl } from "./providers.js";
 import {
+  CALL_RUB_CAP,
   createRegistry,
   HIGH_REASONING,
   isBuildCallType,
+  MIN_CAPPED_TOKENS,
   type ModelDef,
   modelFamily,
   type ProviderId,
@@ -37,6 +39,7 @@ import {
   type Registry,
   type RouteDef,
 } from "./registry.js";
+import { estimateTokens } from "./tokens.js";
 import type {
   CallType,
   LlmEvent,
@@ -142,6 +145,13 @@ const DEFAULT_BACKOFF = [1000, 4000, 16000];
  * the next model of the chain (the reserve) or fails as LLM_UNAVAILABLE.
  */
 export const MAX_RETRY_AFTER_MS = 30_000;
+
+/**
+ * V4-06: a server error or a timeout that came this late (ms) is the provider's gateway giving up on a long call: the
+ * same model is not tried again (rehearsal №4: glm-5.3 answered 5xx after 121, 121 and 181 s — 7 min), the call goes to
+ * the next model of the chain at once.
+ */
+export const SLOW_FAILURE_MS = 60_000;
 
 /**
  * `sleep(ms)` that ends early (rejects with LlmError ABORTED) when `signal` aborts: a cancelled run never waits out a
@@ -526,6 +536,26 @@ export function createRouter(opts: RouterOptions = {}): Router {
 
       // T1 gets the outbound messages (scrubbed outside the build stages, D79 (3)); T0 may receive the original ones.
       const messages = model.tier === "T1" ? decision.outboundMessages : input.messages;
+      // V4-06: the ₽ ceiling of the call bounds its output budget (CALL_RUB_CAP); no room for an answer — next model.
+      let maxTokens = routeDef.maxTokens;
+      const capRub = CALL_RUB_CAP[callType as CallType];
+      if (capRub !== undefined && model.price.output > 0) {
+        const inputRub =
+          ((estimateTokens(messages) + (input.tools ? estimateTokens(input.tools) : 0)) * model.price.input) /
+          1e6;
+        const room = Math.floor(((capRub - inputRub) * 1e6) / model.price.output);
+        if (room < MIN_CAPPED_TOKENS && next) {
+          opts.onEvent?.({
+            type: "model_switched",
+            fromModel: model.id,
+            toModel: next.id,
+            reason: "fallback_error",
+          });
+          switchTo(model, "fallback_error");
+          continue;
+        }
+        maxTokens = Math.max(MIN_CAPPED_TOKENS, Math.min(maxTokens, room));
+      }
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
         // The breaker may open (or the provider run dry) during our own retries: stop hitting this model.
         if (attempt > 1 && (circuit.providerBlocked(model.provider) || !circuit.allow(cKey))) break;
@@ -548,7 +578,7 @@ export function createRouter(opts: RouterOptions = {}): Router {
             toolChoice: input.toolChoice ?? "auto",
             // A model with a fixed temperature (kimi-k3: 1) gets it; the request key keeps the route's one.
             temperature: model.temperature ?? routeDef.temperature,
-            maxTokens: routeDef.maxTokens,
+            maxTokens,
             signal,
             env,
             ...(opts.fetch ? { fetch: opts.fetch } : {}),
@@ -599,6 +629,8 @@ export function createRouter(opts: RouterOptions = {}): Router {
           });
           if (err.code === "ABORTED") throw new LlmError("ABORTED", "Вызов модели отменён.");
           if (!err.retryable || attempt === MAX_ATTEMPTS) break;
+          if ((err.code === "HTTP_5xx" || err.code === "TIMEOUT") && now() - started >= SLOW_FAILURE_MS)
+            break;
           // V3-18: a Retry-After past the cap is not waited for — the next model of the chain (or LLM_UNAVAILABLE).
           if (err.retryAfterMs !== null && err.retryAfterMs > MAX_RETRY_AFTER_MS) break;
           const base = backoff[attempt - 1] ?? backoff[backoff.length - 1] ?? 0;

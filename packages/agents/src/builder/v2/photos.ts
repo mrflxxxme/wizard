@@ -4,7 +4,7 @@
 // the chosen file is downloaded through the platform egress and copied into the platform photo library; the plan gets
 // design.photos with the source, author, links and licence of every picture. No key, no network, a stock error or the
 // time budget over — the slot keeps the theme graphic and the build goes on (never a failure).
-import { MAX_PLAN_PHOTOS, type PlanPhoto, type SystemPlan } from "@wizard/appspec";
+import { type AppSpec, MAX_PLAN_PHOTOS, type PlanPhoto, type SystemPlan } from "@wizard/appspec";
 import { type PhotoSlot, photoSlots } from "@wizard/modules";
 import { STOCK_LICENSES, type StockClient, type StockHit, type StockProvider } from "../../stock/client.js";
 import { type PhotoPicker, type SemanticPhotoSource, semanticPhotos } from "../../stock/photos.js";
@@ -19,6 +19,11 @@ export interface PhotoHost {
   semantic?: SemanticPhotoSource;
   /** V4-10: the vision model that assigns the candidates to the slots (photo_pick); absent — rank order. */
   picker?: PhotoPicker;
+  /**
+   * V4-27: checks the photos of the catalog cards of the draft with the vision model (text in the frame, the site's
+   * niche) before the draft is seeded; the host keeps the verdict for the seed. Never fails the build.
+   */
+  cards?(o: { spec: AppSpec; picker: PhotoPicker }): Promise<void>;
 }
 
 /** Time budget of the stage (searches, downloads, re-encoding). */

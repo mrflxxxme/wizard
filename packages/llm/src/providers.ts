@@ -113,6 +113,12 @@ export function transformBody(
     // error: Unimplemented keys: ["propertyNames"]» (shape probe 2026-10-09). The answer is checked by our schema anyway.
     out.tools = out.tools.map((t) => withoutSchemaKeys(t, UNSUPPORTED_SCHEMA_KEYS));
   }
+  // Kimi K3 with tools: thinking off (stage-probe-a k3, 2026-10-14: 200 with tools, ~22 s instead of 52–60 s, no
+  // reasoning tokens, a third of the output); without thinking the model takes temperature 0.6, not its fixed 1.
+  if (providerId === "moonshot" && Array.isArray(out.tools) && out.tools.length > 0) {
+    out.thinking = { type: "disabled" };
+    out.temperature = 0.6;
+  }
   // MiMo with reasoning off (models.yaml#models[].thinking): the same switch as zai, no effort.
   if (providerId === "xiaomi" && thinking === "off") {
     delete out.reasoning_effort;
