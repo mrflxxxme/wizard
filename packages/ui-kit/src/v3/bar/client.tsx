@@ -1,11 +1,11 @@
 // Browser entry of the bar preview: renders the two sites from window.__BAR__ (photos as copies, the oven clock) and,
-// in the shared preview, a switch between them that keeps the choice in the URL hash. Round 2 of grill-11 adds the
+// in the shared preview, a switch between them that keeps the choice in the URL hash. Rounds 2–3 of grill-11 add the
 // heroes view: six first screens, three per niche, switched the same way.
 import { type ComponentType, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import BakerySite from "./bakery/site.js";
-import { BakeryClock, BakeryMorning, BakerySign } from "./heroes/bakery.js";
-import { ServiceBooking, ServiceChat, ServicePlate } from "./heroes/service.js";
+import { BakeryLoaf, BakeryOrder, BakeryShelf } from "./heroes/bakery.js";
+import { ServiceAsk, ServicePick, ServicePlate } from "./heroes/service.js";
 import type { PhotoSlot } from "./photos.js";
 import ServiceSite from "./service/site.js";
 import type { Photo } from "./still.js";
@@ -25,14 +25,14 @@ type Hero = {
   label: string;
   Screen: ComponentType<{ photos: Record<PhotoSlot, Photo> }>;
 };
-/** The six first screens of round 2, in the order the founder picks from. */
+/** The six first screens of round 3 (grill-11), in the order the founder picks from. */
 export const HEROES: Hero[] = [
-  { id: "b1", site: "bakery", label: "Пекарня 1 · Пар", Screen: BakeryMorning },
-  { id: "b2", site: "bakery", label: "Пекарня 2 · Часы", Screen: BakeryClock },
-  { id: "b3", site: "bakery", label: "Пекарня 3 · Вывеска", Screen: BakerySign },
-  { id: "s1", site: "service", label: "Сервис 1 · Запись", Screen: ServiceBooking },
-  { id: "s2", site: "service", label: "Сервис 2 · Чат", Screen: ServiceChat },
-  { id: "s3", site: "service", label: "Сервис 3 · Номер", Screen: ServicePlate },
+  { id: "b4", site: "bakery", label: "П4 · Полка сегодня", Screen: BakeryShelf },
+  { id: "b5", site: "bakery", label: "П5 · Один хлеб", Screen: BakeryLoaf },
+  { id: "b6", site: "bakery", label: "П6 · Предзаказ", Screen: BakeryOrder },
+  { id: "s4", site: "service", label: "С4 · Подбор по машине", Screen: ServicePick },
+  { id: "s5", site: "service", label: "С5 · Опишите проблему", Screen: ServiceAsk },
+  { id: "s6", site: "service", label: "С6 · Госномер и акция", Screen: ServicePlate },
 ];
 
 function Heroes({ data }: { data: BarData }) {

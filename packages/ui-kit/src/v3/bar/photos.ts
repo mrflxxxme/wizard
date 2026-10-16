@@ -203,6 +203,15 @@ export const BAR_PHOTOS = {
     cdnUrl: "https://images.pexels.com/photos/31332624/pexels-photo-31332624.jpeg?auto=compress&cs=tinysrgb",
     alt: "Серебристый современный автомобиль в чистом светлом студийном боксе, вертикальный кадр",
   },
+  "bakery-loaf": {
+    file: "bakery-loaf.jpg",
+    provider: "pexels",
+    id: "1571075",
+    author: "Cats Coming",
+    pageUrl: "https://www.pexels.com/photo/close-up-photo-of-sourdough-1571075/",
+    cdnUrl: "https://images.pexels.com/photos/1571075/pexels-photo-1571075.jpeg?auto=compress&cs=tinysrgb",
+    alt: "Целый деревенский хлеб на закваске, присыпанный мукой, с надрезами на корке, на тёмной металлической решётке",
+  },
 } as const satisfies Record<string, StockPhoto>;
 
 export type PhotoSlot = keyof typeof BAR_PHOTOS;

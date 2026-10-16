@@ -1,6 +1,6 @@
-// Three first screens of Бокс 14, mood «Сервис как приложение» (grill-11, round 2): the screen is the product.
-// A «Запись» is the booking itself with the live price by model; B «Чат» shows the repair as a master's chat with
-// photos and an approval; C «Номер» starts from the licence plate and knows the car.
+// Three first screens of Бокс 14 (grill-11, round 3): the first screen is the tool a visitor uses on a car service
+// site. С4 «Подбор по машине» picks brand, model and job and shows prices «от»; С5 «Опишите проблему» is one field
+// for a quote; С6 «Госномер и акция» leads with the offer of the month and a plate field with categories.
 import { useState } from "react";
 import type { PhotoSlot } from "../photos.js";
 import { type Photo, rub } from "../still.js";
@@ -14,6 +14,7 @@ const cta = `inline-flex min-h-12 items-center justify-center rounded-control bg
 const chip = (on: boolean) =>
   `min-h-11 rounded-control border px-3 text-sm font-bold ${on ? "border-accent bg-accent text-accent-ink" : "border-border text-foreground"} ${focus}`;
 const big = "font-display font-bold leading-[0.95] tracking-tight";
+const field = `mt-2 min-h-12 w-full rounded-control border border-border bg-background px-3 text-base ${focus}`;
 
 function Img({ photo, className }: { photo: Photo; className?: string }) {
   return (
@@ -26,7 +27,7 @@ function Img({ photo, className }: { photo: Photo; className?: string }) {
   );
 }
 
-function Header({ action }: { action: string }) {
+function Header() {
   return (
     <header className="flex items-center justify-between gap-6 px-gutter py-5">
       <Box14Logo />
@@ -38,270 +39,276 @@ function Header({ action }: { action: string }) {
         ))}
       </nav>
       <a href={B.phoneHref} className={`min-h-12 content-center text-sm font-bold ${focus}`}>
-        {action}
+        {B.phone}
       </a>
     </header>
   );
 }
 
-function Rating({ className }: { className?: string }) {
+/** Trust line: warranty, rating, address. */
+function Trust({ className }: { className?: string }) {
   return (
-    <p className={`flex items-baseline gap-2 text-sm ${className ?? ""}`}>
-      <span className="font-display text-2xl font-bold text-accent-text">{B.rating.value}</span>
-      {B.rating.count} в {B.rating.source}
+    <p className={`flex flex-wrap items-baseline gap-x-6 gap-y-2 text-sm ${className ?? ""}`}>
+      <span className="font-bold">Гарантия 1 год</span>
+      <span>
+        <span className="font-display text-xl font-bold text-accent-text">{B.rating.value}</span> в{" "}
+        {B.rating.source}
+      </span>
+      <span>{B.address}</span>
     </p>
   );
 }
 
-function Status() {
-  return (
-    <ol aria-label="Статус ремонта" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-      {B.status.map((s, i) => (
-        <li
-          key={s.step}
-          className={`border-t-4 pt-3 ${s.done ? "border-ok" : i === 2 ? "border-accent" : "border-line"}`}
-        >
-          <span className="block text-sm text-muted-foreground tabular-nums">{s.time}</span>
-          <span className="font-bold">{s.step}</span>
-        </li>
-      ))}
-    </ol>
-  );
+function Credit({ photo, className }: { photo: Photo; className?: string }) {
+  return <p className={`text-sm text-muted-foreground ${className ?? ""}`}>Фото: {photo.credit}</p>;
 }
 
-/** A «Запись»: the booking panel is the hero; the price changes with the model before the visitor scrolls. */
-export function ServiceBooking({ photos }: { photos: Photos }) {
+/** С4 «Подбор по машине»: brand, model and job, and the prices «от» for exactly this car. */
+export function ServicePick({ photos }: { photos: Photos }) {
+  const [brand, setBrand] = useState<string>(B.brands[0]);
   const [model, setModel] = useState<string>(FIRST.id);
-  const [service, setService] = useState(0);
-  const [slot, setSlot] = useState(0);
+  const [job, setJob] = useState(0);
   const car = B.models.find((m) => m.id === model) ?? FIRST;
-  const price = service === 1 ? car.brakes : service === 0 ? car.to : 2400;
   const p = photos["service-bay"];
   return (
     <div className="bg-background text-foreground">
       <section className="relative isolate min-h-svh overflow-hidden">
-        <div className="absolute inset-y-0 right-0 -z-10 hidden w-1/2 lg:block">
-          <Img photo={p} />
-          <div className="absolute inset-0 bg-linear-to-r from-background to-transparent" />
-        </div>
-        <Header action={B.phone} />
-        <div className="grid gap-10 px-gutter pt-6 pb-10 lg:grid-cols-12 lg:pt-14">
-          <div className="lg:col-span-6">
-            <Rating />
-            <h1
-              className={`${big} mt-4 text-[calc(var(--ds-text-display)*1.1)] lg:text-[calc(var(--ds-text-display)*1.75)]`}
-            >
-              Бокс свободен сегодня в <span className="text-accent-text">{B.slots[slot]}</span>
-            </h1>
-            <p className="mt-6 max-w-text text-lg text-muted-foreground">{B.booking.lead}</p>
+        <div className="absolute inset-y-0 right-0 -z-10 hidden w-5/12 lg:block">
+          <div className="size-full bar-drift">
+            <Img photo={p} />
           </div>
-          <form
-            aria-label="Онлайн-запись"
-            onSubmit={(e) => e.preventDefault()}
-            className="rounded-lg border border-line bg-surface p-5 shadow-md lg:col-span-5 lg:col-start-8 lg:p-6"
+        </div>
+        <div className="lg:w-7/12">
+          <Header />
+          <div className="px-gutter pt-4 pb-10 lg:pt-10 lg:pr-16">
+            <h1
+              className={`${big} text-[calc(var(--ds-text-display)*1.1)] lg:text-[calc(var(--ds-text-display)*1.8)]`}
+            >
+              {B.book.title}
+            </h1>
+            <form aria-label="Подбор по машине" onSubmit={(e) => e.preventDefault()} className="mt-8">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block text-sm font-bold">
+                  Марка
+                  <select value={brand} onChange={(e) => setBrand(e.target.value)} className={field}>
+                    {B.brands.map((b) => (
+                      <option key={b}>{b}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-sm font-bold">
+                  Модель
+                  <select value={model} onChange={(e) => setModel(e.target.value)} className={field}>
+                    {B.models.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <fieldset className="mt-5 border-0 p-0">
+                <legend className="text-sm font-bold">Работа</legend>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {B.jobs.map((j, i) => (
+                    <button
+                      key={j}
+                      type="button"
+                      aria-pressed={job === i}
+                      onClick={() => setJob(i)}
+                      className={chip(job === i)}
+                    >
+                      {j}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+              <h2 className="mt-8 text-sm font-bold">Цены для {car.label}</h2>
+              <ul className="mt-2 border-t-2 border-current">
+                {B.jobs.map((j, i) => (
+                  <li
+                    key={j}
+                    className={`flex items-baseline justify-between gap-4 border-b border-line py-2 ${job === i ? "font-bold text-accent-text" : ""}`}
+                  >
+                    <span>{j}</span>
+                    <span className="tabular-nums">от {rub(car.prices[i] ?? 0)}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3">
+                <button type="submit" className={cta}>
+                  {B.book.cta} от {rub(car.prices[job] ?? 0)}
+                </button>
+                <span className="text-sm">{B.book.slot}</span>
+              </div>
+            </form>
+            <Trust className="mt-8" />
+            <Credit photo={p} className="mt-4" />
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/** С5 «Опишите проблему»: one field for a quote, numbers of trust under it, then four steps and prices. */
+export function ServiceAsk({ photos }: { photos: Photos }) {
+  const p = photos["service-mechanic"];
+  return (
+    <div className="bg-background text-foreground">
+      <section className="relative isolate overflow-hidden text-scrim-foreground">
+        <div className="absolute inset-0 -z-10">
+          <Img photo={p} />
+          <div className="absolute inset-0 bg-linear-to-r from-scrim via-scrim/85 to-scrim/50" />
+        </div>
+        <Header />
+        <div className="px-gutter pt-8 pb-12 lg:pt-16 lg:pb-16">
+          <h1
+            className={`${big} text-[calc(var(--ds-text-display)*1.1)] lg:text-[calc(var(--ds-text-display)*2)]`}
           >
-            <label className="block text-sm font-bold" htmlFor="model">
-              Машина
+            {B.ask.title}
+          </h1>
+          <form
+            aria-label="Расчёт ремонта"
+            onSubmit={(e) => e.preventDefault()}
+            className="mt-8 flex max-w-5xl flex-col gap-3 lg:flex-row"
+          >
+            <label htmlFor="problem" className="sr-only">
+              Опишите машину и проблему
             </label>
-            <select
-              id="model"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              className={`mt-2 min-h-12 w-full rounded-control border border-border bg-background px-3 text-base ${focus}`}
-            >
-              {B.models.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-            <fieldset className="mt-5 border-0 p-0">
-              <legend className="text-sm font-bold">Работа</legend>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {B.services.map((s, i) => (
-                  <button
-                    key={s}
-                    type="button"
-                    aria-pressed={service === i}
-                    onClick={() => setService(i)}
-                    className={chip(service === i)}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </fieldset>
-            <fieldset className="mt-5 border-0 p-0">
-              <legend className="text-sm font-bold">Сегодня</legend>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {B.slots.map((s, i) => (
-                  <button
-                    key={s}
-                    type="button"
-                    aria-pressed={slot === i}
-                    onClick={() => setSlot(i)}
-                    className={`${chip(slot === i)} tabular-nums`}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </fieldset>
-            <p
-              className="mt-6 flex items-baseline justify-between border-t border-line pt-4"
-              aria-live="polite"
-            >
-              <span className="text-sm text-muted-foreground">
-                {car.label}, {service === 0 ? car.hours : "по факту осмотра"}
-              </span>
-              <output className="font-display text-3xl font-bold tabular-nums">{rub(price)}</output>
-            </p>
-            <button type="submit" className={`${cta} mt-4 w-full`}>
-              Записаться на {B.slots[slot]}
+            <input
+              id="problem"
+              type="text"
+              placeholder={B.ask.placeholder}
+              className={`min-h-16 flex-1 rounded-control border-2 border-border bg-background px-5 text-xl text-foreground ${focus}`}
+            />
+            <button type="submit" className={`${cta} min-h-16 text-lg`}>
+              {B.ask.cta}
             </button>
           </form>
+          <p className="mt-3 text-base">{B.ask.lead}</p>
+          <dl className="mt-10 grid grid-cols-3 gap-6 lg:max-w-3xl">
+            {[
+              { v: B.rating.value, l: `в ${B.rating.source}` },
+              { v: B.repairs, l: "ремонтов" },
+              { v: "1 год", l: "гарантия" },
+            ].map((n) => (
+              <div key={n.l} className="border-t-2 border-current pt-2">
+                <dt className="sr-only">{n.l}</dt>
+                <dd className="m-0 font-display text-3xl font-bold tabular-nums lg:text-5xl">{n.v}</dd>
+                <dd className="m-0 text-sm">{n.l}</dd>
+              </div>
+            ))}
+          </dl>
         </div>
       </section>
-      <section aria-labelledby="status" className="border-t border-line px-gutter py-10">
-        <h2 id="status" className="mb-6 font-display text-xl font-bold">
-          Статус ремонта в реальном времени
-        </h2>
-        <Status />
-        <p className="mt-6 text-sm text-muted-foreground">Фото: {p.credit}</p>
+      <section aria-labelledby="how" className="grid gap-10 px-gutter py-12 lg:grid-cols-12">
+        <div className="lg:col-span-7">
+          <h2 id="how" className="font-display text-2xl font-bold">
+            Как это работает
+          </h2>
+          <ol className="mt-6 grid gap-6 sm:grid-cols-2">
+            {B.ask.steps.map((s) => (
+              <li key={s.n} className="border-t-4 border-accent pt-3">
+                <span className="font-display text-3xl font-bold text-accent-text">{s.n}</span>
+                <p className="mt-1 font-bold">{s.title}</p>
+                <p className="text-sm text-muted-foreground">{s.text}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+        <div className="lg:col-span-4 lg:col-start-9">
+          <h2 className="font-display text-2xl font-bold">Цены</h2>
+          <ul className="mt-6 border-t-2 border-current">
+            {B.ask.prices.map((x) => (
+              <li key={x.job} className="flex items-baseline justify-between gap-4 border-b border-line py-2">
+                <span>{x.job}</span>
+                <span className="tabular-nums font-bold">от {rub(x.from)}</span>
+              </li>
+            ))}
+          </ul>
+          <Trust className="mt-6" />
+          <Credit photo={p} className="mt-4" />
+        </div>
       </section>
     </div>
   );
 }
 
-/** B «Чат»: the master's chat on a phone-width column, photo of the worn disc and the approve button. */
-export function ServiceChat({ photos }: { photos: Photos }) {
-  const work = photos["service-detail"];
-  const bay = photos["service-mechanic"];
-  return (
-    <div className="bg-background text-foreground">
-      <section className="relative isolate min-h-svh overflow-hidden">
-        <Header action="Открыть чат" />
-        <div className="grid gap-10 px-gutter pt-4 pb-10 lg:grid-cols-12 lg:items-center">
-          <div className="lg:col-span-6">
-            <h1
-              className={`${big} text-[calc(var(--ds-text-display)*1.05)] lg:text-[calc(var(--ds-text-display)*1.3)]`}
-            >
-              {B.chat.title}
-            </h1>
-            <p className="mt-6 max-w-text text-lg text-muted-foreground">{B.chat.lead}</p>
-            <div className="mt-8 flex flex-wrap items-center gap-6">
-              <a href="#Запись" className={cta}>
-                Записаться и получить чат
-              </a>
-              <Rating />
-            </div>
-          </div>
-          <div className="relative lg:col-span-5 lg:col-start-8">
-            <div className="absolute -inset-x-gutter -inset-y-10 -z-10 hidden lg:block">
-              <Img photo={bay} className="opacity-40" />
-            </div>
-            <div
-              role="log"
-              aria-label="Чат с мастером"
-              className="mx-auto max-w-sm rounded-lg border border-line bg-surface p-4 shadow-md"
-            >
-              <p className="flex justify-between border-b border-line pb-3 text-sm">
-                <span className="font-bold">{B.chat.master}</span>
-                <span className="text-muted-foreground">{B.chat.car}</span>
-              </p>
-              <p className="mt-4 max-w-[85%] rounded-md bg-surface-alt p-3 text-sm">{B.chat.messages[0]}</p>
-              <div className="mt-2 h-44 max-w-[85%] overflow-hidden rounded-md">
-                <Img photo={work} />
-              </div>
-              <p className="mt-2 max-w-[85%] rounded-md bg-surface-alt p-3 text-sm">{B.chat.messages[1]}</p>
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <button type="button" className={`${cta} px-3 text-sm`}>
-                  Согласовать {rub(9600)}
-                </button>
-                <button type="button" className={`${chip(false)} min-h-12`}>
-                  Позвонить
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-      <section aria-labelledby="status2" className="bg-surface-alt px-gutter py-10">
-        <h2 id="status2" className="mb-6 font-display text-xl font-bold">
-          Kia K5 на подъёмнике, бокс 14
-        </h2>
-        <Status />
-        <p className="mt-6 text-sm text-muted-foreground">
-          Фото: {work.credit}, {bay.credit}
-        </p>
-      </section>
-    </div>
-  );
-}
-
-/** C «Номер»: a licence plate as the input, the car recognised, the next service with a price. */
+/** С6 «Госномер и акция»: the offer of the month with price and date, a plate field and job categories. */
 export function ServicePlate({ photos }: { photos: Photos }) {
-  const p = photos["service-car"];
-  const car = FIRST;
+  const [cat, setCat] = useState(3);
+  const p = photos["service-detail"];
   return (
     <div className="bg-background text-foreground">
-      <section className="relative isolate grid min-h-svh grid-rows-[auto_1fr] overflow-hidden">
-        <Header action="Войти по номеру" />
-        <div className="grid lg:grid-cols-12">
-          <div className="flex min-w-0 flex-col justify-center px-gutter pb-10 lg:col-span-6">
-            <h1 className={`${big} text-2xl lg:text-[calc(var(--ds-text-display)*1.2)]`}>{B.plate.title}</h1>
-            <label htmlFor="plate" className="mt-8 block text-sm font-bold">
-              {B.plate.label}
-            </label>
-            <div className="mt-2 flex w-fit items-stretch overflow-hidden rounded-md border-4 border-ink bg-surface text-ink">
-              <input
-                id="plate"
-                defaultValue={B.plate.number}
-                className={`w-[7.2ch] bg-transparent px-3 font-display text-2xl font-bold uppercase sm:text-3xl lg:text-[calc(var(--ds-text-display)*0.95)] ${focus}`}
-              />
-              <span className="flex flex-col items-center justify-center border-l-4 border-ink px-3 font-display text-2xl font-bold">
-                {B.plate.region}
-                <span className="text-sm font-normal">RUS</span>
-              </span>
+      <Header />
+      <section className="grid gap-0 lg:min-h-[calc(100svh-5.5rem)] lg:grid-cols-12">
+        <div className="relative isolate flex min-h-[52svh] flex-col justify-end overflow-hidden px-gutter pb-8 text-scrim-foreground lg:col-span-7">
+          <div className="absolute inset-0 -z-10">
+            <div className="size-full bar-drift">
+              <Img photo={p} />
             </div>
-            <dl className="mt-8 grid gap-4 border-t border-line pt-6 lg:grid-cols-2">
-              <div>
-                <dt className="text-sm text-muted-foreground">Машина</dt>
-                <dd className="m-0 text-lg font-bold">{B.plate.car}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-muted-foreground">История</dt>
-                <dd className="m-0 text-lg font-bold">{B.plate.history}</dd>
-              </div>
-            </dl>
-            <div className="mt-8 flex flex-wrap items-center gap-6">
-              <a href="#Запись" className={cta}>
-                {B.plate.cta} за {rub(car.to)}
-              </a>
-              <Rating />
-            </div>
+            <div className="absolute inset-0 bg-linear-to-t from-scrim via-scrim/70 to-scrim/10" />
           </div>
-          <div className="relative min-h-72 lg:col-span-6">
-            <Img photo={p} />
-            <p className="absolute bottom-6 left-6 rounded-md bg-accent px-4 py-3 font-bold text-accent-ink">
-              {B.plate.due}
-            </p>
-          </div>
+          <p className="text-sm font-bold uppercase tracking-widest">{B.promo.kicker}</p>
+          <h1
+            className={`${big} mt-3 text-[calc(var(--ds-text-display)*1.05)] lg:text-[calc(var(--ds-text-display)*1.7)]`}
+          >
+            {B.promo.title}
+          </h1>
+          <p className="mt-3 text-lg">
+            {B.promo.terms}, обычно <s className="tabular-nums">{rub(B.promo.old)}</s>
+          </p>
+          <a href="#need" className={`${cta} mt-6 self-start`}>
+            {B.promo.cta}
+          </a>
         </div>
-      </section>
-      <section aria-labelledby="prices" className="border-t border-line px-gutter py-10">
-        <h2 id="prices" className="font-display text-xl font-bold">
-          ТО по регламенту, цена с работой
-        </h2>
-        <ul className="mt-6 grid grid-cols-2 gap-x-8 gap-y-4 lg:grid-cols-5">
-          {B.models.map((m) => (
-            <li key={m.id} className="border-t border-line pt-3">
-              <span className="block text-sm text-muted-foreground">{m.label}</span>
-              <span className="font-display text-xl font-bold tabular-nums">{rub(m.to)}</span>
-            </li>
-          ))}
-        </ul>
-        <p className="mt-6 text-sm text-muted-foreground">Фото: {p.credit}</p>
+        <form
+          id="need"
+          aria-label={B.need.title}
+          onSubmit={(e) => e.preventDefault()}
+          className="flex flex-col gap-6 bg-surface px-gutter py-8 lg:col-span-5 lg:px-10"
+        >
+          <h2 className="font-display text-3xl font-bold">{B.need.title}</h2>
+          <label className="block text-sm font-bold">
+            {B.need.plateLabel}
+            <span className="mt-2 flex min-h-16 items-stretch overflow-hidden rounded-control border-2 border-foreground bg-background font-display text-3xl font-bold">
+              <input
+                defaultValue={B.need.plate}
+                size={1}
+                className={`w-0 min-w-0 flex-1 bg-transparent px-4 uppercase tracking-wider ${focus}`}
+              />
+              <span className="flex flex-col items-center justify-center border-l-2 border-foreground px-3 text-xl leading-none">
+                {B.need.region}
+                <span className="text-xs font-bold">RUS</span>
+              </span>
+            </span>
+          </label>
+          <fieldset className="border-0 p-0">
+            <legend className="text-sm font-bold">Категория</legend>
+            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {B.need.categories.map((c, i) => (
+                <button
+                  key={c.label}
+                  type="button"
+                  aria-pressed={cat === i}
+                  onClick={() => setCat(i)}
+                  className={`${chip(cat === i)} flex min-h-14 flex-col items-start justify-center py-2 text-left`}
+                >
+                  {c.label}
+                  <span className="text-xs font-normal tabular-nums">
+                    {c.from === 0 ? "0 ₽ по акции" : `от ${rub(c.from)}`}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </fieldset>
+          <button type="submit" className={cta}>
+            {B.need.cta}
+          </button>
+          <Trust className="mt-auto" />
+          <Credit photo={p} />
+        </form>
       </section>
     </div>
   );

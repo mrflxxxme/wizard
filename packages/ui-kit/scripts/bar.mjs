@@ -102,7 +102,7 @@ writeFileSync(
 );
 writeFileSync(join(out, "service.html"), page("Бокс 14", { sites: ["service"], switcher: false }));
 // Round 2: six first screens with a switch, and a switch-less copy for the snapshots.
-const HERO_IDS = ["b1", "b2", "b3", "s1", "s2", "s3"];
+const HERO_IDS = ["b4", "b5", "b6", "s4", "s5", "s6"];
 writeFileSync(
   join(out, "heroes.html"),
   page("Шесть первых экранов", { sites: ["bakery"], switcher: true, view: "heroes" }),

@@ -63,27 +63,29 @@ describe("bar sites (grill-11)", () => {
   });
 });
 
-describe("round 2 first screens (grill-11, «Круг 2»)", async () => {
+describe("round 3 first screens (grill-11, «Круг 3»)", async () => {
   const { BOX14, TEREKHOV } = await import("../src/v3/bar/heroes/data.js");
   const bakery = await import("../src/v3/bar/heroes/bakery.js");
   const service = await import("../src/v3/bar/heroes/service.js");
   const screens = [
-    bakery.BakeryMorning,
-    bakery.BakeryClock,
-    bakery.BakerySign,
-    service.ServiceBooking,
-    service.ServiceChat,
+    bakery.BakeryShelf,
+    bakery.BakeryLoaf,
+    bakery.BakeryOrder,
+    service.ServicePick,
+    service.ServiceAsk,
     service.ServicePlate,
   ];
+  const render = (Screen: (typeof screens)[number]) =>
+    renderToStaticMarkup(createElement(Screen, { photos }));
 
-  test("copy keeps clear of the bans, each screen has a rating and an offer with a price", () => {
+  test("copy keeps clear of the bans, each screen has a rating, a price and a mark", () => {
     for (const s of [...strings(TEREKHOV), ...strings(BOX14)]) {
       expect(s).not.toMatch(/\s—\s/);
       expect(s).not.toMatch(/\bне\s[^,.]+,\s*а\s/i);
       expect(s).not.toMatch(/мы заботимся|с любовью|качественн/i);
     }
     for (const Screen of screens) {
-      const html = renderToStaticMarkup(createElement(Screen, { photos }));
+      const html = render(Screen);
       expect(html.match(/<h1/g)).toHaveLength(1);
       expect(html).toContain("/ Pexels");
       expect(html).toMatch(/4,[89]/);
@@ -92,9 +94,17 @@ describe("round 2 first screens (grill-11, «Круг 2»)", async () => {
     }
   });
 
-  test("the booking prices the chosen model", () => {
-    const html = renderToStaticMarkup(createElement(service.ServiceBooking, { photos }));
-    expect(html).toContain(rub(7800));
-    expect(html).toContain("Записаться на 15:30");
+  test("each screen leads with what a visitor does in the niche", () => {
+    expect(render(bakery.BakeryShelf)).toContain("Хлеб на закваске. Каждое утро с\u00a07:40");
+    expect(render(bakery.BakeryShelf)).toContain("осталось 7 буханок");
+    expect(render(bakery.BakeryLoaf)).toContain("36 часов брожения");
+    expect(render(bakery.BakeryLoaf)).toContain("Заказать к утру");
+    expect(render(bakery.BakeryOrder)).toContain("Куличи к Пасхе");
+    expect(render(bakery.BakeryOrder)).toContain("Добавить");
+    expect(render(service.ServicePick)).toContain(`Записаться от ${rub(7800)}`);
+    expect(render(service.ServiceAsk)).toContain("Kia K5 2021, стучит спереди справа");
+    expect(render(service.ServiceAsk)).toContain("9 400");
+    expect(render(service.ServicePlate)).toContain("Диагностика подвески 0 ₽");
+    expect(render(service.ServicePlate)).toContain("до 31 октября");
   });
 });
