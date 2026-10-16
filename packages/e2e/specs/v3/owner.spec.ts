@@ -173,7 +173,7 @@ test("v3: интервью → бриф → три направления → «
     statuses.every((s) => s === "passed"),
     statuses.join(","),
   ).toBe(true);
-  await page.getByTestId("canvas-island-chat").click();
+  await page.getByTestId("p-composer-input").click();
   await expect(page.getByTestId("canvas-v3-live-ready")).toContainText("Система готова");
   await expect(page.getByTestId("canvas-v3-live-ready")).toContainText(
     `Готово ${statuses.length} из ${statuses.length}`,
@@ -200,7 +200,7 @@ test("v3: интервью → бриф → три направления → «
   await page.getByTestId("canvas-panel-close").click();
 
   // An edit by words after the build: the wish goes into the brief, «Собрать» is offered again.
-  await page.getByTestId("canvas-island-chat").click();
+  await page.getByTestId("p-composer-input").click();
   await say(page, V3_WISH);
   await expect(page.getByTestId("canvas-v3-build")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("canvas-v3-style")).toContainText("выбран вами");
@@ -229,14 +229,14 @@ test("v3: интервью → бриф → три направления → «
   await expect(page.getByTestId("canvas-v3-live-scenario-status").first()).toHaveText(
     "готово в прошлой сборке",
   );
-  await page.getByTestId("canvas-island-chat").click();
+  await page.getByTestId("p-composer-input").click();
   await expect(page.getByTestId("canvas-v3-live-ready")).toContainText("Система готова");
   await expect(frame).toBeVisible();
 
   // V3-19: publication from the canvas. The system keeps patients' data, so the server asks the operator's data
   // (OPERATOR_*): the owner gives it in the chat card, «Опубликовать» turns on, the publish run ends with the version in
   // prod, the site and the owner's cabinet open.
-  await page.getByTestId("canvas-island-more").click();
+  await page.getByTestId("p-composer-input").click();
   await expect(page.getByTestId("canvas-settings")).toHaveAttribute("href", /\/s\/[0-9a-f-]{36}\/settings$/);
   await page.getByTestId("canvas-island-publish").click();
   const publish = page.getByTestId("canvas-v3-publish");

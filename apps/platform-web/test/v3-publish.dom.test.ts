@@ -97,6 +97,12 @@ async function mount(api: Partial<ApiClient>, node: ReactNode): Promise<void> {
 }
 const $ = (id: string) => container?.querySelector<HTMLElement>(`[data-testid="${id}"]`) ?? null;
 const $$ = (id: string) => [...(container?.querySelectorAll<HTMLElement>(`[data-testid="${id}"]`) ?? [])];
+const openBar = async () => {
+  await act(async () => {
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true }));
+  });
+  await flush();
+};
 const click = async (id: string) => {
   await act(async () => $(id)?.click());
   await flush();
@@ -462,7 +468,7 @@ describe("the canvas of a built v3 system", () => {
     } as unknown as Partial<ApiClient>;
     await mount(api, h(Canvas, { systemId: SYS, initial: view }));
     // V4-11: the settings under «Ещё», the publication under its icon of the island.
-    await click("canvas-island-more");
+    await openBar();
     expect($("canvas-settings")?.getAttribute("href")).toBe(`/s/${SYS}/settings`);
     await click("canvas-island-publish");
     expect($("canvas-v3-publish")).not.toBeNull();

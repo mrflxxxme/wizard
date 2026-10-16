@@ -843,3 +843,11 @@
     max-width: 130px;
   }
 }
+
+/* the composer inside the 48 px pill: flat, no card of its own */
+.field [class*="row"] {
+  min-height: 36px;
+  padding: 0 4px;
+  background: none;
+  box-shadow: none;
+}

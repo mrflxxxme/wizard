@@ -71,6 +71,7 @@ describe.skipIf(!hasChromium)("canvas v4 in chromium (feed «клиника», �
       await page.getByTestId("canvas-eta").waitFor();
       expect(await page.getByTestId("canvas-sheet").count()).toBe(0);
       expect(Number(await page.getByTestId("canvas-eta").getAttribute("aria-valuenow"))).toBeGreaterThan(0);
+      await page.keyboard.press("Control+k");
       await page.getByTestId("canvas-tile-build").click();
       expect(await page.getByTestId("canvas-build-step").textContent()).toBe("Подбираю фото");
       await shot(page, `${tag}-2-build`);
@@ -101,14 +102,14 @@ describe.skipIf(!hasChromium)("canvas v4 in chromium (feed «клиника», �
       expect(h.mock.stubLeads).toContain("Анна");
 
       // The chat slides over the system: the system keeps its width; Esc closes it.
-      await page.getByTestId("canvas-island-chat").click();
+      await page.getByTestId("p-composer-input").click();
       await page.getByTestId("canvas-sheet").waitFor();
       expect(await width(page, "canvas-frame-site")).toBe(vp.width);
       await shot(page, `${tag}-4-chat`);
       await page.keyboard.press("Escape");
       expect(await page.getByTestId("canvas-sheet").count()).toBe(0);
       // A click on the system closes the panel too.
-      await page.getByTestId("canvas-island-chat").click();
+      await page.getByTestId("p-composer-input").click();
       await page.getByTestId("canvas-sheet").waitFor();
       if (!phone) {
         await frame.getByTestId("stub-sent").click();
@@ -117,6 +118,7 @@ describe.skipIf(!hasChromium)("canvas v4 in chromium (feed «клиника», �
 
       // «Телефон»: 390 px in the middle of the window (on a phone the system is at its own width already).
       if (!phone) {
+        await page.getByTestId("p-composer-input").click();
         await page.getByTestId("canvas-device-phone").click();
         await expect.poll(() => width(page, "canvas-frame-site")).toBe(390);
         await shot(page, `${tag}-5-phone`);
@@ -126,7 +128,7 @@ describe.skipIf(!hasChromium)("canvas v4 in chromium (feed «клиника», �
 
       // «Открыть в новой вкладке» twice: each tab logs in with its own token (a reused one would be 404 replay).
       for (let i = 0; i < 2; i++) {
-        await page.getByTestId("canvas-island-more").click();
+        await page.getByTestId("p-composer-input").click();
         const [tab] = await Promise.all([
           page.context().waitForEvent("page"),
           page.getByTestId("canvas-open-tab").click(),
@@ -137,13 +139,16 @@ describe.skipIf(!hasChromium)("canvas v4 in chromium (feed «клиника», �
       }
       expect(h.mock.usedTokens.size).toBeGreaterThanOrEqual(3);
 
-      // Ctrl+B hides the island and shows it again.
-      await page.getByTestId("canvas-island-chat").focus();
-      await page.keyboard.press("Control+b");
+      // V5-07: at rest only the 48 px pill; no island of icons; Ctrl+K unfolds, Esc folds.
+      await page.keyboard.press("Escape");
       expect(await page.getByTestId("canvas-island").count()).toBe(0);
-      await page.getByTestId("canvas-island-show").waitFor();
-      await page.keyboard.press("Control+b");
-      await page.getByTestId("canvas-island").waitFor();
+      expect(await page.getByTestId("canvas-sheet").count()).toBe(0);
+      const pill = await page.getByTestId("canvas-cmd").boundingBox();
+      expect(pill?.height ?? 0).toBeLessThanOrEqual(48);
+      await page.keyboard.press("Control+k");
+      await page.getByTestId("canvas-tiles").waitFor();
+      await page.keyboard.press("Escape");
+      await page.getByTestId("canvas-tiles").waitFor({ state: "detached" });
       expect(await noHorizontalScroll(page)).toBe(true);
       await page.context().close();
     }, 120_000);

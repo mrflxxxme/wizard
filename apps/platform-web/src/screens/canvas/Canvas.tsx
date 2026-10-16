@@ -1284,7 +1284,11 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
                 </button>
               </span>
             )}
-            <div className={s.field} onFocusCapture={() => panel === null && setPanel("chat")}>
+            <div
+              className={s.field}
+              onFocusCapture={() => panel === null && setPanel("chat")}
+              onClickCapture={() => panel === null && setPanel("chat")}
+            >
               <Composer
                 testId="canvas-composer"
                 attach={v3 && !building && (stage === "interview" || stage === "card") ? upload.attach : null}

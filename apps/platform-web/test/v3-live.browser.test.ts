@@ -278,7 +278,7 @@ describe.skipIf(!hasChromium)("the live v3 build on the canvas in chromium", () 
         const page = await open(fake, ctx);
         await page.getByTestId("canvas-eta").waitFor({ timeout: 15_000 });
         expect(await page.getByTestId("canvas-sheet").count()).toBe(0);
-        await page.getByTestId("canvas-island-chat").click();
+        await page.getByTestId("p-composer-input").click();
         // The chat row takes the same numbers from the snapshot.
         expect(await page.getByTestId("canvas-build-spend").textContent()).toBe("потрачено 42 ₽ из 500 ₽");
         expect(await page.getByTestId("canvas-build-step").textContent()).toBe("Довожу сценарии по одному");
@@ -417,7 +417,7 @@ describe.skipIf(!hasChromium)("the live v3 build on the canvas in chromium", () 
         await back.getByTestId("canvas-v3-live-toast-close").click();
         expect(await toast.count()).toBe(0);
         // «Система готова» in the chat; «Посмотреть систему» gives the whole window back to it.
-        await back.getByTestId("canvas-island-chat").click();
+        await back.getByTestId("p-composer-input").click();
         await back.getByTestId("canvas-v3-live-ready").waitFor();
         await back.getByTestId("canvas-v3-live-look").click();
         expect(await back.getByTestId("canvas-sheet").count()).toBe(0);
@@ -433,7 +433,7 @@ describe.skipIf(!hasChromium)("the live v3 build on the canvas in chromium", () 
             .getByTestId("canvas-v3-live-scenario")
             .evaluateAll((xs) => xs.map((x) => x.getAttribute("data-status"))),
         ).toEqual(["passed", "passed", "failed", "stopped"]);
-        await later.getByTestId("canvas-island-chat").click();
+        await later.getByTestId("p-composer-input").click();
         expect(await later.getByTestId("canvas-v3-live-ready").count()).toBe(1);
         await later.context().close();
       }, 120_000);
