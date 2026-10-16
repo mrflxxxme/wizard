@@ -887,6 +887,8 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
     );
 
   const open = panel !== null;
+  // The edit panel stays mounted (hidden) while the owner picks on the site: unmounting it would end the pick mode.
+  const [pickHold, setPickHold] = useState(false);
   // A click on the site puts the element into the bar as a chip while the dialog is unfolded.
   useEffect(() => {
     if (!bridge || panel !== "chat" || !built) return;
@@ -1079,8 +1081,8 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
           data-testid="canvas-cmd"
           data-open={open ? "" : undefined}
         >
-          {open && (
-            <div className={s.drawer}>
+          {(open || pickHold) && (
+            <div className={s.drawer} hidden={!open}>
               <div className={s.grab} aria-hidden="true" />
               {current && panel && (
                 <section
@@ -1137,7 +1139,10 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
                       onRun={(id) => setRunId(id)}
                       onReloadFrame={() => setReloadKey((k) => k + 1)}
                       // The bar steps aside while the owner picks and comes back with the picked text or photo.
-                      onPick={() => setPanel(null)}
+                      onPick={() => {
+                        setPickHold(true);
+                        setPanel(null);
+                      }}
                     />
                   </div>
                 </section>

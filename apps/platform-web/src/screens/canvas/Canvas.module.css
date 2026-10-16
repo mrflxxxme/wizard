@@ -528,6 +528,10 @@
   pointer-events: none;
 }
 
+.drawer[hidden] {
+  display: none;
+}
+
 .drawer {
   display: flex;
   flex-direction: column;

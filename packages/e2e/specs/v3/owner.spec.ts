@@ -173,7 +173,7 @@ test("v3: интервью → бриф → три направления → «
     statuses.every((s) => s === "passed"),
     statuses.join(","),
   ).toBe(true);
-  await page.getByTestId("p-composer-input").click();
+  await page.getByTestId("canvas-tile-chat").click();
   await expect(page.getByTestId("canvas-v3-live-ready")).toContainText("Система готова");
   await expect(page.getByTestId("canvas-v3-live-ready")).toContainText(
     `Готово ${statuses.length} из ${statuses.length}`,
@@ -221,7 +221,7 @@ test("v3: интервью → бриф → три направления → «
   await expect
     .poll(() => letters(email).filter((l) => l.kind === "notice").length, { timeout: 150_000 * SLOW })
     .toBe(2);
-  await page.getByTestId("p-composer-input").click();
+  await page.getByTestId("canvas-tile-chat").click();
   await page.getByTestId("canvas-tile-build").click();
   await expect(page.getByTestId("canvas-v3-live-checkpoints")).toContainText("Взято из прошлой сборки", {
     timeout: 30_000,

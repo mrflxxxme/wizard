@@ -95,7 +95,7 @@ describe.skipIf(!hasChromium)("first screens as a stream (chromium)", () => {
       await page.getByTestId("start-submit").click();
       await page.waitForURL(new RegExp(`/s/${fake.systemId}$`));
       await page.getByTestId("canvas-question").waitFor();
-      if (vp.width < 600) await page.getByTestId("canvas-panel-close").click();
+      await page.getByTestId("canvas-panel-close").click();
 
       // At once: the skeleton in the brief's words and colour, the stage said live.
       const screens = page.getByTestId("first-screens");
