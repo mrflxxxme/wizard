@@ -9,6 +9,9 @@ export function barDesignCss(): string {
     designSystemCss(SERVICE_DS, { scope: "[data-site=service]", autoScheme: false, theme: false }),
     "html{scroll-behavior:smooth}",
     "@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}}",
+    // The one moving moment of the bakery hero «Пар»: the photo settles in, only on a wide screen with motion allowed.
+    "@keyframes bar-drift{from{transform:scale(1.08)}to{transform:scale(1)}}",
+    "@media (min-width:64rem) and (prefers-reduced-motion:no-preference){.bar-drift{animation:bar-drift 9s var(--ds-ease-out) both}}",
   ].join("\n");
 }
 

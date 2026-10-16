@@ -8,7 +8,7 @@ import BakerySite from "../src/v3/bar/bakery/site.js";
 import { BAR_PHOTOS, type PhotoSlot } from "../src/v3/bar/photos.js";
 import { SERVICE } from "../src/v3/bar/service/data.js";
 import ServiceSite from "../src/v3/bar/service/site.js";
-import type { Photo } from "../src/v3/bar/still.js";
+import { type Photo, rub } from "../src/v3/bar/still.js";
 import { BAKERY_DS, SERVICE_DS } from "../src/v3/bar/tokens.js";
 import { designLintErrors } from "../src/v3/design/index.js";
 
@@ -60,5 +60,41 @@ describe("bar sites (grill-11)", () => {
     expect(bakery).toContain("На витрине, 12 буханок");
     expect(bakery).toContain("Будет в 12:30");
     expect(service).toContain("7 800 ₽");
+  });
+});
+
+describe("round 2 first screens (grill-11, «Круг 2»)", async () => {
+  const { BOX14, TEREKHOV } = await import("../src/v3/bar/heroes/data.js");
+  const bakery = await import("../src/v3/bar/heroes/bakery.js");
+  const service = await import("../src/v3/bar/heroes/service.js");
+  const screens = [
+    bakery.BakeryMorning,
+    bakery.BakeryClock,
+    bakery.BakerySign,
+    service.ServiceBooking,
+    service.ServiceChat,
+    service.ServicePlate,
+  ];
+
+  test("copy keeps clear of the bans, each screen has a rating and an offer with a price", () => {
+    for (const s of [...strings(TEREKHOV), ...strings(BOX14)]) {
+      expect(s).not.toMatch(/\s—\s/);
+      expect(s).not.toMatch(/\bне\s[^,.]+,\s*а\s/i);
+      expect(s).not.toMatch(/мы заботимся|с любовью|качественн/i);
+    }
+    for (const Screen of screens) {
+      const html = renderToStaticMarkup(createElement(Screen, { photos }));
+      expect(html.match(/<h1/g)).toHaveLength(1);
+      expect(html).toContain("/ Pexels");
+      expect(html).toMatch(/4,[89]/);
+      expect(html).toMatch(/\d\s₽/u);
+      expect(html).toContain("<svg");
+    }
+  });
+
+  test("the booking prices the chosen model", () => {
+    const html = renderToStaticMarkup(createElement(service.ServiceBooking, { photos }));
+    expect(html).toContain(rub(7800));
+    expect(html).toContain("Записаться на 15:30");
   });
 });

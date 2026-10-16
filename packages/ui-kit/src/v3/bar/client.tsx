@@ -1,14 +1,77 @@
 // Browser entry of the bar preview: renders the two sites from window.__BAR__ (photos as copies, the oven clock) and,
-// in the shared preview, a switch between them that keeps the choice in the URL hash.
-import { useEffect, useState } from "react";
+// in the shared preview, a switch between them that keeps the choice in the URL hash. Round 2 of grill-11 adds the
+// heroes view: six first screens, three per niche, switched the same way.
+import { type ComponentType, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import BakerySite from "./bakery/site.js";
+import { BakeryClock, BakeryMorning, BakerySign } from "./heroes/bakery.js";
+import { ServiceBooking, ServiceChat, ServicePlate } from "./heroes/service.js";
 import type { PhotoSlot } from "./photos.js";
 import ServiceSite from "./service/site.js";
 import type { Photo } from "./still.js";
 
 type Site = "bakery" | "service";
-type BarData = { photos: Record<PhotoSlot, Photo>; sites: Site[]; now?: string; switcher: boolean };
+type BarData = {
+  photos: Record<PhotoSlot, Photo>;
+  sites: Site[];
+  now?: string;
+  switcher: boolean;
+  view?: "heroes";
+};
+
+type Hero = {
+  id: string;
+  site: Site;
+  label: string;
+  Screen: ComponentType<{ photos: Record<PhotoSlot, Photo> }>;
+};
+/** The six first screens of round 2, in the order the founder picks from. */
+export const HEROES: Hero[] = [
+  { id: "b1", site: "bakery", label: "Пекарня 1 · Пар", Screen: BakeryMorning },
+  { id: "b2", site: "bakery", label: "Пекарня 2 · Часы", Screen: BakeryClock },
+  { id: "b3", site: "bakery", label: "Пекарня 3 · Вывеска", Screen: BakerySign },
+  { id: "s1", site: "service", label: "Сервис 1 · Запись", Screen: ServiceBooking },
+  { id: "s2", site: "service", label: "Сервис 2 · Чат", Screen: ServiceChat },
+  { id: "s3", site: "service", label: "Сервис 3 · Номер", Screen: ServicePlate },
+];
+
+function Heroes({ data }: { data: BarData }) {
+  const fromHash = () => HEROES.find((h) => `#${h.id}` === location.hash) ?? (HEROES[0] as Hero);
+  const [hero, setHero] = useState(fromHash);
+  useEffect(() => {
+    document.documentElement.dataset.site = hero.site;
+  }, [hero]);
+  const pick = (h: Hero) => {
+    setHero(h);
+    history.replaceState(null, "", `#${h.id}`);
+    window.scrollTo(0, 0);
+  };
+  return (
+    <>
+      <div data-site={hero.site}>
+        <hero.Screen photos={data.photos} />
+      </div>
+      {data.switcher ? (
+        <div data-site="service" className="fixed inset-x-0 bottom-3 z-50 flex justify-center px-3">
+          <fieldset className="m-0 flex max-w-full gap-1 overflow-x-auto rounded-control border border-border bg-card p-1 font-text shadow-md">
+            <legend className="sr-only">Вариант первого экрана</legend>
+            {HEROES.map((h) => (
+              <button
+                key={h.id}
+                type="button"
+                aria-pressed={hero.id === h.id}
+                onClick={() => pick(h)}
+                className={`min-h-10 shrink-0 rounded-control px-3 text-sm font-bold whitespace-nowrap ${hero.id === h.id ? "bg-primary text-primary-foreground" : "text-foreground"}`}
+              >
+                {h.label}
+              </button>
+            ))}
+          </fieldset>
+        </div>
+      ) : null}
+    </>
+  );
+}
 
 const SITES: Record<Site, string> = { bakery: "Мастерская: пекарня", service: "Ночной продукт: автосервис" };
 
@@ -58,4 +121,4 @@ function Preview({ data }: { data: BarData }) {
 
 const data = (window as unknown as { __BAR__: BarData }).__BAR__;
 const root = document.getElementById("bar-root");
-if (root) createRoot(root).render(<Preview data={data} />);
+if (root) createRoot(root).render(data.view === "heroes" ? <Heroes data={data} /> : <Preview data={data} />);

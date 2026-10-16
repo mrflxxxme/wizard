@@ -1,6 +1,6 @@
 // Builds the bar preview (grill-11 (2)): Tailwind through @wizard/build compileTailwind, the client through esbuild,
 // stock photos and fonts inlined. Writes index.html (both sites with a switch) and one page per site, then shoots
-// 1440 and 390 px snapshots with Playwright. Usage: node scripts/bar.mjs <out-dir> [--no-shots]
+// 1440 and 390 px snapshots with Playwright. Usage: node scripts/bar.mjs <out-dir> [--no-shots] [--heroes]
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -101,6 +101,16 @@ writeFileSync(
   page("Булочная Терехова", { sites: ["bakery"], switcher: false, now: "09:40" }),
 );
 writeFileSync(join(out, "service.html"), page("Бокс 14", { sites: ["service"], switcher: false }));
+// Round 2: six first screens with a switch, and a switch-less copy for the snapshots.
+const HERO_IDS = ["b1", "b2", "b3", "s1", "s2", "s3"];
+writeFileSync(
+  join(out, "heroes.html"),
+  page("Шесть первых экранов", { sites: ["bakery"], switcher: true, view: "heroes" }),
+);
+writeFileSync(
+  join(out, "heroes-shot.html"),
+  page("Шесть первых экранов", { sites: ["bakery"], switcher: false, view: "heroes" }),
+);
 console.log(
   `html: ${out} (index ${(readFileSync(join(out, "index.html")).length / 1e6).toFixed(1)} MB, js ${(js.length / 1024).toFixed(0)} KB)`,
 );
@@ -111,13 +121,19 @@ if (!process.argv.includes("--no-shots")) {
   );
   const chromium = pw.chromium ?? pw.default.chromium;
   const browser = await chromium.launch();
-  for (const site of ["bakery", "service"])
+  const targets = process.argv.includes("--heroes")
+    ? HERO_IDS.map((id) => [id, `heroes-shot.html#${id}`])
+    : ["bakery", "service"].map((s) => [s, `${s}.html`]);
+  for (const [site, file] of targets)
     for (const [w, h] of [
       [1440, 900],
       [390, 844],
     ]) {
       const pg = await browser.newPage({ viewport: { width: w, height: h } });
-      await pg.goto(pathToFileURL(join(out, `${site}.html`)).href);
+      await pg.goto(
+        pathToFileURL(join(out, file.split("#")[0])).href +
+          (file.includes("#") ? `#${file.split("#")[1]}` : ""),
+      );
       await pg.evaluate(async () => {
         await document.fonts.ready;
         for (let y = 0; y < document.body.scrollHeight; y += 400) {
