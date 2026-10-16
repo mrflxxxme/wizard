@@ -278,7 +278,7 @@ describe.skipIf(!hasChromium)("the live v3 build on the canvas in chromium", () 
         const page = await open(fake, ctx);
         await page.getByTestId("canvas-eta").waitFor({ timeout: 15_000 });
         expect(await page.getByTestId("canvas-sheet").count()).toBe(0);
-        await page.getByTestId("p-composer-input").click();
+        await page.keyboard.press("Control+k");
         // The chat row takes the same numbers from the snapshot.
         expect(await page.getByTestId("canvas-build-spend").textContent()).toBe("потрачено 42 ₽ из 500 ₽");
         expect(await page.getByTestId("canvas-build-step").textContent()).toBe("Довожу сценарии по одному");

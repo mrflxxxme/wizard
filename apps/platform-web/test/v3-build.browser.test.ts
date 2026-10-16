@@ -90,7 +90,7 @@ describe.skipIf(!hasChromium)("«Собрать» v3 and the style in chromium (
         await page.getByTestId("canvas-v3-approve").click();
         await page.getByTestId("canvas-eta").waitFor();
         expect(await page.getByTestId("canvas-sheet").count()).toBe(0);
-        await page.getByTestId("p-composer-input").click();
+        await page.keyboard.press("Control+k");
         await page.getByTestId("canvas-build-row").waitFor();
         expect(fake.approvals).toEqual([{ version: fake.latest()?.version }]);
         await expect

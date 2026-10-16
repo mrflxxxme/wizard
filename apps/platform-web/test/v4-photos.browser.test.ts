@@ -184,6 +184,7 @@ describe.skipIf(!hasChromium)("photos of a system on the canvas (chromium)", () 
       await frame.getByTestId("draft-photo").waitFor({ timeout: 15_000 });
 
       // A click on the photo on the site: 20 photos for the slot, chosen by its meaning.
+      await page.getByTestId("p-composer-input").click();
       await page.getByTestId("canvas-tile-edit").click();
       await page.getByTestId("edit-text-pick").click();
       await page.getByTestId("canvas-panel-edit").waitFor({ state: "hidden" });
