@@ -358,7 +358,7 @@ describe("a running v3 build", () => {
     );
     // V4-11: the build runs over the system — the bar on top, the panel under the ring of the island.
     expect($("canvas-eta")).not.toBeNull();
-    await click("canvas-island-build");
+    await click("canvas-tile-build");
     await click("canvas-v3-live-stop");
     expect(cancelRun).not.toHaveBeenCalled();
     await click("canvas-v3-live-stop-yes");

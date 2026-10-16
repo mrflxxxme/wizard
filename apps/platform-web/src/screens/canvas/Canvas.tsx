@@ -10,7 +10,6 @@ import {
   ActionButton,
   ChatMessage,
   Composer,
-  Glass,
   PLATFORM_COLORS,
   QuestionCard,
   ThemeRoot,
@@ -160,8 +159,8 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
   const [live, setLive] = useState("");
   const [news, setNews] = useState<{ id: number; text: string } | null>(null);
   const [device, setDevice] = useState<Device>("desktop");
-  const [hidden, setHidden] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
+  /** V5-07: the element picked on the site, shown as a chip in the command bar. */
+  const [chip, setChip] = useState<string | null>(null);
   const [openError, setOpenError] = useState(false);
   const route = useRef("/");
   const dark = useDarkScheme();
@@ -192,7 +191,6 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
   const screenRef = useRef<HTMLDivElement>(null);
   const focusInput = useCallback(() => {
     setPanel("chat");
-    setHidden(false);
     requestAnimationFrame(() =>
       screenRef.current?.querySelector<HTMLElement>('[data-testid="p-composer-input"]')?.focus(),
     );
@@ -282,7 +280,6 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
   const onNews = useCallback((t: string) => setNews({ id: Date.now(), text: t }), []);
   const closePanels = useCallback(() => {
     setPanel(null);
-    setMoreOpen(false);
   }, []);
   // V3-17: the live v3 build from the structured progress of the run's events (panel, revision, toast, time).
   const v3live = useV3Live({
@@ -459,7 +456,6 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
   }
 
   async function openTab() {
-    setMoreOpen(false);
     setOpenError(!(await openPreviewTab(api, systemId, route.current)));
   }
   // V4-12: the bridge of the shown frame and its messages (the «Правка» panel picks texts, photos and blocks on it).
@@ -468,9 +464,9 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
   const [reloadKey, setReloadKey] = useState(0);
   const onBridgeMessage = useCallback((m: FromPreview) => {
     setIncoming((x) => ({ seq: (x?.seq ?? 0) + 1, msg: m }));
+    if (m.type === "element-selected") setChip(m.payload.componentName);
     if (m.type === "literal-selected" || m.type === "element-selected") {
       setPanel("edit");
-      setHidden(false);
     }
   }, []);
   const onRoute = useCallback((r: string) => {
@@ -786,7 +782,6 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
     seenAttention.current = attention;
     if (attention) {
       setPanel("chat");
-      setHidden(false);
     }
   }, [attention]);
 
@@ -807,23 +802,23 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
     />
   ) : null;
 
-  // Esc closes the panel; Ctrl/Cmd+B hides the island and its panels (and shows them again).
+  // Esc folds the command bar; Ctrl/Cmd+K unfolds it (and folds it again).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "b") {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        setHidden((h) => !h);
-        closePanels();
+        setPanel((p) => (p === null ? "chat" : null));
+        if (panel === null) focusInput();
         return;
       }
       if (e.key === "Escape" && !brief.open && !styleOpen) closePanels();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [brief.open, styleOpen, closePanels]);
+  }, [brief.open, styleOpen, closePanels, panel, focusInput]);
   // A click on the system (focus goes into its frame) closes the panel over it.
   useEffect(() => {
-    if (panel === null && !moreOpen) return;
+    if (panel === null) return;
     const onBlur = () =>
       setTimeout(() => {
         const el = document.activeElement;
@@ -831,7 +826,7 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
       }, 0);
     window.addEventListener("blur", onBlur);
     return () => window.removeEventListener("blur", onBlur);
-  }, [panel, moreOpen, closePanels]);
+  }, [panel, closePanels]);
   // A build notice disappears by itself.
   useEffect(() => {
     if (!news) return;
@@ -891,8 +886,14 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
       </div>
     );
 
+  const open = panel !== null;
+  // A click on the site puts the element into the bar as a chip while the dialog is unfolded.
+  useEffect(() => {
+    if (!bridge || panel !== "chat" || !built) return;
+    bridge.send({ type: "select-mode", payload: { enabled: true } });
+    return () => bridge.send({ type: "select-mode", payload: { enabled: false } });
+  }, [bridge, panel, built]);
   const toggle = (id: PanelId) => {
-    setMoreOpen(false);
     setPanel((p) => (p === id ? null : id));
   };
   const leftText = remainingText(eta);
@@ -974,16 +975,6 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
               </p>
             )}
           </div>
-          <Composer
-            testId="canvas-composer"
-            attach={v3 && !building && (stage === "interview" || stage === "card") ? upload.attach : null}
-            value={text}
-            onChange={setText}
-            onSubmit={(t) => void send(t)}
-            placeholder={placeholder}
-            state={composerState}
-            disabled={!canType || busy !== null}
-          />
         </>
       ),
     },
@@ -1075,264 +1066,270 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
           </p>
         )}
 
-        {current && panel && (
-          <Glass
-            as="aside"
-            className={`${s.panel} ${panel === "chat" ? s.panelChat : ""}`}
-            testId={panel === "chat" ? "canvas-sheet" : `canvas-panel-${panel}`}
-            aria-label={current.title}
-          >
-            <header className={s.panelHead}>
-              <h2 className={s.panelTitle}>{current.title}</h2>
-              <button
-                type="button"
-                className={s.ibtn}
-                aria-label={islandRu.close}
-                title={islandRu.close}
-                data-testid="canvas-panel-close"
-                onClick={closePanels}
-              >
-                <Icon d={ICONS.close} />
-              </button>
-            </header>
-            <div className={s.panelBody}>{current.body}</div>
-          </Glass>
-        )}
+        <div
+          className={`${s.scrim} ${open ? s.scrimOn : ""}`}
+          aria-hidden="true"
+          data-testid="canvas-scrim"
+          onClick={closePanels}
+        />
 
-        {canEditSite && (
-          <Glass
-            as="aside"
-            className={s.panel}
-            testId="canvas-panel-edit"
-            aria-label={islandRu.edit}
-            hidden={panel !== "edit"}
-          >
-            <header className={s.panelHead}>
-              <h2 className={s.panelTitle}>{islandRu.edit}</h2>
-              <button
-                type="button"
-                className={s.ibtn}
-                aria-label={islandRu.close}
-                title={islandRu.close}
-                data-testid="canvas-panel-close"
-                onClick={closePanels}
-              >
-                <Icon d={ICONS.close} />
-              </button>
-            </header>
-            <div className={s.panelBody}>
-              <EditPanel
-                systemId={systemId}
-                editable={editable}
-                locked={building || runActive}
-                bridge={bridge}
-                incoming={incoming}
-                onSaved={() => void reload().catch(() => {})}
-                onRun={(id) => setRunId(id)}
-                onReloadFrame={() => setReloadKey((k) => k + 1)}
-                // The panel covers part of the site at every width (a heading under it could not be clicked): it
-                // steps aside while the owner picks and comes back with the picked text or photo.
-                onPick={() => setPanel(null)}
-              />
-            </div>
-          </Glass>
-        )}
-
-        {hidden ? (
-          <button
-            type="button"
-            className={`${s.ibtn} ${s.showIsland}`}
-            aria-label={islandRu.show}
-            title={islandRu.show}
-            data-testid="canvas-island-show"
-            onClick={() => setHidden(false)}
-          >
-            <Icon d={ICONS.show} />
-          </button>
-        ) : (
-          <Glass as="nav" className={s.island} testId="canvas-island" aria-label={islandRu.label}>
-            <button
-              type="button"
-              className={s.ibtn}
-              aria-pressed={panel === "chat"}
-              aria-label={
-                attention && panel !== "chat" ? `${islandRu.chat}: ${islandRu.attention}` : islandRu.chat
-              }
-              title={islandRu.chat}
-              data-testid="canvas-island-chat"
-              data-attention={attention && panel !== "chat" ? "" : undefined}
-              onClick={() => toggle("chat")}
-            >
-              <Icon d={ICONS.chat} />
-              {attention && panel !== "chat" && <span className={s.dot} aria-hidden="true" />}
-            </button>
-            {hasBuild && (
-              <button
-                type="button"
-                className={s.ibtn}
-                aria-pressed={panel === "build"}
-                aria-label={
-                  failure ? islandRu.buildFailed : building ? islandRu.buildLeft(leftText) : islandRu.build
-                }
-                title={
-                  failure ? islandRu.buildFailed : building ? islandRu.buildLeft(leftText) : islandRu.build
-                }
-                data-testid="canvas-island-build"
-                data-failed={failure ? "" : undefined}
-                onClick={() => (failure ? toggle("chat") : toggle("build"))}
-              >
-                <svg
-                  className={s.ring}
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                  data-failed={failure ? "" : undefined}
+        <section
+          className={`${s.cmd} ${open ? s.cmdOpen : ""} ${building ? s.cmdRun : ""}`}
+          aria-label={islandRu.label}
+          data-testid="canvas-cmd"
+          data-open={open ? "" : undefined}
+        >
+          {open && (
+            <div className={s.drawer}>
+              <div className={s.grab} aria-hidden="true" />
+              {current && panel && (
+                <section
+                  className={s.view}
+                  data-testid={panel === "chat" ? "canvas-sheet" : `canvas-panel-${panel}`}
+                  aria-label={current.title}
                 >
-                  <circle className={s.ringTrack} cx="12" cy="12" r="8.5" />
-                  <circle
-                    className={s.ringFill}
-                    cx="12"
-                    cy="12"
-                    r="8.5"
-                    pathLength="100"
-                    strokeDasharray="100"
-                    strokeDashoffset={failure ? "0" : (100 - fraction * 100).toFixed(1)}
-                  />
-                  {failure && (
-                    <text className={s.ringMark} x="12" y="15.5" textAnchor="middle">
-                      !
-                    </text>
-                  )}
-                </svg>
-              </button>
-            )}
-            {brief.available && (
-              <button
-                type="button"
-                className={s.ibtn}
-                aria-pressed={brief.open}
-                aria-haspopup="dialog"
-                aria-label={islandRu.brief}
-                title={islandRu.brief}
-                data-testid="canvas-brief-toggle"
-                onClick={() => {
-                  setMoreOpen(false);
-                  brief.show();
-                }}
-              >
-                <Icon d={ICONS.brief} />
-              </button>
-            )}
-            <fieldset className={s.device} aria-label={islandRu.device.label}>
-              {(["desktop", "phone"] as const).map((d) => (
-                <button
-                  key={d}
-                  type="button"
-                  className={s.ibtn}
-                  aria-pressed={device === d}
-                  aria-label={islandRu.device[d]}
-                  title={islandRu.device[d]}
-                  data-testid={`canvas-device-${d}`}
-                  onClick={() => setDevice(d)}
-                >
-                  <Icon d={ICONS[d]} />
-                </button>
-              ))}
-            </fieldset>
-            {editable && (
-              <button
-                type="button"
-                className={s.ibtn}
-                aria-label={islandRu.edit}
-                title={islandRu.edit}
-                data-testid="canvas-island-edit"
-                aria-pressed={panel === "edit"}
-                disabled={building}
-                onClick={() => (v3Ready ? setStyleOpen(true) : canEditSite ? toggle("edit") : focusInput())}
-              >
-                <Icon d={ICONS.edit} />
-              </button>
-            )}
-            {canPublish && (
-              <button
-                type="button"
-                className={s.ibtn}
-                aria-pressed={panel === "publish"}
-                aria-label={islandRu.publish}
-                title={islandRu.publish}
-                data-testid="canvas-island-publish"
-                onClick={() => toggle("publish")}
-              >
-                <Icon d={ICONS.publish} />
-              </button>
-            )}
-            <span className={s.moreWrap}>
-              <button
-                type="button"
-                className={s.ibtn}
-                aria-expanded={moreOpen}
-                aria-label={islandRu.more}
-                title={islandRu.more}
-                data-testid="canvas-island-more"
-                onClick={() => setMoreOpen((o) => !o)}
-              >
-                <Icon d={ICONS.more} />
-              </button>
-              {moreOpen && (
-                <Glass className={s.menu} testId="canvas-menu">
-                  {shownRevision !== null && (
+                  <header className={s.panelHead}>
+                    <h2 className={s.panelTitle}>{current.title}</h2>
                     <button
                       type="button"
-                      className={s.mitem}
-                      data-testid="canvas-open-tab"
-                      onClick={() => void openTab()}
+                      className={s.ibtn}
+                      aria-label={islandRu.close}
+                      title={islandRu.close}
+                      data-testid="canvas-panel-close"
+                      onClick={closePanels}
                     >
-                      <Icon d={ICONS.open} />
-                      {islandRu.open}
+                      <Icon d={ICONS.close} />
                     </button>
-                  )}
-                  <AppLink to="/" className={s.mitem} label={canvas.home} testId="canvas-home">
-                    <Icon d={ICONS.home} />
-                    {islandRu.home}
-                  </AppLink>
-                  <AppLink
-                    to={`/s/${systemId}/settings`}
-                    className={s.mitem}
-                    label={islandRu.settings}
-                    testId="canvas-settings"
-                  >
-                    <Icon d={ICONS.settings} />
-                    {islandRu.settings}
-                  </AppLink>
+                  </header>
+                  <div className={`${s.panelBody} ${panel === "chat" ? s.panelChat : ""}`}>
+                    {current.body}
+                  </div>
+                </section>
+              )}
+              {canEditSite && (
+                <section
+                  className={s.view}
+                  data-testid="canvas-panel-edit"
+                  aria-label={islandRu.edit}
+                  hidden={panel !== "edit"}
+                >
+                  <header className={s.panelHead}>
+                    <h2 className={s.panelTitle}>{islandRu.edit}</h2>
+                    <button
+                      type="button"
+                      className={s.ibtn}
+                      aria-label={islandRu.close}
+                      title={islandRu.close}
+                      data-testid="canvas-panel-close"
+                      onClick={closePanels}
+                    >
+                      <Icon d={ICONS.close} />
+                    </button>
+                  </header>
+                  <div className={s.panelBody}>
+                    <EditPanel
+                      systemId={systemId}
+                      editable={editable}
+                      locked={building || runActive}
+                      bridge={bridge}
+                      incoming={incoming}
+                      onSaved={() => void reload().catch(() => {})}
+                      onRun={(id) => setRunId(id)}
+                      onReloadFrame={() => setReloadKey((k) => k + 1)}
+                      // The bar steps aside while the owner picks and comes back with the picked text or photo.
+                      onPick={() => setPanel(null)}
+                    />
+                  </div>
+                </section>
+              )}
+              <div className={s.tiles} role="toolbar" aria-label={islandRu.tiles} data-testid="canvas-tiles">
+                <button
+                  type="button"
+                  className={s.tile}
+                  aria-pressed={panel === "chat"}
+                  data-testid="canvas-tile-chat"
+                  data-attention={attention && panel !== "chat" ? "" : undefined}
+                  onClick={() => setPanel("chat")}
+                >
+                  <b>{islandRu.chat}</b>
+                  <span>{attention && panel !== "chat" ? islandRu.attention : " "}</span>
+                </button>
+                {hasBuild && (
                   <button
                     type="button"
-                    className={s.mitem}
-                    data-testid="canvas-support"
-                    onClick={() => {
-                      setMoreOpen(false);
-                      openSupport();
-                    }}
+                    className={s.tile}
+                    aria-pressed={panel === "build"}
+                    data-testid="canvas-tile-build"
+                    data-failed={failure ? "" : undefined}
+                    onClick={() => (failure ? setPanel("chat") : toggle("build"))}
                   >
-                    <Icon d={ICONS.support} />
-                    {islandRu.support}
+                    <b>{islandRu.build}</b>
+                    <span>{failure ? islandRu.buildFailed : building ? leftText : stageRu.done}</span>
+                    <i style={{ ["--p" as string]: `${Math.round(fraction * 100)}%` }} />
                   </button>
-                </Glass>
-              )}
+                )}
+                {brief.available && (
+                  <button
+                    type="button"
+                    className={s.tile}
+                    aria-pressed={brief.open}
+                    aria-haspopup="dialog"
+                    data-testid="canvas-brief-toggle"
+                    onClick={() => brief.show()}
+                  >
+                    <b>{islandRu.brief}</b>
+                    <span>{" "}</span>
+                  </button>
+                )}
+                {editable && (
+                  <button
+                    type="button"
+                    className={s.tile}
+                    aria-pressed={panel === "edit"}
+                    data-testid="canvas-tile-edit"
+                    disabled={building}
+                    onClick={() =>
+                      v3Ready ? setStyleOpen(true) : canEditSite ? toggle("edit") : focusInput()
+                    }
+                  >
+                    <b>{islandRu.edit}</b>
+                    <span>{" "}</span>
+                  </button>
+                )}
+                <fieldset className={s.tile} aria-label={islandRu.device.label}>
+                  <b>{islandRu.device.title}</b>
+                  <span className={s.seg}>
+                    {(["desktop", "phone"] as const).map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        className={s.segBtn}
+                        aria-pressed={device === d}
+                        aria-label={islandRu.device[d]}
+                        title={islandRu.device[d]}
+                        data-testid={`canvas-device-${d}`}
+                        onClick={() => setDevice(d)}
+                      >
+                        <Icon d={ICONS[d]} />
+                      </button>
+                    ))}
+                  </span>
+                </fieldset>
+                {canPublish && (
+                  <button
+                    type="button"
+                    className={s.tile}
+                    aria-pressed={panel === "publish"}
+                    data-testid="canvas-tile-publish"
+                    onClick={() => toggle("publish")}
+                  >
+                    <b>{islandRu.publish}</b>
+                    <span>{" "}</span>
+                  </button>
+                )}
+              </div>
+              <div className={s.links}>
+                {shownRevision !== null && (
+                  <button
+                    type="button"
+                    className={s.link}
+                    data-testid="canvas-open-tab"
+                    onClick={() => void openTab()}
+                  >
+                    {islandRu.open}
+                  </button>
+                )}
+                <AppLink to="/" className={s.link} label={canvas.home} testId="canvas-home">
+                  {islandRu.home}
+                </AppLink>
+                <AppLink
+                  to={`/s/${systemId}/settings`}
+                  className={s.link}
+                  label={islandRu.settings}
+                  testId="canvas-settings"
+                >
+                  {islandRu.settings}
+                </AppLink>
+                <button
+                  type="button"
+                  className={s.link}
+                  data-testid="canvas-support"
+                  onClick={() => {
+                    closePanels();
+                    openSupport();
+                  }}
+                >
+                  {islandRu.support}
+                </button>
+              </div>
+            </div>
+          )}
+          <div className={s.pill}>
+            <AppLink to="/" className={s.mark} label={islandRu.home} testId="canvas-mark">
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <rect className={s.m1} x="2" y="2" width="10" height="10" rx="3" />
+                <rect className={s.m2} x="8" y="8" width="10" height="10" rx="3" />
+              </svg>
+            </AppLink>
+            {chip && (
+              <span className={s.chip} data-testid="canvas-chip">
+                <em>{chip}</em>
+                <button
+                  type="button"
+                  aria-label={islandRu.chipRemove}
+                  data-testid="canvas-chip-remove"
+                  onClick={() => setChip(null)}
+                >
+                  ×
+                </button>
+              </span>
+            )}
+            <div className={s.field} onFocusCapture={() => panel === null && setPanel("chat")}>
+              <Composer
+                testId="canvas-composer"
+                attach={v3 && !building && (stage === "interview" || stage === "card") ? upload.attach : null}
+                value={text}
+                onChange={setText}
+                onSubmit={(t) => {
+                  void send(chip ? `«${chip}»: ${t}` : t);
+                  setChip(null);
+                }}
+                placeholder={open ? placeholder : islandRu.placeholder}
+                state={composerState}
+                disabled={!canType || busy !== null}
+              />
+            </div>
+            <span className={s.status} data-testid="canvas-status" data-run={building ? "" : undefined}>
+              <span className={s.sdot} aria-hidden="true" />
+              <span className={s.stxt}>
+                {building ? `${stepLabel} · ${leftText}` : failure ? islandRu.buildFailed : ""}
+              </span>
             </span>
-            <button
-              type="button"
-              className={s.ibtn}
-              aria-label={islandRu.hide}
-              title={islandRu.hide}
-              data-testid="canvas-island-hide"
-              onClick={() => {
-                closePanels();
-                setHidden(true);
-              }}
-            >
-              <Icon d={ICONS.hide} />
-            </button>
-          </Glass>
-        )}
+            <kbd className={s.kbd}>⌘K</kbd>
+            <div className={s.acts}>
+              {building && editable && (
+                <button
+                  type="button"
+                  className={s.btn}
+                  data-testid="canvas-stop"
+                  onClick={() => void stopBuild()}
+                >
+                  {islandRu.stop}
+                </button>
+              )}
+              {canPublish && !building && (
+                <button
+                  type="button"
+                  className={`${s.btn} ${s.btnPrimary}`}
+                  data-testid="canvas-island-publish"
+                  onClick={() => setPanel("publish")}
+                >
+                  {islandRu.publish}
+                </button>
+              )}
+            </div>
+          </div>
+        </section>
         {openError && (
           <p className={s.news} role="alert" data-testid="canvas-open-error">
             {islandRu.openFailed}

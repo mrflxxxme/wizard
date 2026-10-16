@@ -71,7 +71,7 @@ describe.skipIf(!hasChromium)("canvas v4 in chromium (feed «клиника», �
       await page.getByTestId("canvas-eta").waitFor();
       expect(await page.getByTestId("canvas-sheet").count()).toBe(0);
       expect(Number(await page.getByTestId("canvas-eta").getAttribute("aria-valuenow"))).toBeGreaterThan(0);
-      await page.getByTestId("canvas-island-build").click();
+      await page.getByTestId("canvas-tile-build").click();
       expect(await page.getByTestId("canvas-build-step").textContent()).toBe("Подбираю фото");
       await shot(page, `${tag}-2-build`);
       await page.keyboard.press("Escape");
@@ -240,7 +240,7 @@ describe.skipIf(!hasChromium)("canvas v4: a failed build is explained in words",
       expect(await page.getByTestId("canvas-topup").count()).toBe(c.action === "billing" ? 1 : 0);
       // No endless spinner: the build indicator is gone, the island's ring says it failed.
       expect(await page.getByTestId("canvas-eta").count()).toBe(0);
-      expect(await page.getByTestId("canvas-island-build").getAttribute("data-failed")).toBe("");
+      expect(await page.getByTestId("canvas-tile-build").getAttribute("data-failed")).toBe("");
       await shot(page, `390-failed-${c.code.toLowerCase()}`);
       h.mock.opts.canvasFailAfter = undefined;
       h.mock.opts.canvasFail = undefined;

@@ -172,7 +172,7 @@ describe.skipIf(!hasChromium)("edits in three layers on the canvas (chromium)", 
       await frame.getByTestId("draft-head").waitFor({ timeout: 15_000 });
 
       // 1. «Тексты и фото»: pick the heading on the site, change it, save — no model, the frame swaps to the new revision.
-      await page.getByTestId("canvas-island-edit").click();
+      await page.getByTestId("canvas-tile-edit").click();
       await page.getByTestId("edit-panel").waitFor();
       await page.getByTestId("edit-text-pick").click();
       // On a phone the panel steps aside while picking and comes back with the pick.
