@@ -63,48 +63,52 @@ describe("bar sites (grill-11)", () => {
   });
 });
 
-describe("round 3 first screens (grill-11, «Круг 3»)", async () => {
+describe("round 4 sites from the chosen first screens (grill-11, П5 and С5)", async () => {
   const { BOX14, TEREKHOV } = await import("../src/v3/bar/heroes/data.js");
   const bakery = await import("../src/v3/bar/heroes/bakery.js");
   const service = await import("../src/v3/bar/heroes/service.js");
-  const screens = [
-    bakery.BakeryShelf,
-    bakery.BakeryLoaf,
-    bakery.BakeryOrder,
-    service.ServicePick,
-    service.ServiceAsk,
-    service.ServicePlate,
-  ];
-  const render = (Screen: (typeof screens)[number]) =>
-    renderToStaticMarkup(createElement(Screen, { photos }));
+  const sites = [bakery.BakeryLoaf, service.ServiceAsk];
+  const render = (Site: (typeof sites)[number]) => renderToStaticMarkup(createElement(Site, { photos }));
 
-  test("copy keeps clear of the bans, each screen has a rating, a price and a mark", () => {
+  test("copy keeps clear of the bans, each site has one h1, a rating, prices, a mark and credits", () => {
     for (const s of [...strings(TEREKHOV), ...strings(BOX14)]) {
       expect(s).not.toMatch(/\s—\s/);
       expect(s).not.toMatch(/\bне\s[^,.]+,\s*а\s/i);
       expect(s).not.toMatch(/мы заботимся|с любовью|качественн/i);
     }
-    for (const Screen of screens) {
-      const html = render(Screen);
+    for (const Site of sites) {
+      const html = render(Site);
       expect(html.match(/<h1/g)).toHaveLength(1);
       expect(html).toContain("/ Pexels");
       expect(html).toMatch(/4,[89]/);
       expect(html).toMatch(/\d\s₽/u);
       expect(html).toContain("<svg");
+      expect(html).not.toMatch(/rounded-(card|lg|xl|2xl)/);
     }
   });
 
-  test("each screen leads with what a visitor does in the niche", () => {
-    expect(render(bakery.BakeryShelf)).toContain("Хлеб на закваске. Каждое утро с\u00a07:40");
-    expect(render(bakery.BakeryShelf)).toContain("осталось 7 буханок");
-    expect(render(bakery.BakeryLoaf)).toContain("36 часов брожения");
-    expect(render(bakery.BakeryLoaf)).toContain("Заказать к утру");
-    expect(render(bakery.BakeryOrder)).toContain("Куличи к Пасхе");
-    expect(render(bakery.BakeryOrder)).toContain("Добавить");
-    expect(render(service.ServicePick)).toContain(`Записаться от ${rub(7800)}`);
-    expect(render(service.ServiceAsk)).toContain("Kia K5 2021, стучит спереди справа");
-    expect(render(service.ServiceAsk)).toContain("9 400");
-    expect(render(service.ServicePlate)).toContain("Диагностика подвески 0 ₽");
-    expect(render(service.ServicePlate)).toContain("до 31 октября");
+  test("the bakery site covers sorts and prices, pre-order, shops and hours, reviews", () => {
+    const html = render(bakery.BakeryLoaf);
+    expect(html).toContain("36 часов брожения");
+    expect(html).toContain("Заказать к утру");
+    for (const id of ["sorts", "order", "points", "reviews"]) expect(html).toContain(`id="${id}"`);
+    expect(html).toContain(rub(310));
+    expect(html).toContain("Оформить предзаказ");
+    expect(html).toContain("Большая Покровская, 12");
+    expect(html).toContain("8:00–21:00");
+    expect(html.match(/<blockquote/g)).toHaveLength(TEREKHOV.reviews.length);
+  });
+
+  test("the service site covers the quote, prices «от», booking, repair status with photos, reviews and address", () => {
+    const html = render(service.ServiceAsk);
+    expect(html).toContain("Kia K5 2021, стучит спереди справа");
+    expect(html).toContain("9 400");
+    for (const id of ["prices", "book", "status", "contacts"]) expect(html).toContain(`id="${id}"`);
+    expect(html).toContain(`от ${rub(7800)}`);
+    expect(html).toContain("Записаться на 15:30");
+    expect(html).toContain('aria-current="step"');
+    expect(html).toContain("Чат с мастером");
+    expect(html).toContain("Монтажников, 4");
+    expect(html.match(/<blockquote/g)).toHaveLength(BOX14.reviews.length);
   });
 });

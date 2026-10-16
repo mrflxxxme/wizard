@@ -1,6 +1,6 @@
-// Copy of the round-3 first screens (grill-11, «Круг 3»): what a visitor does on the best sites of the niche.
-// Bakery: shelf of the day, one signature loaf, a pre-order. Car service: pick by car, describe the problem,
-// plate and the offer of the month.
+// Copy of the round-4 sites (grill-11, «Круг 3», итог): the chosen first screens П5 «Один хлеб» and С5 «Опишите
+// проблему» grown into full sites by what a visitor does there. Bakery: sorts and prices, pre-order for the morning,
+// shops and hours, reviews. Car service: quote, prices «от», booking a time, repair status with photos, reviews.
 
 export const TEREKHOV = {
   name: "Булочная Терехова",
@@ -11,23 +11,16 @@ export const TEREKHOV = {
   phone: "+7 831 214-07-40",
   phoneHref: "tel:+78312140740",
   rating: { value: "4,9", count: "1 214 оценок", source: "Яндекс Карты" },
-  nav: ["Хлеб", "Выпечка", "Предзаказ", "Как найти"],
+  nav: [
+    { id: "sorts", label: "Хлеб и цены" },
+    { id: "order", label: "Предзаказ" },
+    { id: "points", label: "Точки" },
+    { id: "reviews", label: "Отзывы" },
+  ],
   points: [
     { address: "Ильинская, 64", hours: "7:30–20:00", note: "печь и полка" },
     { address: "Большая Покровская, 12", hours: "8:00–21:00", note: "полка, кофе" },
   ],
-  shelf: {
-    title: "Хлеб на закваске. Каждое утро с\u00a07:40",
-    cta: "Как найти",
-    updated: "Полка на 9:40",
-    items: [
-      { name: "Пшеничный на закваске", price: 290, left: 7, of: 12, unit: "буханок" },
-      { name: "Ржаной с кориандром", price: 260, left: 5, of: 8, unit: "буханок" },
-      { name: "Чиабатта", price: 180, left: 11, of: 16, unit: "штук" },
-      { name: "Булочка с кардамоном", price: 120, left: 2, of: 24, unit: "штуки" },
-      { name: "Круассан", price: 150, left: 0, of: 40, unit: "штук", next: "Будет в 12:30" },
-    ],
-  },
   loaf: {
     kicker: "Фирменный хлеб",
     name: "Пшеничный на закваске",
@@ -37,20 +30,61 @@ export const TEREKHOV = {
     cta: "Заказать к утру",
     lead: "Надрез «Т» делаем на каждой буханке перед печью. Закажите до 21:00, утром заберёте тёплый.",
   },
-  order: {
-    season: "Куличи к Пасхе принимаем до 30 апреля",
-    seasonCta: "Заказать кулич",
-    title: "Предзаказ на утро",
+  sorts: {
+    title: "Хлеб и цены",
+    lead: "Пять сортов хлеба и выпечка. Всё печём на Ильинской с 4:30, первая полка в 7:40.",
     items: [
-      { id: "wheat", name: "Пшеничный на закваске", weight: "900 г", price: 290 },
-      { id: "rye", name: "Ржаной с кориандром", weight: "700 г", price: 260 },
-      { id: "ciabatta", name: "Чиабатта", weight: "300 г", price: 180 },
-      { id: "kulich", name: "Кулич с изюмом", weight: "800 г", price: 690 },
+      {
+        id: "wheat",
+        name: "Пшеничный на закваске",
+        weight: "900 г",
+        price: 290,
+        note: "36 часов, надрез «Т»",
+      },
+      {
+        id: "rye",
+        name: "Ржаной с кориандром",
+        weight: "700 г",
+        price: 260,
+        note: "заварной, плотный мякиш",
+      },
+      {
+        id: "seeds",
+        name: "Цельнозерновой с семенами",
+        weight: "750 г",
+        price: 310,
+        note: "лён, подсолнечник, тыква",
+      },
+      { id: "ciabatta", name: "Чиабатта", weight: "300 г", price: 180, note: "к 12:30 вторая партия" },
+      { id: "bun", name: "Булочка с кардамоном", weight: "90 г", price: 120, note: "выпечка, с утра" },
+      { id: "croissant", name: "Круассан", weight: "70 г", price: 150, note: "выпечка, на сливочном масле" },
     ],
+  },
+  oven: { time: "4:30", line: "Печь растапливаем в 4:30. К открытию хлеб успевает остыть до тёплого." },
+  order: {
+    title: "Предзаказ к утру",
+    lead: "Отложим к нужному часу на выбранной точке.",
     days: ["Завтра", "Пт, 17", "Сб, 18"],
     slots: ["7:40", "8:30", "9:30", "12:30"],
     note: "Платите при получении. Отменить можно до 21:00 накануне.",
   },
+  reviews: [
+    {
+      name: "Ольга",
+      when: "сентябрь",
+      text: "Беру пшеничный по пятницам через предзаказ. В 7:40 он уже на полке с моей фамилией.",
+    },
+    {
+      name: "Андрей",
+      when: "август",
+      text: "Ржаной с кориандром как в детстве у бабушки, только корка тоньше.",
+    },
+    {
+      name: "Мария",
+      when: "октябрь",
+      text: "Круассаны к 9 утра заканчиваются, поэтому заказываю с вечера. Ни разу не подвели.",
+    },
+  ],
 } as const;
 
 export type CarModel = { id: string; label: string; prices: readonly number[] };
@@ -64,13 +98,19 @@ export const BOX14 = {
   rating: { value: "4,8", source: "2ГИС" },
   repairs: "9 400",
   warranty: "гарантия 1 год",
-  nav: ["Цены", "Запись", "Статус ремонта", "Контакты"],
-  brands: ["Kia", "Hyundai", "Toyota", "Haval", "Volkswagen"],
+  nav: [
+    { id: "prices", label: "Цены" },
+    { id: "book", label: "Запись" },
+    { id: "status", label: "Статус ремонта" },
+    { id: "contacts", label: "Контакты" },
+  ],
   /** Prices «от» per job in the order of `jobs`. */
   models: [
-    { id: "k5", label: "Kia K5", prices: [7800, 4900, 2400, 6200, 1200] },
-    { id: "rio", label: "Kia Rio", prices: [5900, 3900, 2400, 4800, 1200] },
-    { id: "sportage", label: "Kia Sportage", prices: [8200, 5200, 2400, 6900, 1200] },
+    { id: "k5", label: "Kia K5", prices: [7800, 4900, 1500, 6200, 1200, 1800] },
+    { id: "rio", label: "Kia Rio", prices: [5900, 3900, 1500, 4800, 1200, 1600] },
+    { id: "sportage", label: "Kia Sportage", prices: [8200, 5200, 1500, 6900, 1200, 2100] },
+    { id: "solaris", label: "Hyundai Solaris", prices: [5700, 3800, 1500, 4600, 1200, 1600] },
+    { id: "camry", label: "Toyota Camry", prices: [8900, 5600, 1700, 7400, 1400, 2200] },
   ] satisfies CarModel[],
   jobs: [
     "ТО по регламенту",
@@ -78,12 +118,8 @@ export const BOX14 = {
     "Диагностика подвески",
     "Сход-развал и подвеска",
     "Замена масла",
+    "Стойки стабилизатора",
   ],
-  book: {
-    title: "Запись на сервис",
-    cta: "Записаться",
-    slot: "Ближайшее окно сегодня в 15:30",
-  },
   ask: {
     title: "Что с машиной?",
     placeholder: "Kia K5 2021, стучит спереди справа",
@@ -95,33 +131,49 @@ export const BOX14 = {
       { n: "3", title: "Бокс", text: "Приезжаете в выбранное время, фото деталей в чат." },
       { n: "4", title: "Оплата", text: "Платите после ремонта, гарантия год." },
     ],
-    prices: [
-      { job: "Диагностика подвески", from: 1500 },
-      { job: "Замена стоек стабилизатора", from: 1800 },
-      { job: "Колодки передние", from: 2400 },
-      { job: "ТО по регламенту", from: 5900 },
+  },
+  prices: {
+    title: "Цены для вашей машины",
+    lead: "Работа с деталями по каталогу, окончательную цену мастер называет до начала ремонта.",
+  },
+  book: {
+    title: "Запись на время",
+    days: ["Сегодня", "Завтра", "Сб, 18"],
+    slots: ["15:30", "17:00", "19:30", "21:00"],
+    busy: ["17:00"],
+    cta: "Записаться",
+    note: "Подтвердим в чате за 5 минут. Перенести можно за час.",
+  },
+  status: {
+    title: "Статус ремонта",
+    lead: "Пока машина в боксе, всё видно в чате: этап, фото деталей и цена, которую вы согласовали.",
+    car: "Kia K5 · А 714 КМ 196",
+    stages: ["Приняли", "Диагностика", "Ремонт", "Готова"],
+    current: 2,
+    chat: [
+      { who: "master", time: "15:42", text: "Стойка стабилизатора справа разбита, видно люфт. Фото ниже." },
+      {
+        who: "master",
+        time: "15:43",
+        photo: true,
+        text: "Меняем обе стойки, 1 800 ₽ работа и 2 600 ₽ детали?",
+      },
+      { who: "client", time: "15:47", text: "Да, меняйте." },
+      { who: "master", time: "16:20", text: "Поставили. Проверяем на подъёмнике, к 17:00 будет готово." },
     ],
   },
-  promo: {
-    kicker: "Октябрь",
-    title: "Диагностика подвески 0 ₽",
-    terms: "при онлайн-записи до 31 октября",
-    old: 1500,
-    cta: "Записаться бесплатно",
-  },
-  need: {
-    title: "Что нужно?",
-    plateLabel: "Госномер",
-    plate: "А 714 КМ",
-    region: "196",
-    cta: "Найти машину",
-    categories: [
-      { label: "ТО", from: 5900 },
-      { label: "Шины", from: 1600 },
-      { label: "Тормоза", from: 2400 },
-      { label: "Подвеска", from: 1500 },
-      { label: "Масло", from: 1200 },
-      { label: "Диагностика", from: 0 },
-    ],
-  },
+  reviews: [
+    {
+      name: "Игорь, Kia K5",
+      text: "Описал стук в чате, через 10 минут пришёл расчёт. Приехал вечером, сделали за два часа по той же цене.",
+    },
+    {
+      name: "Светлана, Hyundai Solaris",
+      text: "Скинули фото старых колодок и новых. Первый сервис, где я понимаю, за что плачу.",
+    },
+    {
+      name: "Руслан, Toyota Camry",
+      text: "Работают до 23:00, записался после смены. Статус ремонта смотрел с телефона.",
+    },
+  ],
 } as const;

@@ -101,15 +101,15 @@ writeFileSync(
   page("Булочная Терехова", { sites: ["bakery"], switcher: false, now: "09:40" }),
 );
 writeFileSync(join(out, "service.html"), page("Бокс 14", { sites: ["service"], switcher: false }));
-// Round 2: six first screens with a switch, and a switch-less copy for the snapshots.
-const HERO_IDS = ["b4", "b5", "b6", "s4", "s5", "s6"];
+// Grill-11 round 4: the sites П5 and С5 with a switch, and a switch-less copy for the snapshots.
+const HERO_IDS = ["b5", "s5"];
 writeFileSync(
   join(out, "heroes.html"),
-  page("Шесть первых экранов", { sites: ["bakery"], switcher: true, view: "heroes" }),
+  page("Сайты П5 и С5", { sites: ["bakery"], switcher: true, view: "heroes" }),
 );
 writeFileSync(
   join(out, "heroes-shot.html"),
-  page("Шесть первых экранов", { sites: ["bakery"], switcher: false, view: "heroes" }),
+  page("Сайты П5 и С5", { sites: ["bakery"], switcher: false, view: "heroes" }),
 );
 console.log(
   `html: ${out} (index ${(readFileSync(join(out, "index.html")).length / 1e6).toFixed(1)} MB, js ${(js.length / 1024).toFixed(0)} KB)`,

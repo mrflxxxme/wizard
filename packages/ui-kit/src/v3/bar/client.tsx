@@ -1,11 +1,11 @@
 // Browser entry of the bar preview: renders the two sites from window.__BAR__ (photos as copies, the oven clock) and,
-// in the shared preview, a switch between them that keeps the choice in the URL hash. Rounds 2–3 of grill-11 add the
-// heroes view: six first screens, three per niche, switched the same way.
+// in the shared preview, a switch between them that keeps the choice in the URL hash. Grill-11 adds the heroes view:
+// the chosen first screens П5 and С5 grown into full sites (round 4), switched the same way.
 import { type ComponentType, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import BakerySite from "./bakery/site.js";
-import { BakeryLoaf, BakeryOrder, BakeryShelf } from "./heroes/bakery.js";
-import { ServiceAsk, ServicePick, ServicePlate } from "./heroes/service.js";
+import { BakeryLoaf } from "./heroes/bakery.js";
+import { ServiceAsk } from "./heroes/service.js";
 import type { PhotoSlot } from "./photos.js";
 import ServiceSite from "./service/site.js";
 import type { Photo } from "./still.js";
@@ -25,14 +25,10 @@ type Hero = {
   label: string;
   Screen: ComponentType<{ photos: Record<PhotoSlot, Photo> }>;
 };
-/** The six first screens of round 3 (grill-11), in the order the founder picks from. */
+/** The two chosen screens of round 3 (grill-11, П5 and С5), grown into full sites in round 4. */
 export const HEROES: Hero[] = [
-  { id: "b4", site: "bakery", label: "П4 · Полка сегодня", Screen: BakeryShelf },
   { id: "b5", site: "bakery", label: "П5 · Один хлеб", Screen: BakeryLoaf },
-  { id: "b6", site: "bakery", label: "П6 · Предзаказ", Screen: BakeryOrder },
-  { id: "s4", site: "service", label: "С4 · Подбор по машине", Screen: ServicePick },
   { id: "s5", site: "service", label: "С5 · Опишите проблему", Screen: ServiceAsk },
-  { id: "s6", site: "service", label: "С6 · Госномер и акция", Screen: ServicePlate },
 ];
 
 function Heroes({ data }: { data: BarData }) {
@@ -54,7 +50,7 @@ function Heroes({ data }: { data: BarData }) {
       {data.switcher ? (
         <div data-site="service" className="fixed inset-x-0 bottom-3 z-50 flex justify-center px-3">
           <fieldset className="m-0 flex max-w-full gap-1 overflow-x-auto rounded-control border border-border bg-card p-1 font-text shadow-md">
-            <legend className="sr-only">Вариант первого экрана</legend>
+            <legend className="sr-only">Сайт</legend>
             {HEROES.map((h) => (
               <button
                 key={h.id}
