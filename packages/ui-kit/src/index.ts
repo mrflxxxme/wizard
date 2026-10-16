@@ -244,3 +244,15 @@ export {
   pickArchetype,
   pickArchetypes,
 } from "./v3/design/index.js";
+
+/** V5-01 block library v4 (D80 (2)–(4)): curated sections with machine-readable slots, variants and descriptions. */
+export {
+  BLOCK_KINDS,
+  BLOCKS,
+  type BlockEffect,
+  type BlockKind,
+  type BlockMeta,
+  type BlockOrigin,
+  type BlockVariant,
+  blockById,
+} from "./v4/blocks/index.js";

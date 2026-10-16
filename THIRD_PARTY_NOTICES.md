@@ -135,3 +135,13 @@ Job `sandbox` (`.github/workflows/sandbox.yml`, M2-01) скачивает их �
 | onnxruntime-node (Microsoft) и onnxruntime-common | 1.30.0 | MIT | `packages/agents/src/stock/siglip.ts`: запуск SigLIP на CPU. Бинарники для linux x64 входят в пакет, скрипт установки не запускается (CUDA не нужна). Зависимости: adm-zip (MIT), global-agent (BSD-3-Clause) |
 | @huggingface/tokenizers | 0.2.0 | Apache-2.0 | `packages/agents/src/stock/siglip.ts`: токенизатор Gemma для текстовой части SigLIP 2 |
 | SigLIP 2 base patch16-224 (Google, `google/siglip2-base-patch16-224`), ONNX-экспорт `onnx-community/siglip2-base-patch16-224-ONNX` (ревизия ba1f3b08) | ba1f3b0843f24bc5417d38e19c37b287d719b2f4 | Apache-2.0 | эмбеддинги фото библиотеки в CI (`tools/stock/fill.mjs`, `vision_model.onnx`) и русского запроса на платформе (`text_model_int8.onnx`) |
+
+## Библиотека блоков v4 (V5-01, D80 (2)–(4))
+
+Блоки публичных сайтов (`packages/ui-kit/src/v4/blocks/**`) написаны своим кодом на токенах дизайн-системы (Tailwind CSS v4 и Motion, см. раздел V3-08). Эффекты переписаны по мотивам MIT-наборов: код источников не копировался, повторена только идея эффекта; источник указан в поле `origin` блока. Код 21st.dev не используется даже как образец, это проверяет `packages/ui-kit/test/v5-blocks.test.ts`. Генерации изображений нет (D40): атмосферу дают градиенты, шейдер, SVG-узоры и зерно в коде блоков.
+
+| Источник | Лицензия | Что взято | Блоки |
+|---|---|---|---|
+| Magic UI, https://github.com/magicuidesign/magicui | MIT, Copyright (c) 2023 Magic UI | идеи эффектов: Animated Gradient, Aurora Text и Retro Grid, Magic Card (блик за курсором), Marquee, Number Ticker, Shine Border | hero-shader (шейдер свой), hero-aurora, features-bento, logos-strip, testimonials-marquee, stats-countup, cta-band |
+| shadcn/ui, https://github.com/shadcn-ui/ui | MIT, Copyright (c) 2023 shadcn | имена токенов темы, раскладка тарифов и аккордеона | pricing-tiers, faq-accordion |
+| Lucide, https://github.com/lucide-icons/lucide | ISC, Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022 as part of Feather (MIT); all other copyright (c) for Lucide are held by Lucide Contributors 2022 | данные отрисовки 29 иконок (пути SVG), встроены в `packages/ui-kit/src/v4/blocks/kit/icons.tsx` | все блоки с иконками |
