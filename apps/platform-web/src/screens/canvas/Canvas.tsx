@@ -1303,12 +1303,20 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
                 disabled={!canType || busy !== null}
               />
             </div>
-            <span className={s.status} data-testid="canvas-status" data-run={building ? "" : undefined}>
+            <button
+              type="button"
+              className={s.status}
+              data-testid="canvas-status"
+              data-run={building ? "" : undefined}
+              aria-label={islandRu.build}
+              disabled={!hasBuild}
+              onClick={() => setPanel("build")}
+            >
               <span className={s.sdot} aria-hidden="true" />
               <span className={s.stxt}>
                 {building ? `${stepLabel} · ${leftText}` : failure ? islandRu.buildFailed : ""}
               </span>
-            </span>
+            </button>
             <kbd className={s.kbd}>⌘K</kbd>
             <div className={s.acts}>
               {building && editable && (

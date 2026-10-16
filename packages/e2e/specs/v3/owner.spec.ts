@@ -148,7 +148,7 @@ test("v3: интервью → бриф → три направления → «
   // «Собрать»: the live build over the canvas (V4-11: under the ring of the island) — what is going on, the stages
   // and the scenario checklist of the brief.
   await page.getByTestId("canvas-v3-approve").click();
-  await page.getByTestId("canvas-tile-build").click({ timeout: 30_000 });
+  await page.getByTestId("canvas-status").click({ timeout: 30_000 });
   const live = page.getByTestId("canvas-v3-live");
   await expect(live).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("canvas-v3-live-title")).toBeVisible();
@@ -187,6 +187,7 @@ test("v3: интервью → бриф → три направления → «
 
   // V4-12 over V4-15: the heading picked on the real draft (bridge edit-mode) is edited without a model; the frame shows
   // the new revision with it.
+  await page.getByTestId("p-composer-input").click();
   await page.getByTestId("canvas-tile-edit").click();
   await page.getByTestId("edit-text-pick").click();
   const draft = page.frameLocator('[data-testid="canvas-frame-site"]');
@@ -220,6 +221,7 @@ test("v3: интервью → бриф → три направления → «
   await expect
     .poll(() => letters(email).filter((l) => l.kind === "notice").length, { timeout: 150_000 * SLOW })
     .toBe(2);
+  await page.getByTestId("p-composer-input").click();
   await page.getByTestId("canvas-tile-build").click();
   await expect(page.getByTestId("canvas-v3-live-checkpoints")).toContainText("Взято из прошлой сборки", {
     timeout: 30_000,
