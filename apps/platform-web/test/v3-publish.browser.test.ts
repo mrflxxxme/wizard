@@ -128,7 +128,7 @@ describe.skipIf(!hasChromium)("the publication of a v3 system on the canvas in c
         // V4-11: the built system on the whole window; «Ещё» has the settings, «Публикация» the card: the operator's
         // data asked first, «Опубликовать» off.
         await page.getByTestId("canvas-island-publish").waitFor({ timeout: 15_000 });
-        await page.getByTestId("canvas-island-more").click();
+        await page.getByTestId("p-composer-input").click();
         expect(await page.getByTestId("canvas-settings").getAttribute("href")).toBe(
           `/s/${fake.systemId}/settings`,
         );

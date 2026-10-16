@@ -287,12 +287,12 @@
   }
 }
 
-/* A wide window: the bar sits low between the island and the chat panel, off the first screen's own top. */
+/* A wide window: the bar sits low above the command bar (V5-07), off the first screen's own top. */
 @media (min-width: 1200px) {
   .bar {
     top: auto;
     left: 50%;
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 76px);
     transform: translateX(-50%);
   }
 }

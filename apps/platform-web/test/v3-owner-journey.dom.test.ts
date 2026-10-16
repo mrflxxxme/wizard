@@ -151,6 +151,12 @@ const click = async (id: string) => {
   await act(async () => $(id)?.click());
   await flush();
 };
+const openBar = async () => {
+  await act(async () => {
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true }));
+  });
+  await flush();
+};
 const typeInto = async (value: string) => {
   const el = $("p-composer-input") as HTMLInputElement;
   await act(async () => {
@@ -246,7 +252,7 @@ describe("a published v3 system opened again", () => {
       canvasApi(() => view),
       h(Canvas, { systemId: SYS, initial: view }),
     );
-    await click("canvas-island-more");
+    await openBar();
     expect($("canvas-home")?.getAttribute("href")).toBe("/");
     expect($("canvas-home")?.getAttribute("aria-label")).toContain("Born to Build");
   });
@@ -358,7 +364,8 @@ describe("a running v3 build", () => {
     );
     // V4-11: the build runs over the system — the bar on top, the panel under the ring of the island.
     expect($("canvas-eta")).not.toBeNull();
-    await click("canvas-island-build");
+    await openBar();
+    await click("canvas-tile-build");
     await click("canvas-v3-live-stop");
     expect(cancelRun).not.toHaveBeenCalled();
     await click("canvas-v3-live-stop-yes");
@@ -393,7 +400,8 @@ describe("a built v3 system", () => {
       h(Canvas, { systemId: SYS, initial: view }),
     );
     await push(BUILD, ...BUILT);
-    await click("canvas-island-chat");
+    await openBar();
+    await click("canvas-tile-chat");
     expect($("canvas-last-reply")?.textContent).toBe(
       "Добавил в бриф раздел «Отзывы» — соберите систему заново.",
     );

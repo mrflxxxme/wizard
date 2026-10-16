@@ -39,7 +39,7 @@ describe.skipIf(!hasChromium)("«Сначала показать» in chromium (
       const screens = page.getByTestId("first-screens");
       await expect.poll(() => screens.getAttribute("data-state"), { timeout: 15_000 }).toBe("ready");
       expect(fake.stage).toBe("interview");
-      if (vp.width < 600) await page.getByTestId("canvas-panel-close").click();
+      await page.getByTestId("canvas-panel-close").click();
       expect((await page.getByTestId("first-screens-frame").boundingBox())?.width).toBe(vp.width);
       expect(await page.getByTestId("first-screens-count").textContent()).toBe("Вариант 1 из 3");
       await page.screenshot({ path: join(ARTIFACTS, `v4-first-${vp.width}-1-screens.png`) });
