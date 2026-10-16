@@ -2940,8 +2940,8 @@ tasks:
     owner: platform
     parallel_group: v5-c
     estimate_days: 1
-    status: todo
-    claimed_by: null
+    status: done
+    claimed_by: session_01Q2sutGeqGXuFpW9M3khZQS
     owns: ["docs/prototypes/canvas/** (новый)"]
     description: >
       Поток 2, Opus (вкус). Три живых прототипа (графит + электрик, стекло и свет, инженерная сетка) — артефактами; выбор и правки основателя за 1–2 итерации (D80 (8)).
