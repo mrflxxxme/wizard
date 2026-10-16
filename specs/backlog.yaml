@@ -2856,8 +2856,8 @@ tasks:
     owner: platform
     parallel_group: v5-a
     estimate_days: 4
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: session_01Gmk5Bz3CHYJAo91si39ocQ
     owns: ["packages/ui-kit/src/v4/blocks/** (новый)", "packages/ui-kit/src/index.ts", "THIRD_PARTY_NOTICES.md"]
     description: >
       Поток 1+3, модель исполнителя — Opus (только вкус). Блок = TSX на Tailwind v4 + Motion с описанием слотов (текст, фото, иконки Lucide), вариантов и токенов; эффекты — по мотивам MIT-наборов с атрибуцией (D80 (2)–(4)). Показ основателю на 20 блоках (стоп-точка 70 %).
