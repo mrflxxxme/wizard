@@ -35,6 +35,12 @@ export const CALL_TYPES = [
   "page_edit",
   // V4-10 (D79 (6)): the vision model picks the site's photos among the library candidates.
   "photo_pick",
+  // V5-03 (D80 (6)): roles of the block pipeline.
+  "role_strategist",
+  "role_copywriter",
+  "role_editor",
+  "role_director",
+  "role_judge",
 ] as const;
 export type CallType = (typeof CALL_TYPES)[number];
 /** AI actions of systems (M3-02): T0 only. */

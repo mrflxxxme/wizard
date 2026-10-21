@@ -36,6 +36,7 @@ import { modelPhotoPicker } from "../../stock/pick.js";
 import { erroredBlockers, failedBlockers } from "../v2/blockers.js";
 import { runPhotosStage } from "../v2/photos.js";
 import { withOwnerFields } from "../v2/run.js";
+import { RolesFailure, type RolesReport, runRoles } from "../v4/index.js";
 import { runArtDirector, storedProposal } from "./art-director.js";
 import { readSite, withSitePages } from "./compose/index.js";
 import type { V3BuildContext, V3ComposeResult } from "./contract.js";
@@ -191,7 +192,11 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
   const llm = createRegistry();
   const rpc = p.rubPerCredit ?? llm.rubPerCredit;
   const seed = p.seed ?? host.systemId;
-  const hooks = host.hooks ?? {};
+  // V5-03: the role pipeline builds the home page from catalog blocks; its critic works on slots, so the page critic of
+  // v3 (edits of site.json) stays off while it is on.
+  const rolesOn = p.roles ?? process.env.WIZARD_BUILD_ROLES === "1";
+  const hooks = rolesOn ? { ...host.hooks, critic: undefined } : (host.hooks ?? {});
+  let rolesReport: RolesReport | undefined;
   const metrics: Partial<Record<V3Stage, V3StageMetric>> = {};
   const saved = new Map<string, V3Checkpoint>();
   for (const cp of await host.checkpoints.load()) saved.set(cp.key, cp);
@@ -997,6 +1002,111 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
       );
     }
 
+    // 4b. Roles (V5-03): the home page from catalog blocks and one signature section. A role that gives nothing leaves
+    // the v3 page as it is (note); the records of the artifacts stay in the checkpoints.
+    if (rolesOn) {
+      const home = readSite(mergedFiles())?.pages.find((x) => x.kind === "home");
+      const names = ["positioning", "copy", "copy-edited", "blocks", "signature"] as const;
+      const input = {
+        name: p.appName ?? brief.goals[0]?.text ?? "Сайт",
+        ...(p.request ? { request: p.request } : {}),
+        brief,
+        photos: [
+          ...photos.map((x) => ({
+            src: `/_wizard/photos/${x.file}/1600`,
+            alt: x.alt,
+            credit: `${x.author}, ${x.provider}`,
+          })),
+          ...(p.rolesPhotos ?? []),
+        ],
+      };
+      const rolesFp = sha256({
+        v: 1,
+        brief: briefForPages(brief),
+        input: input.name,
+        request: p.request ?? "",
+        seed,
+      });
+      const prior: Record<string, unknown> = {};
+      for (const n of names) {
+        const cp = saved.get(`roles:${n}`);
+        if (cp?.fingerprint === rolesFp && cp.data.value !== undefined) prior[n] = cp.data.value;
+      }
+      if (!home) notes = [...new Set([...notes, "Роли пропущены: на сайте нет главной страницы."])];
+      else {
+        const w = new V3Wallet("roles", budgets.roles, poolLeft("must", "skeleton"), rpc);
+        const ctx = ctxFor(w);
+        await host.emit("agent_message", {
+          agent: "builder",
+          messageId: "v5_roles",
+          text: "Собираю главную по ролям: стратег, копирайтер, редактор, режиссёр блоков, фирменная секция.",
+        });
+        try {
+          const r = await runRoles({
+            homeFile: home.file,
+            base: {
+              route: ctx.route,
+              orgPolicy: null,
+              ctx: { orgId: "host", systemId: host.systemId },
+              ...(host.signal ? { signal: host.signal } : {}),
+            },
+            registry: llm,
+            input,
+            saved: prior,
+            save: (name, value) =>
+              save({
+                key: `roles:${name}`,
+                fingerprint: rolesFp,
+                data: { value: value as never },
+                costMilli: 0,
+                durationMs: 0,
+              }),
+            ...(host.inspect
+              ? {
+                  render: async ({ files }) => {
+                    const layer = new Map(mergedFiles());
+                    for (const [path, src] of Object.entries(files)) layer.set(path, src);
+                    const ins = await (host.inspect as NonNullable<V3Host["inspect"]>)({
+                      spec: specOf(layer),
+                      files: layer,
+                      routes: ["/"],
+                      viewports: [
+                        { width: 390, height: 844, scheme: "light" },
+                        { width: 1440, height: 900, scheme: "light" },
+                      ],
+                      shots: [
+                        { route: "/", width: 390, kind: "page", maxWidth: 390, maxHeight: 2400 },
+                        { route: "/", width: 1440, kind: "page", maxWidth: 360, maxHeight: 2400 },
+                      ],
+                      fonts: [design.fonts.display.family, design.fonts.text.family],
+                      ...(host.signal ? { signal: host.signal } : {}),
+                    });
+                    return ins.ok ? ins.shots : null;
+                  },
+                }
+              : {}),
+          });
+          hookLayers.set("roles", new Map(Object.entries(r.files)));
+          runMilli += w.spentMilli;
+          rolesReport = { ...r.report, costRub: w.spentRub };
+          notes = [...new Set([...notes, ...r.report.notes])];
+          revision = await commit("Главная из блоков каталога и фирменной секции");
+        } catch (e) {
+          runMilli += w.spentMilli;
+          if (!(e instanceof RolesFailure) && !(e instanceof V3BudgetError)) throw e;
+          rolesReport = { costRub: w.spentRub, criticRounds: 0, models: {}, artifacts: [], notes: [] };
+          notes = [
+            ...new Set([
+              ...notes,
+              e instanceof RolesFailure
+                ? `Роли не справились (${e.role}): ${e.message} Главная осталась прежней.`
+                : "Бюджет ролей исчерпан — главная осталась прежней.",
+            ]),
+          ];
+        }
+      }
+    }
+
     // 5. Scenarios one by one with a browser check; stop rules of D77 (10).
     await stageEvent("scenarios", "started");
     const scenariosStarted = now();
@@ -1450,6 +1560,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
     stop,
     scenarios,
     stages: metrics,
+    ...(rolesReport ? { roles: rolesReport } : {}),
   };
 
   async function emitMetrics(status: "succeeded" | "failed") {
@@ -1466,6 +1577,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
           failed: all.filter((s) => s.status === "failed").length,
           stopped: all.filter((s) => s.status === "stopped").length,
         },
+        ...(rolesReport ? { roles: rolesReport } : {}),
         stop: stop.reason,
         previewMs,
         spentRub: spentRub(),
