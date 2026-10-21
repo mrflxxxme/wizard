@@ -5,7 +5,7 @@
 import { emptySpec, systemBriefSchema } from "@wizard/appspec";
 import type { GateReport } from "@wizard/gates";
 import { createRegistry, type LlmTool, type RouteInput, type RouteOutput } from "@wizard/llm";
-import { BLOCKS, blocksOf, contentErrors, type SlotSpec } from "@wizard/ui-kit";
+import { BLOCKS, blocksOf, contentErrors, type SlotSpec } from "@wizard/ui-kit/v4/blocks";
 import { describe, expect, test } from "vitest";
 import { runBuildV3, type V3BriefVersion, type V3Checkpoint, type V3Host } from "../src/builder/index.js";
 import {

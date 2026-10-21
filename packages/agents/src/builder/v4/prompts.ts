@@ -1,7 +1,7 @@
 // Prompts of the roles (V5-03). The text of the bans repeats grill-11 (8); the code checks them again (antislop.ts).
 import type { SystemBrief } from "@wizard/appspec";
 import type { LlmMessage } from "@wizard/llm";
-import { type BlockSpec, DIRECTIONS, type DirectionId, type SlotSpec } from "@wizard/ui-kit";
+import { type BlockSpec, DIRECTIONS, type DirectionId, type SlotSpec } from "@wizard/ui-kit/v4/blocks";
 import type { Copy, Positioning } from "./types.js";
 
 export const TOOLS = {

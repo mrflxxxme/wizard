@@ -1,7 +1,7 @@
 // Anti-slop of the editor (grill-11 (8), V5-03): the catalog's AI-phrase bans plus the clichés of site copy the editor
 // also removes. Code checks the editor's answer; a phrase that survives goes back to it once, then the page keeps the
 // copywriter's line and a note says so.
-import { aiTextErrors, contentStrings } from "@wizard/ui-kit";
+import { aiTextErrors, contentStrings } from "@wizard/ui-kit/v4/blocks";
 
 /** Clichés beyond the catalog's AI_PHRASES: empty greetings and claims no figure can back. */
 const EXTRA: readonly { re: RegExp; why: string }[] = [

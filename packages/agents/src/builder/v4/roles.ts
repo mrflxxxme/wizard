@@ -1,5 +1,6 @@
 // The roles of the chain (V5-03): each is one tool call whose answer code checks before the next role reads it.
 import { type LlmMessage, modelFamilyOf, type Registry, type RouteInput } from "@wizard/llm";
+import { lintPattern } from "@wizard/ui-kit/v3/patterns";
 import {
   type BlockSpec,
   blocksOf,
@@ -7,8 +8,7 @@ import {
   DIRECTIONS,
   type DirectionId,
   paletteBanErrors,
-} from "@wizard/ui-kit";
-import { lintPattern } from "@wizard/ui-kit/v3/patterns";
+} from "@wizard/ui-kit/v4/blocks";
 import { type CallBase, callTool, type RouteFn } from "../../core/loop.js";
 import { defineTool, type ToolIssue } from "../../core/tool.js";
 import { concreteShare, slopIssues } from "./antislop.js";

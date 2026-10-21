@@ -1,5 +1,5 @@
 // Artifacts of the role pipeline (V5-03, D80 (6), grill-10 Р7): every role hands the next one a JSON record.
-import type { DirectionId } from "@wizard/ui-kit";
+import type { DirectionId } from "@wizard/ui-kit/v4/blocks";
 import { z } from "zod";
 
 const t = (max: number, min = 1) => z.string().trim().min(min).max(max);
