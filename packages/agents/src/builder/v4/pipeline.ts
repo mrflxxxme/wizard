@@ -17,6 +17,7 @@ import {
   judge,
   pageIssues,
   type RoleBase,
+  resolveAfter,
   signatureCandidate,
   strategist,
   tracking,
@@ -193,10 +194,12 @@ export async function runRoles(deps: RolesDeps & { homeFile: string }): Promise<
       tj.done();
       const win = pick ?? "A";
       if (!pick) notes.push("Судья секции не ответил — взят первый кандидат.");
-      signature = { ...(win === "B" ? b : a), winner: win };
+      const won = win === "B" ? b : a;
+      signature = { ...won, after: resolveAfter(page, won.after), winner: win };
       notes.push(`Фирменная секция: выбран вариант ${win} — «${signature.title}».`);
     } else if (a || b) {
-      signature = { ...((a ?? b) as SignatureCandidate), winner: "only" };
+      const only = (a ?? b) as SignatureCandidate;
+      signature = { ...only, after: resolveAfter(page, only.after), winner: "only" };
       notes.push("Фирменная секция: второй кандидат не получился — остался единственный.");
     } else notes.push("Фирменная секция не получилась — страница из блоков без неё.");
   }

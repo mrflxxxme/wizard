@@ -29,6 +29,7 @@ import {
   copySchema,
   editedSchema,
   judgeSchema,
+  type PageBlock,
   type Positioning,
   positioningSchema,
   type SignatureCandidate,
@@ -244,7 +245,7 @@ export async function director(
     stepName: "roles:director",
     messages: directorMessages(input, p, c, catalogOf(p.direction)),
     tool,
-    maxRepairs: 3,
+    maxRepairs: 4,
   });
   if (!r.ok) return null;
   const ban = paletteBanErrors(
@@ -266,7 +267,11 @@ export function signatureSourceIssues(source: string): ToolIssue[] {
       out.push(
         issue("source", "IMPORT", `Импорт «${m[1]}» не разрешён: react, motion/react, @wizard/ui-kit.`),
       );
-  if (/#[0-9a-fA-F]{3,8}\b|rgb\(|hsl\(|oklch\(/.test(source))
+  if (
+    /#(?=[0-9a-fA-F]*[a-fA-F])(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b|#[0-9]{6}\b|rgb\(|hsl\(|oklch\(/.test(
+      source,
+    )
+  )
     out.push(issue("source", "RAW_COLOR", "Сырые цвета запрещены: токены темы."));
   // Texts in the code are the point of a signature section (facts of the positioning); every other pattern rule holds.
   for (const i of lintPattern(source, "v5-signature.tsx").filter((x) => x.code !== "fabricated"))
@@ -274,6 +279,16 @@ export function signatureSourceIssues(source: string): ToolIssue[] {
   const strings = [...source.matchAll(/>([^<>{}]{6,})</g)].map((m) => m[1] as string);
   out.push(...slopTool(strings));
   return out;
+}
+
+/** The block id a signature section follows: the model's `after` as an id, a section name or an id's tail; else the hero. */
+export function resolveAfter(page: BlocksPage, after: string): string {
+  const specs = new Map(catalogOf(page.direction).map((s) => [s.id, s.section]));
+  const tail = after.split(".").pop() ?? after;
+  const hit =
+    page.blocks.find((b) => b.id === after) ??
+    page.blocks.find((b) => b.id.endsWith(`.${tail}`) || specs.get(b.id) === tail);
+  return (hit ?? page.blocks.find((b) => specs.get(b.id) === "hero") ?? (page.blocks[1] as PageBlock)).id;
 }
 
 export async function signatureCandidate(

@@ -10,5 +10,5 @@ export {
   runRoles,
 } from "./pipeline.js";
 export type { RolesInput } from "./prompts.js";
-export { pageIssues, signatureSourceIssues } from "./roles.js";
+export { pageIssues, resolveAfter, signatureSourceIssues } from "./roles.js";
 export * from "./types.js";

@@ -12,6 +12,7 @@ import {
   concreteShare,
   homeSource,
   pageIssues,
+  resolveAfter,
   signatureSourceIssues,
   slopIssues,
 } from "../src/builder/v4/index.js";
@@ -358,6 +359,13 @@ describe("checks of a page of blocks", () => {
     expect(src).toContain('from "@wizard/ui-kit"');
     expect(src).toContain("<Signature />");
     expect(homeSource(good, null)).not.toContain("Signature");
+  });
+  test("the signature's place is found from an id, a section name or a misspelt tail; a price like #1842 is no colour", () => {
+    expect(resolveAfter(good, PAGE_IDS[1] as string)).toBe(PAGE_IDS[1]);
+    expect(resolveAfter(good, "hero")).toBe(PAGE_IDS[1]);
+    expect(resolveAfter(good, "nochnoy-product.steps")).toBe(PAGE_IDS[3]);
+    expect(resolveAfter(good, "нет такого")).toBe(PAGE_IDS[1]);
+    expect(signatureSourceIssues(SIGNATURE.replace("Статус ремонта", "Заказ #1842"))).toEqual([]);
   });
   test("signature section: raw colours and foreign imports are refused", () => {
     expect(signatureSourceIssues(SIGNATURE)).toEqual([]);
