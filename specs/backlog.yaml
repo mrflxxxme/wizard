@@ -2856,7 +2856,7 @@ tasks:
     owner: platform
     parallel_group: v5-a
     estimate_days: 4
-    status: in_progress
+    status: done
     claimed_by: session_01NZJinWRzsL4TWf8KrFJAMh
     owns: ["packages/ui-kit/src/v4/blocks/** (новый)", "packages/ui-kit/src/index.ts", "THIRD_PARTY_NOTICES.md"]
     description: >
