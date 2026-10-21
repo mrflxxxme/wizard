@@ -2891,7 +2891,7 @@ tasks:
     owner: platform
     parallel_group: v5-b
     estimate_days: 3
-    status: in_progress
+    status: done
     claimed_by: session_01DopiBH1qY3ucQcTfv7JHYf
     owns: ["packages/agents/src/builder/v4/** (новый)", "packages/agents/src/builder/v3/critic/**", "packages/llm/src/registry.ts", "specs/agents/models.yaml"]
     description: >
