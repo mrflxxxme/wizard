@@ -420,6 +420,21 @@ function wizardBridge(win, config) {
     handlers[m.type](m.payload, id);
   });
 
+  // D80 (8): the owner's page scrolls inside this frame; the command bar of the canvas thins out while it does.
+  let scrollTick = false;
+  win.addEventListener(
+    "scroll",
+    () => {
+      if (scrollTick) return;
+      scrollTick = true;
+      win.requestAnimationFrame(() => {
+        scrollTick = false;
+        post("scrolled", { y: Math.max(0, Math.round(win.scrollY || 0)) });
+      });
+    },
+    { passive: true },
+  );
+
   let last = route();
   const changed = () => {
     const r = route();

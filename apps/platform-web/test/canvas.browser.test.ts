@@ -28,6 +28,15 @@ async function shot(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: join(ARTIFACTS, `canvas-v4-${name}.png`), fullPage: false });
 }
 
+/** WIZARD_V5_SHOTS=1 writes the V5-07 screenshots into docs/prototypes/canvas/v5-07/ (for the founder; not on every run). */
+const SHOTS = process.env.WIZARD_V5_SHOTS === "1";
+async function shotTo(page: Page, name: string): Promise<void> {
+  const dir = join(APP_ROOT, "../../docs/prototypes/canvas/v5-07");
+  mkdirSync(dir, { recursive: true });
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(dir, `${name}.png`), fullPage: false });
+}
+
 async function startClinic(page: Page): Promise<string> {
   await page.getByTestId("start-prompt").fill(feed.brief);
   await page.getByTestId("start-submit").click();
@@ -149,6 +158,33 @@ describe.skipIf(!hasChromium)("canvas v4 in chromium (feed «клиника», �
       await page.getByTestId("canvas-tiles").waitFor();
       await page.keyboard.press("Escape");
       await page.getByTestId("canvas-tiles").waitFor({ state: "detached" });
+      // V5-07: the site scrolls inside its frame (the bridge says so) — the folded pill thins to a line; a touch restores it.
+      const siteBody = page.frameLocator('[data-testid="canvas-frame-site"]').locator("body");
+      const say = (type: string, payload: unknown) =>
+        siteBody.evaluate((_, m) => window.parent.postMessage({ wz: 1, ...m }, "*"), { type, payload });
+      if (SHOTS) await shotTo(page, `${tag}-1-rest`);
+      await say("scrolled", { y: 400 });
+      await expect
+        .poll(async () => (await page.getByTestId("canvas-cmd").boundingBox())?.height ?? 99)
+        .toBeLessThanOrEqual(8);
+      await page.getByTestId("canvas-cmd").hover();
+      await expect
+        .poll(async () => (await page.getByTestId("canvas-cmd").boundingBox())?.height ?? 0)
+        .toBeGreaterThanOrEqual(40);
+      if (SHOTS) {
+        await page.keyboard.press("Control+k");
+        await page.getByTestId("canvas-tiles").waitFor();
+        await shotTo(page, `${tag}-2-tidy`);
+        await say("element-selected", {
+          componentName: "Заголовок",
+          wzId: "0123abcd:1",
+          file: "ui/Home.tsx",
+          line: 3,
+          rect: { x: 10, y: 10, width: 100, height: 30 },
+        });
+        await page.getByTestId("canvas-chip").waitFor();
+        await shotTo(page, `${tag}-3-chip`);
+      }
       expect(await noHorizontalScroll(page)).toBe(true);
       await page.context().close();
     }, 120_000);

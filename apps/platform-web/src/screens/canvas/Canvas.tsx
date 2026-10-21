@@ -462,7 +462,11 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
   const [bridge, setBridge] = useState<FrameBridge | null>(null);
   const [incoming, setIncoming] = useState<{ seq: number; msg: FromPreview } | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  // D80 (8): the site scrolls inside the frame — the folded bar thins to a line; a touch of it, a key or a new frame restores it.
+  const [thin, setThin] = useState(false);
   const onBridgeMessage = useCallback((m: FromPreview) => {
+    if (m.type === "scrolled") setThin(m.payload.y > 48);
+    if (m.type === "ready" || m.type === "route-changed") setThin(false);
     setIncoming((x) => ({ seq: (x?.seq ?? 0) + 1, msg: m }));
     if (m.type === "element-selected") setChip(m.payload.componentName);
     if (m.type === "literal-selected" || m.type === "element-selected") {
@@ -1076,10 +1080,13 @@ export function Canvas({ systemId, initial }: CanvasProps): ReactNode {
         />
 
         <section
-          className={`${s.cmd} ${open ? s.cmdOpen : ""} ${building ? s.cmdRun : ""}`}
+          className={`${s.cmd} ${open ? s.cmdOpen : ""} ${building ? s.cmdRun : ""} ${thin && !open ? s.cmdThin : ""}`}
           aria-label={islandRu.label}
           data-testid="canvas-cmd"
           data-open={open ? "" : undefined}
+          data-thin={thin && !open ? "" : undefined}
+          onPointerEnter={() => setThin(false)}
+          onFocusCapture={() => setThin(false)}
         >
           {(open || pickHold) && (
             <div className={s.drawer} hidden={!open}>

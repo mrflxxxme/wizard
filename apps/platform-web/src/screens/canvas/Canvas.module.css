@@ -502,6 +502,27 @@
   border-radius: 26px;
 }
 
+.cmdThin {
+  width: 96px;
+  overflow: hidden;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.cmdThin::after {
+  content: "";
+  position: absolute;
+  inset: -16px -12px;
+}
+
+.cmdThin .pill {
+  min-height: 6px;
+  height: 6px;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .pill {
   display: flex;
   align-items: center;
