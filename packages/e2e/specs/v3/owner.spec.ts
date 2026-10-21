@@ -221,6 +221,7 @@ test("v3: интервью → бриф → три направления → «
   await expect
     .poll(() => letters(email).filter((l) => l.kind === "notice").length, { timeout: 150_000 * SLOW })
     .toBe(2);
+  await page.keyboard.press("Control+k");
   await page.getByTestId("canvas-tile-chat").click();
   await page.getByTestId("canvas-tile-build").click();
   await expect(page.getByTestId("canvas-v3-live-checkpoints")).toContainText("Взято из прошлой сборки", {
@@ -231,7 +232,7 @@ test("v3: интервью → бриф → три направления → «
   await expect(page.getByTestId("canvas-v3-live-scenario-status").first()).toHaveText(
     "готово в прошлой сборке",
   );
-  await page.getByTestId("p-composer-input").click();
+  await page.getByTestId("canvas-tile-chat").click();
   await expect(page.getByTestId("canvas-v3-live-ready")).toContainText("Система готова");
   await expect(frame).toBeVisible();
 
