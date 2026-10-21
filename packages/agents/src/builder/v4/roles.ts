@@ -183,6 +183,47 @@ const photoSrcs = (v: unknown, out: string[] = []): string[] => {
   return out;
 };
 
+/** A text cut to `max` characters at a word boundary, without a dangling comma, dash or connective. */
+export function fitText(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max + 1);
+  const at = Math.max(cut.lastIndexOf(" "), cut.lastIndexOf(","));
+  const base = (at >= max * 0.6 ? cut.slice(0, at) : text.slice(0, max)).trimEnd();
+  return base.replace(/[\s,;:—–-]+$/u, "").replace(/\s(и|а|но|с|в|на|для|по|от|до)$/iu, "");
+}
+
+type Slots = Record<string, import("@wizard/ui-kit/v4/blocks").SlotSpec>;
+
+/** Shortens the texts that overflow their slot (the model lands a few characters over again and again). */
+export function fitContent(slots: Slots, content: Record<string, unknown>): void {
+  for (const [k, s] of Object.entries(slots)) {
+    const x = content[k];
+    if (typeof x === "string" && s.kind === "text") content[k] = fitText(x, s.max);
+    else if (s.kind === "group" && x && typeof x === "object")
+      fitContent(s.slots, x as Record<string, unknown>);
+    else if (s.kind === "list" && Array.isArray(x)) {
+      const keys = Object.keys(s.item);
+      x.forEach((it, i) => {
+        if (typeof it === "string" && keys.length === 1) {
+          const one = s.item[keys[0] as string];
+          if (one?.kind === "text") x[i] = fitText(it, one.max);
+        } else if (it && typeof it === "object") fitContent(s.item, it as Record<string, unknown>);
+      });
+    }
+  }
+}
+
+/** Short ids the model writes for catalog blocks («hero», «nochnoy.hero») become the full id when the tail is unique. */
+export function normalizeBlockIds(v: BlocksPage): void {
+  const specs = catalogOf(v.direction);
+  for (const b of v.blocks) {
+    if (specs.some((s) => s.id === b.id)) continue;
+    const tail = b.id.split(".").pop() ?? b.id;
+    const hits = specs.filter((s) => s.id.endsWith(`.${tail}`) || s.section === tail);
+    if (hits.length === 1) b.id = (hits[0] as BlockSpec).id;
+  }
+}
+
 /** Checks of a page of blocks against the catalog, the section order, the photo pool and the bans. */
 export function pageIssues(v: BlocksPage, photos: readonly { src: string }[], p?: Positioning): ToolIssue[] {
   const out: ToolIssue[] = [];
@@ -237,7 +278,16 @@ export async function director(
     name: TOOLS.blocks,
     description: "The page as blocks of the catalog.",
     input: blocksSchema,
-    check: (v) => pageIssues(v, input.photos, p),
+    // The check repairs what code can repair itself (short ids, a few characters over a limit) before it complains.
+    check: (v) => {
+      normalizeBlockIds(v);
+      const specs = new Map(catalogOf(v.direction).map((x) => [x.id, x]));
+      for (const b of v.blocks) {
+        const spec = specs.get(b.id);
+        if (spec) fitContent(spec.slots, b.content);
+      }
+      return pageIssues(v, input.photos, p);
+    },
   });
   const r = await callTool({
     ...base,

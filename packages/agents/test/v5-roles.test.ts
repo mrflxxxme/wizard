@@ -10,7 +10,9 @@ import { describe, expect, test } from "vitest";
 import { runBuildV3, type V3BriefVersion, type V3Checkpoint, type V3Host } from "../src/builder/index.js";
 import {
   concreteShare,
+  fitText,
   homeSource,
+  normalizeBlockIds,
   pageIssues,
   resolveAfter,
   signatureSourceIssues,
@@ -366,6 +368,16 @@ describe("checks of a page of blocks", () => {
     expect(resolveAfter(good, "nochnoy-product.steps")).toBe(PAGE_IDS[3]);
     expect(resolveAfter(good, "нет такого")).toBe(PAGE_IDS[1]);
     expect(signatureSourceIssues(SIGNATURE.replace("Статус ремонта", "Заказ #1842"))).toEqual([]);
+  });
+  test("code shortens a text a few characters over its slot and maps short block ids", () => {
+    expect(fitText("Диагностика ходовой за 900 ₽ и запись на сегодня", 30).length).toBeLessThanOrEqual(30);
+    expect(fitText("Коротко", 30)).toBe("Коротко");
+    const short = {
+      direction: DIRECTION,
+      blocks: PAGE_IDS.map((id) => ({ id: id.split(".")[1] as string, content: fillBlock(id) })),
+    };
+    normalizeBlockIds(short);
+    expect(short.blocks.map((b) => b.id)).toEqual(PAGE_IDS);
   });
   test("signature section: raw colours and foreign imports are refused", () => {
     expect(signatureSourceIssues(SIGNATURE)).toEqual([]);
