@@ -2989,8 +2989,8 @@ tasks:
     owner: platform
     parallel_group: v5-b
     estimate_days: 2
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: session_017puH4ZoRHH43nAhmJyA2HP
     owns: ["packages/ui-kit/src/v3/bar/** (новые сайты)", "packages/ui-kit/src/v4/blocks/medicine/** (новый)", "packages/ui-kit/src/v4/blocks/editorial/** (новый)", "THIRD_PARTY_NOTICES.md"]
     description: >
       Поток Б, Opus (только вкус). По грилл-12 (2) и методу грилла-11: по одному полному сайту-планке на конкретный вымышленный бизнес — клиника или стоматология с записью («Чистая медицина») и эксперт или студия услуг («Редакция»); стоки Pexels/Pixabay с атрибуцией, свой бренд, один фирменный момент, запреты грилла-11 (8). Один круг приёмки основателя на оба сайта, затем нарезка на блоки по формату каталога V5-01.
