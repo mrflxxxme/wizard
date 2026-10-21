@@ -28,6 +28,15 @@ async function shot(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: join(ARTIFACTS, `canvas-v4-${name}.png`), fullPage: false });
 }
 
+/** WIZARD_V5_SHOTS=1 writes the V5-07 screenshots into docs/prototypes/canvas/v5-07/ (for the founder; not on every run). */
+const SHOTS = process.env.WIZARD_V5_SHOTS === "1";
+async function shotTo(page: Page, name: string): Promise<void> {
+  const dir = join(APP_ROOT, "../../docs/prototypes/canvas/v5-07");
+  mkdirSync(dir, { recursive: true });
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(dir, `${name}.png`), fullPage: false });
+}
+
 async function startClinic(page: Page): Promise<string> {
   await page.getByTestId("start-prompt").fill(feed.brief);
   await page.getByTestId("start-submit").click();
@@ -71,7 +80,8 @@ describe.skipIf(!hasChromium)("canvas v4 in chromium (feed «клиника», �
       await page.getByTestId("canvas-eta").waitFor();
       expect(await page.getByTestId("canvas-sheet").count()).toBe(0);
       expect(Number(await page.getByTestId("canvas-eta").getAttribute("aria-valuenow"))).toBeGreaterThan(0);
-      await page.getByTestId("canvas-island-build").click();
+      await page.keyboard.press("Control+k");
+      await page.getByTestId("canvas-tile-build").click();
       expect(await page.getByTestId("canvas-build-step").textContent()).toBe("Подбираю фото");
       await shot(page, `${tag}-2-build`);
       await page.keyboard.press("Escape");
@@ -101,14 +111,14 @@ describe.skipIf(!hasChromium)("canvas v4 in chromium (feed «клиника», �
       expect(h.mock.stubLeads).toContain("Анна");
 
       // The chat slides over the system: the system keeps its width; Esc closes it.
-      await page.getByTestId("canvas-island-chat").click();
+      await page.getByTestId("p-composer-input").click();
       await page.getByTestId("canvas-sheet").waitFor();
       expect(await width(page, "canvas-frame-site")).toBe(vp.width);
       await shot(page, `${tag}-4-chat`);
       await page.keyboard.press("Escape");
       expect(await page.getByTestId("canvas-sheet").count()).toBe(0);
       // A click on the system closes the panel too.
-      await page.getByTestId("canvas-island-chat").click();
+      await page.getByTestId("p-composer-input").click();
       await page.getByTestId("canvas-sheet").waitFor();
       if (!phone) {
         await frame.getByTestId("stub-sent").click();
@@ -117,6 +127,7 @@ describe.skipIf(!hasChromium)("canvas v4 in chromium (feed «клиника», �
 
       // «Телефон»: 390 px in the middle of the window (on a phone the system is at its own width already).
       if (!phone) {
+        await page.getByTestId("p-composer-input").click();
         await page.getByTestId("canvas-device-phone").click();
         await expect.poll(() => width(page, "canvas-frame-site")).toBe(390);
         await shot(page, `${tag}-5-phone`);
@@ -126,7 +137,7 @@ describe.skipIf(!hasChromium)("canvas v4 in chromium (feed «клиника», �
 
       // «Открыть в новой вкладке» twice: each tab logs in with its own token (a reused one would be 404 replay).
       for (let i = 0; i < 2; i++) {
-        await page.getByTestId("canvas-island-more").click();
+        await page.getByTestId("p-composer-input").click();
         const [tab] = await Promise.all([
           page.context().waitForEvent("page"),
           page.getByTestId("canvas-open-tab").click(),
@@ -137,13 +148,43 @@ describe.skipIf(!hasChromium)("canvas v4 in chromium (feed «клиника», �
       }
       expect(h.mock.usedTokens.size).toBeGreaterThanOrEqual(3);
 
-      // Ctrl+B hides the island and shows it again.
-      await page.getByTestId("canvas-island-chat").focus();
-      await page.keyboard.press("Control+b");
+      // V5-07: at rest only the 48 px pill; no island of icons; Ctrl+K unfolds, Esc folds.
+      await page.keyboard.press("Escape");
       expect(await page.getByTestId("canvas-island").count()).toBe(0);
-      await page.getByTestId("canvas-island-show").waitFor();
-      await page.keyboard.press("Control+b");
-      await page.getByTestId("canvas-island").waitFor();
+      expect(await page.getByTestId("canvas-sheet").count()).toBe(0);
+      const pill = await page.getByTestId("canvas-cmd").boundingBox();
+      expect(pill?.height ?? 0).toBeLessThanOrEqual(48);
+      await page.keyboard.press("Control+k");
+      await page.getByTestId("canvas-tiles").waitFor();
+      await page.keyboard.press("Escape");
+      await page.getByTestId("canvas-tiles").waitFor({ state: "detached" });
+      // V5-07: the site scrolls inside its frame (the bridge says so) — the folded pill thins to a line; a touch restores it.
+      const siteBody = page.frameLocator('[data-testid="canvas-frame-site"]').locator("body");
+      const say = (type: string, payload: unknown) =>
+        siteBody.evaluate((_, m) => window.parent.postMessage({ wz: 1, ...m }, "*"), { type, payload });
+      if (SHOTS) await shotTo(page, `${tag}-1-rest`);
+      await say("scrolled", { y: 400 });
+      await expect
+        .poll(async () => (await page.getByTestId("canvas-cmd").boundingBox())?.height ?? 99)
+        .toBeLessThanOrEqual(8);
+      await page.getByTestId("canvas-cmd").hover();
+      await expect
+        .poll(async () => (await page.getByTestId("canvas-cmd").boundingBox())?.height ?? 0)
+        .toBeGreaterThanOrEqual(40);
+      if (SHOTS) {
+        await page.keyboard.press("Control+k");
+        await page.getByTestId("canvas-tiles").waitFor();
+        await shotTo(page, `${tag}-2-tidy`);
+        await say("element-selected", {
+          componentName: "Заголовок",
+          wzId: "0123abcd:1",
+          file: "ui/Home.tsx",
+          line: 3,
+          rect: { x: 10, y: 10, width: 100, height: 30 },
+        });
+        await page.getByTestId("canvas-chip").waitFor();
+        await shotTo(page, `${tag}-3-chip`);
+      }
       expect(await noHorizontalScroll(page)).toBe(true);
       await page.context().close();
     }, 120_000);
@@ -240,7 +281,7 @@ describe.skipIf(!hasChromium)("canvas v4: a failed build is explained in words",
       expect(await page.getByTestId("canvas-topup").count()).toBe(c.action === "billing" ? 1 : 0);
       // No endless spinner: the build indicator is gone, the island's ring says it failed.
       expect(await page.getByTestId("canvas-eta").count()).toBe(0);
-      expect(await page.getByTestId("canvas-island-build").getAttribute("data-failed")).toBe("");
+      expect(await page.getByTestId("canvas-tile-build").getAttribute("data-failed")).toBe("");
       await shot(page, `390-failed-${c.code.toLowerCase()}`);
       h.mock.opts.canvasFailAfter = undefined;
       h.mock.opts.canvasFail = undefined;

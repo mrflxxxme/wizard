@@ -278,11 +278,11 @@ describe.skipIf(!hasChromium)("the live v3 build on the canvas in chromium", () 
         const page = await open(fake, ctx);
         await page.getByTestId("canvas-eta").waitFor({ timeout: 15_000 });
         expect(await page.getByTestId("canvas-sheet").count()).toBe(0);
-        await page.getByTestId("canvas-island-chat").click();
+        await page.keyboard.press("Control+k");
         // The chat row takes the same numbers from the snapshot.
         expect(await page.getByTestId("canvas-build-spend").textContent()).toBe("потрачено 42 ₽ из 500 ₽");
         expect(await page.getByTestId("canvas-build-step").textContent()).toBe("Довожу сценарии по одному");
-        await page.getByTestId("canvas-island-build").click();
+        await page.getByTestId("canvas-tile-build").click();
         const live = page.getByTestId("canvas-v3-live");
         await live.waitFor({ timeout: 15_000 });
         expect(await live.getAttribute("data-phase")).toBe("running");
@@ -352,7 +352,9 @@ describe.skipIf(!hasChromium)("the live v3 build on the canvas in chromium", () 
 
         // 3. Back in a new context: the progress as the server has it now.
         const back = await open(fake, ctx);
-        await back.getByTestId("canvas-island-build").click({ timeout: 15_000 });
+        await back.getByTestId("p-composer-input").waitFor();
+        await back.keyboard.press("Control+k");
+        await back.getByTestId("canvas-tile-build").click({ timeout: 15_000 });
         await back.getByTestId("canvas-v3-live").waitFor({ timeout: 15_000 });
         const rows2 = back.getByTestId("canvas-v3-live-scenario");
         await expect
@@ -417,7 +419,7 @@ describe.skipIf(!hasChromium)("the live v3 build on the canvas in chromium", () 
         await back.getByTestId("canvas-v3-live-toast-close").click();
         expect(await toast.count()).toBe(0);
         // «Система готова» in the chat; «Посмотреть систему» gives the whole window back to it.
-        await back.getByTestId("canvas-island-chat").click();
+        await back.getByTestId("canvas-tile-chat").click();
         await back.getByTestId("canvas-v3-live-ready").waitFor();
         await back.getByTestId("canvas-v3-live-look").click();
         expect(await back.getByTestId("canvas-sheet").count()).toBe(0);
@@ -425,7 +427,8 @@ describe.skipIf(!hasChromium)("the live v3 build on the canvas in chromium", () 
 
         // 5. The system opened after the build: the build is replayed from the server.
         const later = await open(fake, ctx);
-        await later.getByTestId("canvas-island-build").click({ timeout: 15_000 });
+        await later.getByTestId("p-composer-input").waitFor();
+        await later.getByTestId("canvas-tile-build").click({ timeout: 15_000 });
         await later.getByTestId("canvas-v3-live").waitFor({ timeout: 15_000 });
         expect(await later.getByTestId("canvas-v3-live").getAttribute("data-phase")).toBe("done");
         expect(
@@ -433,7 +436,7 @@ describe.skipIf(!hasChromium)("the live v3 build on the canvas in chromium", () 
             .getByTestId("canvas-v3-live-scenario")
             .evaluateAll((xs) => xs.map((x) => x.getAttribute("data-status"))),
         ).toEqual(["passed", "passed", "failed", "stopped"]);
-        await later.getByTestId("canvas-island-chat").click();
+        await later.getByTestId("canvas-tile-chat").click();
         expect(await later.getByTestId("canvas-v3-live-ready").count()).toBe(1);
         await later.context().close();
       }, 120_000);

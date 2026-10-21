@@ -2957,8 +2957,8 @@ tasks:
     owner: platform
     parallel_group: v5-c
     estimate_days: 3
-    status: todo
-    claimed_by: null
+    status: done
+    claimed_by: session_01Wx3AVrkZ9BEvEAdRAhTxHm
     owns: ["apps/platform-web/src/screens/canvas/**", "apps/platform-web/src/styles/**", "specs/ui/platform-screens.yaml"]
     description: >
       Поток Б, Sonnet. Реализация выбранного направления V5-06; островок значков и правые панели удаляются; platform-screens.yaml обновляется (D80 (8)).

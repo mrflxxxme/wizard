@@ -39,6 +39,8 @@ export const fromPreviewSchemas = {
     rect: z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() }),
   }),
   "select-cancelled": z.object({}),
+  /** D80 (8): the scroll offset of the shown site (the command bar of the canvas thins out while it scrolls). */
+  scrolled: z.object({ y: z.number().min(0).max(10_000_000) }),
   /** V4-15 edit-mode: the texts or photo under the click, by their source refs (never their values). */
   "literal-selected": z.object({
     refs: z.array(z.string().regex(LITERAL_REF_RE)).min(1).max(20),

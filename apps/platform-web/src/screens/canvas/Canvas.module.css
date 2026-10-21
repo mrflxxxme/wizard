@@ -1,6 +1,5 @@
-/* Canvas v4 (V4-11, D79_v4 (8)): the system fills the window (preview/SystemFrame.module.css); over it float the island
-   of icons (bottom left; bottom centre on a phone), the panels (right; a sheet from below on a phone), the thin build bar
-   and short notices. The panels never change the width of the system. Tokens --p-*; motion is transform/opacity only. */
+/* Canvas v5 (V5-07, D80_v5 (8)): the system fills the window (preview/SystemFrame.module.css); over it floats the
+   command bar (bottom centre, a sheet from below on a phone), the thin build bar and short notices. Tokens --p-*; motion is transform/opacity only. */
 
 .root {
   min-height: 100dvh;
@@ -10,8 +9,9 @@
   position: relative;
   min-height: 100dvh;
   overflow: clip;
-  --island-h: 56px;
-  --panel-w: min(420px, calc(100vw - 24px));
+  --cmd-h: 48px;
+  --cmd-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --cmd-dur: 480ms;
 }
 
 .main {
@@ -99,7 +99,7 @@
 .demo {
   z-index: 41;
   top: auto;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--island-h) + 28px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--cmd-h) + 28px);
   font-weight: 400;
   color: var(--p-ink-2);
   pointer-events: none;
@@ -116,20 +116,7 @@
   }
 }
 
-/* ——— the island ——— */
-.island {
-  position: fixed;
-  z-index: 43;
-  left: calc(env(safe-area-inset-left, 0px) + 16px);
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 6px;
-  border-radius: var(--p-r-pill);
-  color: var(--p-ink);
-}
-
+/* ——— the command bar (V5-07, direction Б «Стекло и свет») ——— */
 .ibtn {
   position: relative;
   display: inline-grid;
@@ -160,8 +147,7 @@
   cursor: default;
 }
 
-.ibtn:focus-visible,
-.mitem:focus-visible {
+.ibtn:focus-visible {
   outline: 2px solid var(--p-tint-ring, var(--p-ink));
   outline-offset: 2px;
 }
@@ -174,137 +160,6 @@
   stroke-width: 1.7;
   stroke-linecap: round;
   stroke-linejoin: round;
-}
-
-.dot {
-  position: absolute;
-  top: 9px;
-  right: 9px;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--p-amber-glow);
-  box-shadow: 0 0 0 2px var(--p-surface);
-}
-
-.ring {
-  width: 24px;
-  height: 24px;
-  transform: rotate(-90deg);
-}
-
-.ringTrack,
-.ringFill {
-  fill: none;
-  stroke-width: 3;
-}
-
-.ringTrack {
-  stroke: var(--p-track);
-}
-
-.ringFill {
-  stroke: var(--p-amber-glow);
-  stroke-linecap: round;
-  transition: stroke-dashoffset 0.8s var(--p-ease);
-}
-
-/* The build's own button pressed (graphite): its track stays visible — not a black disc without a ring. */
-.ibtn[aria-pressed="true"] .ringTrack {
-  stroke: color-mix(in srgb, var(--p-graphite-ink) 32%, transparent);
-}
-
-/* V4-11: a failed build is a closed red ring with «!», not a progress that stopped (no endless spinner). */
-.ring[data-failed] .ringFill {
-  stroke: var(--p-bad);
-}
-
-.ringMark {
-  fill: var(--p-bad);
-  font: 700 10px / 1 var(--p-f-ui);
-}
-
-.device {
-  display: flex;
-  gap: 2px;
-  margin: 0 2px;
-  padding: 0 2px;
-  border: 0;
-  border-inline: 1px solid var(--p-line);
-}
-
-.moreWrap {
-  position: relative;
-}
-
-.menu {
-  position: absolute;
-  left: 0;
-  bottom: calc(100% + 12px);
-  display: grid;
-  min-width: 250px;
-  padding: 6px;
-  border-radius: var(--p-r-lg);
-}
-
-.mitem {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 44px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: var(--p-r-md);
-  background: transparent;
-  color: var(--p-ink);
-  font: 400 14.5px / 1.3 var(--p-f-ui);
-  text-align: left;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.mitem:hover {
-  background: var(--p-sunken);
-}
-
-.showIsland {
-  position: fixed;
-  z-index: 40;
-  left: calc(env(safe-area-inset-left, 0px) + 16px);
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
-  background: var(--p-glass-solid);
-  box-shadow: var(--p-sh-float);
-}
-
-/* ——— the panel over the system ——— */
-.panel {
-  position: fixed;
-  z-index: 42;
-  top: 12px;
-  right: 12px;
-  bottom: 12px;
-  width: var(--panel-w);
-  display: flex;
-  flex-direction: column;
-  border-radius: var(--p-r-xl);
-  color: var(--p-ink);
-  font: 400 14.5px / 1.5 var(--p-f-ui);
-  animation: slideIn var(--p-t-base) var(--p-ease);
-}
-
-.panel[hidden] {
-  display: none;
-}
-
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateX(24px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
 }
 
 .panelHead {
@@ -542,64 +397,16 @@
   color: var(--p-bad);
 }
 
-/* ——— a phone: the island bottom centre, the panel a sheet from below ——— */
-@media (max-width: 720px) {
-  .island,
-  .showIsland {
-    left: 0;
-    right: 0;
-    width: fit-content;
-    max-width: calc(100% - 16px);
-    margin-inline: auto;
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
-  }
-
-  .device {
-    display: none;
-  }
-
-  .menu {
-    left: 50%;
-    transform: translateX(-50%);
-  }
-
-  .panel {
-    top: calc(env(safe-area-inset-top, 0px) + 8px);
-    left: 8px;
-    right: 8px;
-    width: auto;
-    animation-name: slideUp;
-  }
-}
-
-/* Island and panel would meet: the panel stands above the island, which stays at hand. */
-@media (max-width: 900px) {
-  .panel {
-    bottom: calc(env(safe-area-inset-bottom, 0px) + var(--island-h) + 22px);
-  }
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(32px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .panel,
+  .cmd,
+  .drawer,
   .news,
   .demo,
   .spark {
     animation: none;
   }
 
-  .barFill,
-  .ringFill {
+  .barFill {
     transition: none;
   }
 }
@@ -624,4 +431,452 @@
   margin: 0;
   font-size: 14px;
   white-space: pre-line;
+}
+
+/* the site keeps the bar's height free under it (the bar never covers CTAs or tab bars) */
+.main {
+  padding-bottom: calc(var(--cmd-h) + 16px + env(safe-area-inset-bottom, 0px));
+}
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 41;
+  pointer-events: none;
+  background: transparent;
+  transition: background var(--cmd-dur) var(--cmd-ease);
+}
+
+.cmd {
+  position: fixed;
+  z-index: 43;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  width: min(680px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  border-radius: 26px;
+  color: var(--p-ink);
+  font: 400 14.5px / 1.5 var(--p-f-ui);
+  background: rgba(255, 255, 255, 0.58);
+  backdrop-filter: blur(22px) saturate(1.6);
+  -webkit-backdrop-filter: blur(22px) saturate(1.6);
+  box-shadow:
+    0 24px 60px rgba(30, 50, 90, 0.2),
+    0 2px 6px rgba(30, 50, 90, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 0 0 1px rgba(255, 255, 255, 0.6);
+  transition:
+    width var(--cmd-dur) var(--cmd-ease),
+    border-radius var(--cmd-dur) var(--cmd-ease);
+}
+
+.cmd::before {
+  content: "";
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  bottom: -18px;
+  height: 30px;
+  z-index: -1;
+  border-radius: 50%;
+  background: rgba(255, 106, 66, 0.42);
+  filter: blur(22px);
+  opacity: 0;
+  transition: opacity 0.6s;
+}
+
+.cmdOpen,
+.cmdRun {
+  --glow-on: 1;
+}
+
+.cmdOpen::before,
+.cmdRun::before {
+  opacity: 1;
+}
+
+.cmdOpen {
+  width: min(760px, calc(100vw - 32px));
+  border-radius: 26px;
+}
+
+.cmdThin {
+  width: 96px;
+  overflow: hidden;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.cmdThin::after {
+  content: "";
+  position: absolute;
+  inset: -16px -12px;
+}
+
+.cmdThin .pill {
+  min-height: 6px;
+  height: 6px;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--cmd-h);
+  padding: 0 6px 0 8px;
+}
+
+.cmdRun .pill {
+  background:
+    linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.7) 50%, transparent 70%) -100% 0 / 200%
+    100% no-repeat;
+  border-radius: inherit;
+  animation: shine 2.6s var(--cmd-ease) infinite;
+}
+
+@keyframes shine {
+  to {
+    background-position: 200% 0;
+  }
+}
+
+.scrimOn {
+  pointer-events: none;
+}
+
+.drawer[hidden] {
+  display: none;
+}
+
+.drawer {
+  display: flex;
+  flex-direction: column;
+  max-height: min(70dvh, 560px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  animation: rise var(--cmd-dur) var(--cmd-ease);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.grab {
+  display: none;
+}
+
+.view[hidden] {
+  display: none;
+}
+
+.mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 18px;
+}
+
+.mark:hover {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.mark svg {
+  width: 20px;
+  height: 20px;
+}
+
+.m1 {
+  fill: var(--p-ink);
+}
+
+.m2 {
+  fill: var(--p-ink);
+  opacity: 0.3;
+}
+
+.field {
+  flex: 1 1 auto;
+  min-width: 60px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  max-width: 200px;
+  height: 28px;
+  padding: 0 6px 0 10px;
+  border-radius: 999px;
+  font: 500 12px var(--p-f-mono, monospace);
+  background: rgba(255, 90, 54, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(255, 90, 54, 0.55);
+  white-space: nowrap;
+  animation: pop 0.35s var(--cmd-ease) both;
+}
+
+.chip em {
+  font-style: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chip button {
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+
+.status {
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  font: 12.5px var(--p-f-mono, monospace);
+  color: var(--p-muted, #5b6677);
+  white-space: nowrap;
+}
+
+.sdot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #14a06b;
+}
+
+.status[data-run] .sdot {
+  background: #ff5a36;
+  animation: pulse 1.4s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 106, 66, 0.42);
+  }
+  70% {
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
+
+.kbd {
+  flex: none;
+  font: 11px var(--p-f-mono, monospace);
+  color: var(--p-muted, #5b6677);
+  box-shadow: inset 0 0 0 1px rgba(24, 36, 56, 0.1);
+  border-radius: 5px;
+  padding: 2px 5px;
+}
+
+.acts {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+.btn {
+  height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 20px;
+  font: 600 14px var(--p-f-ui);
+  white-space: nowrap;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--p-ink);
+  box-shadow: 0 0 0 1px rgba(24, 36, 56, 0.1);
+}
+
+.btnPrimary {
+  background: #ff5a36;
+  color: #fff;
+  box-shadow:
+    0 0 0 1px #ff5a36,
+    0 6px 20px rgba(255, 106, 66, 0.42);
+}
+
+.tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px 4px;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  flex: 1 1 110px;
+  min-width: 0;
+  margin: 0;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 16px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 0 0 1px rgba(24, 36, 56, 0.1);
+  transition: transform 200ms var(--cmd-ease);
+}
+
+.tile:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+
+.tile:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.tile[aria-pressed="true"] {
+  box-shadow:
+    0 0 0 1.5px #ff5a36,
+    0 0 18px rgba(255, 106, 66, 0.42);
+}
+
+.tile b {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tile span {
+  font: 12px var(--p-f-mono, monospace);
+  color: var(--p-muted, #5b6677);
+}
+
+.tile i {
+  display: block;
+  height: 3px;
+  width: 100%;
+  border-radius: 2px;
+  background: rgba(24, 36, 56, 0.1);
+  overflow: hidden;
+}
+
+.tile i::after {
+  content: "";
+  display: block;
+  height: 100%;
+  width: var(--p, 0%);
+  background: #ff5a36;
+  transition: width 0.3s;
+}
+
+.seg {
+  display: flex;
+  gap: 4px;
+}
+
+.segBtn {
+  width: 32px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.segBtn[aria-pressed="true"] {
+  background: #ff5a36;
+  color: #fff;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 4px 16px 10px;
+  font-size: 13px;
+}
+
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--p-muted, #5b6677);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+/* phone: the bar unfolds into a bottom sheet */
+@media (max-width: 600px) {
+  .cmd {
+    width: calc(100vw - 24px);
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .cmdOpen {
+    width: 100vw;
+    bottom: 0;
+    border-radius: 26px 26px 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .cmdOpen .grab {
+    display: block;
+    width: 40px;
+    height: 4px;
+    margin: 8px auto 0;
+    border-radius: 2px;
+    background: currentColor;
+    opacity: 0.3;
+  }
+
+  .scrimOn {
+    pointer-events: auto;
+    background: rgba(5, 8, 12, 0.38);
+  }
+
+  .kbd,
+  .stxt {
+    display: none;
+  }
+
+  .chip {
+    max-width: 130px;
+  }
+}
+
+/* the composer inside the 48 px pill: flat, no card of its own */
+.field [class*="row"] {
+  min-height: 36px;
+  padding: 0 4px;
+  background: none;
+  box-shadow: none;
 }
