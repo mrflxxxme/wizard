@@ -4,7 +4,7 @@ import { DIRECTIONS } from "./directions.js";
 import type { DirectionId } from "./types.js";
 
 /** Keyframes of the blocks: the hero photo of «Мастерская» settles in on a wide screen with motion allowed. */
-export const BLOCKS_CSS = [
+export const BLOCKS_CSS = /* @__PURE__ */ [
   "@keyframes bar-drift{from{transform:scale(1.08)}to{transform:scale(1)}}",
   "@media (min-width:64rem) and (prefers-reduced-motion:no-preference){.bar-drift{animation:bar-drift 9s var(--ds-ease-out) both}}",
 ].join("\n");

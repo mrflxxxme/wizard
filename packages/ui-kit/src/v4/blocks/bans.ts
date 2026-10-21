@@ -8,8 +8,8 @@ const L = "\\p{L}";
 /** Phrases of AI copy (Russian), each with a reason the editor shows. */
 export const AI_PHRASES: readonly { re: RegExp; why: string }[] = [
   { re: /\s—\s/u, why: "тире-вставка" },
-  { re: new RegExp(`(^|[^${L}])не\\s[^,.!?]+,\\s*а\\s`, "iu"), why: "«не X, а Y»" },
-  { re: new RegExp(`(^|[^${L}])не просто\\s`, "iu"), why: "«не просто»" },
+  { re: /* @__PURE__ */ new RegExp(`(^|[^${L}])не\\s[^,.!?]+,\\s*а\\s`, "iu"), why: "«не X, а Y»" },
+  { re: /* @__PURE__ */ new RegExp(`(^|[^${L}])не просто\\s`, "iu"), why: "«не просто»" },
   { re: /мы заботимся|с заботой о|с любовью/iu, why: "забота без факта" },
   {
     re: /индивидуальн\p{L}* подход|команда профессионалов|опытн\p{L}* специалист|лучш\p{L}* специалист/iu,
@@ -28,7 +28,7 @@ export const AI_PHRASES: readonly { re: RegExp; why: string }[] = [
   },
   { re: /ваш(е|его)? (комфорт|удовольствие)|для вас и ваших близких/iu, why: "обещание без цифры" },
   {
-    re: new RegExp(
+    re: /* @__PURE__ */ new RegExp(
       `[${L}]+(ый|ий|ой|ая|яя|ое|ее|ые|ие),\\s+[${L}]+(ый|ий|ой|ая|яя|ое|ее|ые|ие),?\\s+(и\\s+)?[${L}]+(ый|ий|ой|ая|яя|ое|ее|ые|ие)(?![${L}])`,
       "iu",
     ),

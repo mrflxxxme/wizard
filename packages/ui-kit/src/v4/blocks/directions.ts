@@ -6,7 +6,7 @@ import { designSystemV3, font } from "../../v3/design/system.js";
 import type { Direction, DirectionId } from "./types.js";
 
 /** «Мастерская»: cobalt of enamel bread tins on a cool white, Alegreya headings, Golos Text body. */
-export const MASTERSKAYA_DS: DesignSystemV3 = (() => {
+export const MASTERSKAYA_DS: DesignSystemV3 = /* @__PURE__ */ (() => {
   const ds = designSystemV3({
     archetype: "warm_craft",
     brandColor: "#2443A6",
@@ -27,7 +27,7 @@ export const MASTERSKAYA_DS: DesignSystemV3 = (() => {
 })();
 
 /** «Ночной продукт»: graphite night, sodium-lamp amber accent, Unbounded headings, Onest body. */
-export const NOCHNOY_DS: DesignSystemV3 = (() => {
+export const NOCHNOY_DS: DesignSystemV3 = /* @__PURE__ */ (() => {
   const ds = designSystemV3({
     archetype: "night_contrast",
     brandColor: "#E8A13A",
