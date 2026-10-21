@@ -135,3 +135,16 @@ Job `sandbox` (`.github/workflows/sandbox.yml`, M2-01) скачивает их �
 | onnxruntime-node (Microsoft) и onnxruntime-common | 1.30.0 | MIT | `packages/agents/src/stock/siglip.ts`: запуск SigLIP на CPU. Бинарники для linux x64 входят в пакет, скрипт установки не запускается (CUDA не нужна). Зависимости: adm-zip (MIT), global-agent (BSD-3-Clause) |
 | @huggingface/tokenizers | 0.2.0 | Apache-2.0 | `packages/agents/src/stock/siglip.ts`: токенизатор Gemma для текстовой части SigLIP 2 |
 | SigLIP 2 base patch16-224 (Google, `google/siglip2-base-patch16-224`), ONNX-экспорт `onnx-community/siglip2-base-patch16-224-ONNX` (ревизия ba1f3b08) | ba1f3b0843f24bc5417d38e19c37b287d719b2f4 | Apache-2.0 | эмбеддинги фото библиотеки в CI (`tools/stock/fill.mjs`, `vision_model.onnx`) и русского запроса на платформе (`text_model_int8.onnx`) |
+
+## Библиотека блоков V5 (V5-01)
+
+Блоки направлений «Мастерская» и «Ночной продукт» (`packages/ui-kit/src/v4/blocks/**`) нарезаны из сайтов-планок грилла-11 (`packages/ui-kit/src/v3/bar/**`) и написаны своим кодом на токенах дизайн-системы. Кода из MIT-наборов эффектов, 21st.dev, Tailwind Plus, Aceternity, Magic UI Pro и React Bits Pro в них нет. Сторонний код в блоках — только зависимости из таблиц выше:
+
+| Пакет | Лицензия | Где используется |
+|---|---|---|
+| motion (`motion/react`) | MIT, Copyright (c) 2024 Motion B.V. | фирменные моменты `masterskaya.moment` (час печи поднимается из-под края) и `nochnoy-produkt.status` (сообщения чата приходят по одному); на 390 px и при prefers-reduced-motion — статичный последний кадр |
+| Tailwind CSS v4 | MIT, Copyright (c) Tailwind Labs, Inc. | классы блоков, компиляция через `@wizard/build` |
+
+Слот `icon` описывает иконку Lucide (ISC, Copyright (c) Lucide Contributors) по имени; блоки этой волны иконок не используют, пакет не подключён.
+
+Фото в снимках блоков (`docs/prototypes/blocks/*.jpg`) — копии Pexels по Pexels License, авторы перечислены в `packages/ui-kit/src/v3/bar/photos.ts` и в подвале каждого сайта: «Фото: <автор> / Pexels». Знаки «Булочная Терехова» и «Бокс 14» нарисованы своим кодом (`packages/ui-kit/src/v3/bar/heroes/brand.tsx`); бизнесы вымышлены.

@@ -2856,8 +2856,8 @@ tasks:
     owner: platform
     parallel_group: v5-a
     estimate_days: 4
-    status: todo
-    claimed_by: null
+    status: done
+    claimed_by: session_01NZJinWRzsL4TWf8KrFJAMh
     owns: ["packages/ui-kit/src/v4/blocks/** (новый)", "packages/ui-kit/src/index.ts", "THIRD_PARTY_NOTICES.md"]
     description: >
       Поток А, Opus (только вкус). По грилл-11 и грилл-12 (2): принятые сайты-планки PR #234 (packages/ui-kit/src/v3/bar, пекарня П5 и сервис С5) нарезаются на блоки каталога двух направлений. Блок = TSX на Tailwind v4 + Motion с описанием слотов (текст, фото, иконки Lucide), вариантов и токенов направления; один фирменный момент на направление (D80 (2)–(4)). Запреты грилла-11 (8) — в тесте. PR #234 вливается первым шагом после слияния с main. Показ основателю — снимки блоков артефактом.
