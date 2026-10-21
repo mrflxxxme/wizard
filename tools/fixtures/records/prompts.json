@@ -33,5 +33,35 @@
   ],
   "research": [
     "packages/agents/src/research/research.ts"
+  ],
+  "role_strategist": [
+    "packages/agents/src/builder/v4/prompts.ts",
+    "packages/agents/src/builder/v4/roles.ts",
+    "packages/agents/src/builder/v4/antislop.ts",
+    "packages/agents/src/builder/v4/types.ts"
+  ],
+  "role_copywriter": [
+    "packages/agents/src/builder/v4/prompts.ts",
+    "packages/agents/src/builder/v4/roles.ts",
+    "packages/agents/src/builder/v4/antislop.ts",
+    "packages/agents/src/builder/v4/types.ts"
+  ],
+  "role_editor": [
+    "packages/agents/src/builder/v4/prompts.ts",
+    "packages/agents/src/builder/v4/roles.ts",
+    "packages/agents/src/builder/v4/antislop.ts",
+    "packages/agents/src/builder/v4/types.ts"
+  ],
+  "role_director": [
+    "packages/agents/src/builder/v4/prompts.ts",
+    "packages/agents/src/builder/v4/roles.ts",
+    "packages/agents/src/builder/v4/antislop.ts",
+    "packages/agents/src/builder/v4/types.ts"
+  ],
+  "role_judge": [
+    "packages/agents/src/builder/v4/prompts.ts",
+    "packages/agents/src/builder/v4/roles.ts",
+    "packages/agents/src/builder/v4/antislop.ts",
+    "packages/agents/src/builder/v4/types.ts"
   ]
 }
