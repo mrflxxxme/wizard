@@ -1,6 +1,7 @@
 // Builds the bar preview (grill-11 (2)): Tailwind through @wizard/build compileTailwind, the client through esbuild,
 // stock photos and fonts inlined. Writes index.html (both sites with a switch) and one page per site, then shoots
 // 1440 and 390 px snapshots with Playwright. Usage: node scripts/bar.mjs <out-dir> [--no-shots] [--heroes]
+// [--blocks <dir>]: --blocks shoots every library block (V5-01) of the two sites at 390 and 1440 px into <dir>.
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -44,10 +45,11 @@ const walk = (d) => {
     const p = join(d, f.name);
     if (f.isDirectory()) walk(p);
     else if (/\.tsx?$/.test(f.name))
-      sources.push([`ui/sections/${p.slice(barDir.length + 1)}`, readFileSync(p, "utf8")]);
+      sources.push([`ui/sections/${p.slice(root.length + 1)}`, readFileSync(p, "utf8")]);
   }
 };
 walk(barDir);
+walk(join(root, "src/v4/blocks"));
 const tw = await N.compileTailwind(N.barDesignCss(), N.tailwindCandidates(sources));
 if (!tw.ok) throw new Error(tw.error);
 const fontDir = join(root, "fonts");
@@ -114,6 +116,48 @@ writeFileSync(
 console.log(
   `html: ${out} (index ${(readFileSync(join(out, "index.html")).length / 1e6).toFixed(1)} MB, js ${(js.length / 1024).toFixed(0)} KB)`,
 );
+
+const blocksAt = process.argv.indexOf("--blocks");
+if (blocksAt > 0) {
+  const dir = resolve(process.argv[blocksAt + 1]);
+  mkdirSync(dir, { recursive: true });
+  // Sections of the round-4 sites in page order: each is one block of the catalog (the header sits in the hero).
+  const ORDER = {
+    s5: ["hero", "prices", "booking", "status", "steps", "reviews", "contacts", "footer"],
+    b5: ["hero", "menu", "moment", "order", "locations", "reviews", "footer"],
+  };
+  const DIR = { b5: "masterskaya", s5: "nochnoy-produkt" };
+  const pw = await import(
+    pathToFileURL(createRequire(join(root, "package.json")).resolve("@playwright/test")).href
+  );
+  const browser = await (pw.chromium ?? pw.default.chromium).launch();
+  for (const id of HERO_IDS)
+    for (const [w, h] of [
+      [1440, 900],
+      [390, 844],
+    ]) {
+      const pg = await browser.newPage({ viewport: { width: w, height: h } });
+      await pg.goto(`${pathToFileURL(join(out, "heroes-shot.html")).href}#${id}`);
+      await pg.evaluate(async () => {
+        await document.fonts.ready;
+        await Promise.all([...document.images].map((i) => i.decode().catch(() => {})));
+      });
+      const site = pg.locator("#bar-root > div > div");
+      const parts = [
+        ["header", site.locator("header").first()],
+        ...ORDER[id].map((name, i) => [name, site.locator(":scope > *").nth(i)]),
+      ];
+      for (const [name, loc] of parts) {
+        await loc.scrollIntoViewIfNeeded();
+        // The signature blocks play once in view (status ≈ 3 s); the rest settle at once.
+        await pg.waitForTimeout(["status", "moment", "hero"].includes(name) ? 4000 : 400);
+        await loc.screenshot({ path: join(dir, `${DIR[id]}.${name}-${w}.jpg`), type: "jpeg", quality: 70 });
+      }
+      await pg.close();
+    }
+  await browser.close();
+  console.log(`blocks: ${dir}`);
+}
 
 if (!process.argv.includes("--no-shots")) {
   const pw = await import(

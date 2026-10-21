@@ -1,22 +1,19 @@
-// CSS of the bar preview: the two design systems scoped by [data-site], one Tailwind theme for both (design/css.ts).
-import { designSystemCss } from "../design/css.js";
-import { BAKERY_DS, SERVICE_DS } from "./tokens.js";
+// CSS of the bar preview: the two directions of the block library scoped by [data-site], one Tailwind theme for both.
+import { BLOCKS_CSS, directionCss, directionFonts } from "../../v4/blocks/index.js";
 
 /** Design CSS to compile with Tailwind: bakery under [data-site=bakery], car service under [data-site=service]. */
 export function barDesignCss(): string {
   return [
-    designSystemCss(BAKERY_DS, { scope: "[data-site=bakery]", autoScheme: false }),
-    designSystemCss(SERVICE_DS, { scope: "[data-site=service]", autoScheme: false, theme: false }),
+    directionCss("masterskaya", "[data-site=bakery]"),
+    directionCss("nochnoy-produkt", "[data-site=service]", false),
     "html{scroll-behavior:smooth}",
     "@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}}",
-    // The one moving moment of the bakery hero «Пар»: the photo settles in, only on a wide screen with motion allowed.
-    "@keyframes bar-drift{from{transform:scale(1.08)}to{transform:scale(1)}}",
-    "@media (min-width:64rem) and (prefers-reduced-motion:no-preference){.bar-drift{animation:bar-drift 9s var(--ds-ease-out) both}}",
+    BLOCKS_CSS,
   ].join("\n");
 }
 
 /** Font families of both sites (their @font-face rules go before the design CSS). */
-export const BAR_FONTS: readonly string[] = [BAKERY_DS, SERVICE_DS].flatMap((d) => [
-  d.fonts.display.family,
-  d.fonts.text.family,
-]);
+export const BAR_FONTS: readonly string[] = [
+  ...directionFonts("masterskaya"),
+  ...directionFonts("nochnoy-produkt"),
+];
