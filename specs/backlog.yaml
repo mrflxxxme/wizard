@@ -2874,7 +2874,7 @@ tasks:
     owner: platform
     parallel_group: v5-a
     estimate_days: 2
-    status: in_progress
+    status: done
     claimed_by: session_01AUxfYR5M149NTDb5ZxSRdo
     owns: ["tools/eval/** (новый)", "tools/fixtures/eval/** (новый)"]
     description: >
