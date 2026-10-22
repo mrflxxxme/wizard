@@ -10,6 +10,23 @@ export {
   SYSTEM_BUNDLE_LIMIT,
   UI_BUNDLE_LIMIT,
 } from "./build.js";
+/** V5-05: effects gate — one heavy effect per page, ≤ 40 KB gzip JS per effect, reduced-motion fallback, Lighthouse mobile. */
+export {
+  checkEffects,
+  EFFECT_JS_LIMIT,
+  type EffectInput,
+  type EffectKind,
+  type EffectsReport,
+  type EffectsViolation,
+  gzipBytes,
+  HEAVY_EFFECTS_PER_PAGE,
+  hasReducedMotionFallback,
+  LCP_MAX_MS,
+  LIGHTHOUSE_PERF_MIN,
+  type LighthouseSummary,
+  type PageEffects,
+  summarizeLighthouse,
+} from "./gates/effects.js";
 export { canonicalJson, sha256Hex, specHash } from "./hash.js";
 /**
  * Per-route SEO of v3 pages (V3-12): ui/seo.json → the home page's title, description and Open Graph tags in index.html,

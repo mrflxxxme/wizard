@@ -148,3 +148,9 @@ Job `sandbox` (`.github/workflows/sandbox.yml`, M2-01) скачивает их �
 Слот `icon` описывает иконку Lucide (ISC, Copyright (c) Lucide Contributors) по имени; блоки этой волны иконок не используют, пакет не подключён.
 
 Фото в снимках блоков (`docs/prototypes/blocks/*.jpg`) — копии Pexels по Pexels License, авторы перечислены в `packages/ui-kit/src/v3/bar/photos.ts` и в подвале каждого сайта: «Фото: <автор> / Pexels». Знаки «Булочная Терехова» и «Бокс 14» нарисованы своим кодом (`packages/ui-kit/src/v3/bar/heroes/brand.tsx`); бизнесы вымышлены.
+
+## Гейт эффектов (V5-05)
+
+| Пакет | Лицензия | Где используется |
+|---|---|---|
+| Lighthouse | Apache-2.0, Copyright (c) Google LLC | только devDependency CI: отчёт mobile (perf ≥ 85, LCP ≤ 2,5 с) подаётся в `checkEffects` (`@wizard/build`); в бандл не входит, в рантайме не работает |
