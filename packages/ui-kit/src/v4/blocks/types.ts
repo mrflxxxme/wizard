@@ -3,8 +3,8 @@
 import type { ComponentType } from "react";
 import type { DesignSystemV3 } from "../../v3/design/index.js";
 
-/** Directions of the library in wave V5 (grill-12 (2)); «Чистая медицина» and «Редакция» come with V5-09. */
-export type DirectionId = "masterskaya" | "nochnoy-produkt";
+/** Directions of the library in wave V5 (grill-12 (2)); «Чистая медицина» and «Редакция» came with V5-09. */
+export type DirectionId = "masterskaya" | "nochnoy-produkt" | "chistaya-medicina" | "redaktsiya";
 
 /** What a section does on the page; the director builds a page as a sequence of these. */
 export type SectionType =
@@ -17,6 +17,7 @@ export type SectionType =
   | "booking"
   | "status"
   | "steps"
+  | "team"
   | "locations"
   | "reviews"
   | "contacts"
