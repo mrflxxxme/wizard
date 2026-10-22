@@ -149,6 +149,12 @@ Job `sandbox` (`.github/workflows/sandbox.yml`, M2-01) скачивает их �
 
 Фото в снимках блоков (`docs/prototypes/blocks/*.jpg`) — копии Pexels по Pexels License, авторы перечислены в `packages/ui-kit/src/v3/bar/photos.ts` и в подвале каждого сайта: «Фото: <автор> / Pexels». Знаки «Булочная Терехова» и «Бокс 14» нарисованы своим кодом (`packages/ui-kit/src/v3/bar/heroes/brand.tsx`); бизнесы вымышлены.
 
+## Гейт эффектов (V5-05)
+
+| Пакет | Лицензия | Где используется |
+|---|---|---|
+| Lighthouse | Apache-2.0, Copyright (c) Google LLC | только devDependency CI: отчёт mobile (perf ≥ 85, LCP ≤ 2,5 с) подаётся в `checkEffects` (`@wizard/build`); в бандл не входит, в рантайме не работает |
+
 ## Направления «Чистая медицина» и «Редакция» (V5-09)
 
 Блоки `chistaya-medicina.*` (`packages/ui-kit/src/v4/blocks/medicine/**`) и `redaktsiya.*` (`packages/ui-kit/src/v4/blocks/editorial/**`) нарезаны из сайтов-планок «Тридцать два» и «Бюро Лаптевой» (`packages/ui-kit/src/v3/bar/heroes/clinic.tsx`, `bureau.tsx`) и написаны своим кодом. Сторонний код — только motion (MIT) для фирменных моментов `chistaya-medicina.plan` (строки плана и итог) и `redaktsiya.proof` (правка красным карандашом) и Tailwind CSS v4 (MIT), как в разделе выше.
