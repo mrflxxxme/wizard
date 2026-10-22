@@ -16,6 +16,29 @@ export {
   requirementLevel,
   scenarioLine,
 } from "./capability.js";
+/** V5-04: the consultant layer — 16 steps with a hypothesis and buttons, «Сделай сам», competitors, answers into the brief. */
+export {
+  answerToQa,
+  applyConsultToBrief,
+  CONSULT_BLOCKS,
+  CONSULT_STEP_COUNT,
+  type Competitor,
+  type CompetitorSearch,
+  type ConsultAnswer,
+  type ConsultBlock,
+  type ConsultContext,
+  type ConsultOption,
+  type ConsultQuestion,
+  type ConsultResult,
+  consultQuestion,
+  findCompetitors,
+  fixtureSearch,
+  foldConsult,
+  SELF_DO_ID,
+  SELF_DO_LABEL,
+  type SearchHit,
+  selfDoAnswer,
+} from "./consultant.js";
 /** Deterministic questions of the blocking topics (each option with its brief patch) and the recommended defaults. */
 export { defaultPatch, type FallbackContext, type FallbackQuestion, fallbackQuestion } from "./fallback.js";
 /** Stop rule by code: blocking gaps of a brief, the tree order of a question, why the interview stops. */

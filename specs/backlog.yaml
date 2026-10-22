@@ -2908,7 +2908,7 @@ tasks:
     owner: platform
     parallel_group: v5-b
     estimate_days: 3
-    status: in_progress
+    status: done
     claimed_by: session_01Pz5BvHA4qW7PwCY6qJcpda
     owns: ["packages/agents/src/interview-v3/**", "packages/agents/src/builder/v3/directions/**"]
     description: >

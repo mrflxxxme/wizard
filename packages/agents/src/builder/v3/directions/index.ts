@@ -92,6 +92,23 @@ export {
   tunedRules,
   tuningWords,
 } from "./tuning.js";
+/** V5-04: 8 vibes with live hero previews, a reference read by vision into tokens, brand colour wins. */
+export {
+  contrastRatio,
+  type Density,
+  type FontKind,
+  mergeStyleTokens,
+  type ReferenceRead,
+  type ReferenceReader,
+  readReference,
+  referenceReadSchema,
+  type StyleTokens,
+  VIBES,
+  type Vibe,
+  vibeById,
+  vibeHeroHtml,
+  vibeTokens,
+} from "./vibes.js";
 export {
   ATTEMPT_CEILING_RUB,
   DIRECTION_CALL_DEADLINE_MS,
