@@ -27,7 +27,14 @@ import { type Captured, okToolCall, type Responder, type Stub, startStub } from 
 const DS_MODELS = ["deepseek-v4.1-flash", "deepseek-v4-pro-0813"];
 /** V4-05 routes that hold DeepSeek models (plan v4 §3). */
 // V4: the v4 page routes and the techreview (DeepSeek V4-Pro is the reserve of MiMo there, 13.10.2026).
-const DS_ROUTES: readonly string[] = ["page_compose", "signature_section", "page_edit", "techreview"];
+const DS_ROUTES: readonly string[] = [
+  "page_compose",
+  "signature_section",
+  "page_edit",
+  "techreview",
+  "role_editor",
+  "role_judge",
+];
 const OPEN = { ruOnly: false, t1Restricted: false };
 const ctx = { orgId: "00000000-0000-4000-8000-000000000001", runId: "00000000-0000-4000-8000-0000000000bb" };
 const TOOLS: LlmTool[] = [

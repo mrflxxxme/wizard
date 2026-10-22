@@ -9,7 +9,9 @@ import type { RunStepFn } from "../../../core/events.js";
 import type { RecordDevelopmentRequest } from "../../../gaps.js";
 import type { HostRoute } from "../../../host/index.js";
 import type { PhotoHost } from "../../v2/photos.js";
+import type { RolesReport } from "../../v4/types.js";
 import type { PageComposer, V3BuildContext } from "../contract.js";
+import type { CriticInspector } from "../critic/types.js";
 
 /** Stages in build order (builder-v3.md C6; the backend is compiled after the design so cabinets take its tokens). */
 export const V3_STAGES = [
@@ -204,6 +206,8 @@ export interface V3Host {
   checkScenario?(input: ScenarioCheckInput): Promise<ScenarioCheckResult>;
   /** true: the final G1 gets the goal scenarios of the done brief scenarios (a browser runs them). */
   goalBrowser?: boolean;
+  /** V5-03: the browser of the critic (build, open, screenshots); absent — the roles' critic is skipped. */
+  inspect?: CriticInspector;
   /** Stages of V3-13…15; absent — skipped. */
   hooks?: Partial<Record<V3HookStage, V3StageHook>>;
   /** Non-blocking questions: the interview's queue (V3-03), asking without a stop, answers outside the brief. */
@@ -259,6 +263,8 @@ export interface V3Budgets {
   scenarioMin: number;
   /** V4-10: the vision pick of the site's photos (photo_pick, one call). */
   photos: number;
+  /** V5-03: the role pipeline of the block page (strategist … critic on slots); ₽ upper bound of the stage. */
+  roles: number;
 }
 
 export interface V3Params {
@@ -282,6 +288,13 @@ export interface V3Params {
   seed?: string;
   /** Time budget of the stock photos (default: the v2 photos stage's). */
   photosTimeMs?: number;
+  /**
+   * V5-03: build the home page by the role pipeline from the blocks of the ui-kit catalog (default: WIZARD_BUILD_ROLES=1);
+   * false — the v3 path as before (it is also the fallback when a role gives nothing).
+   */
+  roles?: boolean;
+  /** V5-03: photos for the block page besides the plan's stock photos (src, alt, credit as the catalog's photo slot). */
+  rolesPhotos?: readonly { src: string; alt: string; credit: string }[];
 }
 
 export type V3FailureCode =
@@ -333,6 +346,8 @@ export type V3Outcome =
       stop: { reason: V3StopReason; message_ru: string };
       scenarios: V3ScenarioState[];
       stages: Partial<Record<V3Stage, V3StageMetric>>;
+      /** V5-03: the role pipeline's report (spend, critic rounds, models, records); absent — the v3 path. */
+      roles?: RolesReport;
     }
   | {
       status: "failed";

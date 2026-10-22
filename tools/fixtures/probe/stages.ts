@@ -39,6 +39,7 @@ import {
 import type { V3BuildContext } from "../../../packages/agents/src/builder/v3/contract.ts";
 import { siteFacts } from "../../../packages/agents/src/builder/v3/compose/index.ts";
 import { readSite } from "../../../packages/agents/src/builder/v3/compose/site.ts";
+import { runRoles, RolesFailure } from "../../../packages/agents/src/builder/v4/index.ts";
 import { callTool } from "../../../packages/agents/src/core/loop.ts";
 import { defaultAuthorFamilies, runCritic } from "../../../packages/agents/src/builder/v3/critic/hook.ts";
 import { siteFiles } from "../../../packages/agents/src/builder/v3/compose/codegen.ts";
@@ -445,6 +446,53 @@ export const STAGES: Record<string, Stage> = {
         };
       } finally {
         await browser.close();
+      }
+    },
+  },
+  // V5-03: the chain of roles on a saved business: strategist → copywriter → editor → director → signature section
+  // (two candidates and a judge). No browser here: the critic's slot rounds are covered by the harness test; the probe
+  // reports the models by role, the cost and the bans the final page still trips.
+  roles: {
+    callTypes: ["role_strategist", "role_copywriter", "role_editor", "role_director", "role_judge", "signature_section"],
+    async run(input, route, ctx) {
+      const registry = createRegistry();
+      let credits = 0;
+      const counted: RouteFn = async (ri) => {
+        const out = await route(ri);
+        credits += out.creditsCharged;
+        return out;
+      };
+      const photos = (input.photos as string[]).map((alt, i) => ({
+        src: `/_wizard/photos/0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a${String(i).padStart(2, "0")}/1600`,
+        alt,
+        credit: "Автор, pexels",
+      }));
+      try {
+        const r = await runRoles({
+          homeFile: "ui/pages/site/Home.tsx",
+          registry,
+          base: { route: withOpenPolicy(counted), orgPolicy: OPEN, ctx },
+          input: {
+            name: String(input.name),
+            request: String(input.request),
+            brief: {
+              goals: (input.goals as string[]).map((text, i) => ({ id: `g${i + 1}`, text, success: text })),
+              audience: String(input.audience),
+              qa: input.qa as never,
+              assumptions: [],
+              scenarios: [],
+            },
+            photos,
+          },
+        });
+        const rub = (credits * registry.rubPerCredit).toFixed(1);
+        return {
+          fallback: false,
+          summary: `${r.page.direction}, блоков ${r.page.blocks.length}, фирменная ${r.signature?.winner ?? "нет"}; модели ${Object.entries(r.report.models).map(([k, v]) => `${k}=${v}`).join(" ")}; ${rub} ₽; ${r.report.notes.join(" | ").slice(0, 200)}`,
+        };
+      } catch (e) {
+        if (!(e instanceof RolesFailure)) throw e;
+        return { fallback: true, summary: `роль ${e.role} не дала результата: ${e.message}` };
       }
     },
   },

@@ -457,6 +457,48 @@ export const ROUTES: Record<CallType, RouteDef> = {
     1500,
     120000,
   ),
+  // V5-03 (D80 (6)): roles of the block pipeline. The editor and the judge are of another family than the author
+  // they check (the caller passes avoidFamilies); candidates of the signature section use signature_section.
+  role_strategist: r(
+    "planner",
+    "T1",
+    { T1: ["glm-5.3", "kimi-k3"], T0: ["kimi-k2.6", "glm-5.1", "deepseek-v4-pro"] },
+    0.4,
+    6000,
+    240000,
+  ),
+  role_copywriter: r(
+    "copywriter",
+    "T1",
+    { T1: ["glm-5.3", "kimi-k3"], T0: ["kimi-k2.6", "glm-5.1", "deepseek-v4-pro"] },
+    0.6,
+    8000,
+    300000,
+  ),
+  role_editor: r(
+    "editor",
+    "T1",
+    { T1: ["deepseek-v4-pro-0813", "kimi-k3", "glm-5.3"], T0: ["deepseek-v4-pro", "kimi-k2.6", "glm-5.1"] },
+    0.3,
+    8000,
+    300000,
+  ),
+  role_director: r(
+    "designer",
+    "T1",
+    { T1: ["glm-5.3", "kimi-k3"], T0: ["kimi-k2.6", "glm-5.1", "deepseek-v4-pro"] },
+    0.3,
+    8000,
+    300000,
+  ),
+  role_judge: r(
+    "reviewer",
+    "T1",
+    { T1: ["mimo-v2.6-pro", "deepseek-v4-pro-0813"], T0: ["gpt-oss-120b", "deepseek-v4-pro", "kimi-k2.6"] },
+    0.1,
+    1500,
+    120000,
+  ),
   // MiMo V2.6 Pro with reasoning off (models[].thinking): it timed out at 300 s on every attempt while it reasoned; off,
   // the techreview takes 39–60 s (median 45 s) with 1–8 findings (stage probe 13.10.2026). DeepSeek V4-Pro is the
   // reserve: 1.8 s, but it submitted no findings at all on the same input.

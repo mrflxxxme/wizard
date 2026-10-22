@@ -153,6 +153,12 @@ call_types:            # полный список; route() с иным callType
   # v4 (V4-05, план v4 §3)
   - page_edit          # массовые правки кода страниц («Укажи и измени», правки чатом)
   - photo_pick         # V4-10: визуальная модель выбирает фото сайта из 20 кандидатов библиотеки по смыслу и палитре
+  # v5 (V5-03, D80 (6)): пайплайн ролей
+  - role_strategist    # стратег: positioning.json — позиционирование, УТП, sitemap
+  - role_copywriter    # копирайтер: copy.json — тексты по слотам блоков
+  - role_editor        # редактор: anti-slop (запреты грилла-11 (8)), тон, конкретика и цифры; другое семейство, чем копирайтер
+  - role_director      # режиссёр: blocks[] из каталога ui-kit и токены направления
+  - role_judge         # судья двух кандидатов фирменной секции; семейство не из авторов
 
 client_code:           # V3-32, D77 (4): «код клиента — только в модели с инференсом в РФ»
   call_types: [repo_code, repo_review]
@@ -221,6 +227,12 @@ routes:                # chain.T1 пробуется только если tier=
   page_edit:           { role: editor,       default_tier: T1, chain: { T1: [deepseek-v4.1-flash, mimo-v2.6-flash, glm-5.3-flash, glm-5.3], T0: [deepseek-v4-pro, kimi-k2.6, glm-5.1] }, temperature: 0.2, max_tokens: 16000, timeout_ms: 300000 }
   # V4-10 (D79 (6)): выбор фото сайта визуальной моделью — только vision; стоковые фото без ПДн уходят за рубеж
   photo_pick:          { role: critic,       default_tier: T1, chain: { T1: [glm-5v-turbo, kimi-k3, glm-4.6v], T0: [qwen3.6-35b, kimi-k2.6] },       temperature: 0.2, max_tokens: 1500,  timeout_ms: 120000, note: "V4-10: 3–5 из 20 кандидатов по смыслу и палитре направления; kimi-k3 — temperature 1 модели" }
+  # V5-03 (D80 (6)): роли пайплайна блоков; редактор и судья — другого семейства, чем проверяемый автор (avoidFamilies); кандидаты фирменной секции — signature_section
+  role_strategist:     { role: planner,      default_tier: T1, chain: { T1: [glm-5.3, kimi-k3], T0: [kimi-k2.6, glm-5.1, deepseek-v4-pro] },        temperature: 0.4, max_tokens: 6000,  timeout_ms: 240000 }
+  role_copywriter:     { role: copywriter,   default_tier: T1, chain: { T1: [glm-5.3, kimi-k3], T0: [kimi-k2.6, glm-5.1, deepseek-v4-pro] },        temperature: 0.6, max_tokens: 8000,  timeout_ms: 300000 }
+  role_editor:         { role: editor,       default_tier: T1, chain: { T1: [deepseek-v4-pro-0813, kimi-k3, glm-5.3], T0: [deepseek-v4-pro, kimi-k2.6, glm-5.1] }, temperature: 0.3, max_tokens: 8000, timeout_ms: 300000 }
+  role_director:       { role: designer,     default_tier: T1, chain: { T1: [glm-5.3, kimi-k3], T0: [kimi-k2.6, glm-5.1, deepseek-v4-pro] },        temperature: 0.3, max_tokens: 8000,  timeout_ms: 300000 }
+  role_judge:          { role: reviewer,     default_tier: T1, chain: { T1: [mimo-v2.6-pro, deepseek-v4-pro-0813], T0: [gpt-oss-120b, deepseek-v4-pro, kimi-k2.6] }, temperature: 0.1, max_tokens: 1500, timeout_ms: 120000 }
 
 fallback_rules:
   - "MUST: при открытом circuit breaker, исчерпанных ретраях или 5xx/timeout модель берётся следующей в цепочке своего tier; затем T1 → T0 (reason=fallback_*)"

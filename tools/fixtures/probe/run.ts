@@ -22,6 +22,8 @@ const ROOT = join(import.meta.dirname, "..", "..", "..");
 export const INPUTS_DIR = join(ROOT, "tools", "fixtures", "probe", "inputs");
 /** A probe never spends more than this (D79 (10): 5–15 ₽ a stage). */
 export const PROBE_MAX_CAP_RUB = 30;
+/** V5-03: the chain of roles is seven live calls per input, three inputs share the cap. */
+export const PROBE_MAX_CAP_BY_STAGE: Readonly<Record<string, number>> = { roles: 150 };
 export const PROBE_DEFAULT_CAP_RUB = 15;
 
 export interface ProbeOptions {
@@ -112,7 +114,7 @@ export async function runProbe(o: ProbeOptions): Promise<ProbeReport> {
   const stage = STAGES[o.stage];
   if (!stage) throw new Error(`неизвестный этап ${o.stage}: ${Object.keys(STAGES).join(", ")}`);
   const env = o.env ?? process.env;
-  const capRub = Math.min(o.capRub ?? PROBE_DEFAULT_CAP_RUB, PROBE_MAX_CAP_RUB);
+  const capRub = Math.min(o.capRub ?? PROBE_DEFAULT_CAP_RUB, PROBE_MAX_CAP_BY_STAGE[o.stage] ?? PROBE_MAX_CAP_RUB);
   const log = o.log ?? ((l: string) => console.log(l));
   const inputs = stageInputs(o.stage, o.inputs);
   if (!inputs.length) throw new Error(`у этапа ${o.stage} нет сохранённых входов в ${join(INPUTS_DIR, o.stage)}`);

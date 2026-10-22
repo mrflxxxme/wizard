@@ -2891,8 +2891,8 @@ tasks:
     owner: platform
     parallel_group: v5-b
     estimate_days: 3
-    status: todo
-    claimed_by: null
+    status: done
+    claimed_by: session_01DopiBH1qY3ucQcTfv7JHYf
     owns: ["packages/agents/src/builder/v4/** (новый)", "packages/agents/src/builder/v3/critic/**", "packages/llm/src/registry.ts", "specs/agents/models.yaml"]
     description: >
       Поток А, Sonnet. Артефакты positioning, copy, blocks + tokens; одна фирменная секция свободным TSX — два кандидата разных семей и судья; критик правит слоты, ≤ 2 раундов (D80 (2), (6)). Живая проба этапов на сохранённых входах — до PR.
