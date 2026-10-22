@@ -73,9 +73,10 @@ jobs:
           KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
           MOONSHOT_BASE_URL: https://api.moonshot.ai/v1
         run: |
-          shots=""
-          [ -d wizard-shots ] && shots="--wizard-shots wizard-shots"
-          node tools/eval/v5/cli.mjs run --mode live --set "$SET" --cap-rub "$CAP" ${SEED:+--seed "$SEED"} $shots --out eval-v5-out
+          args=(--mode live --set "$SET" --cap-rub "$CAP" --out eval-v5-out)
+          [ -n "$SEED" ] && args+=(--seed "$SEED")
+          [ -d wizard-shots ] && args+=(--wizard-shots wizard-shots)
+          node tools/eval/v5/cli.mjs run "${args[@]}"
           { echo "### Стенд оценки V5"; sed -n 3,8p eval-v5-out/report.md; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
