@@ -8,6 +8,7 @@
     "credits": "tsx src/billing/cli.ts",
     "moderation": "tsx src/publish/moderation-cli.ts",
     "pilot": "tsx src/pilot/main.ts",
+    "eval-shots": "tsx src/builds-v3/report/eval-export-cli.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

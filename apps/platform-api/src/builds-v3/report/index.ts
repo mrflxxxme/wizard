@@ -18,6 +18,7 @@ import { putReportFile, saveBuildReport } from "./store.js";
 import type { BuildReport, ReportShot } from "./types.js";
 
 export { collectBuildReport, failedChecks, stagesOf } from "./collect.js";
+export { exportEvalShots } from "./eval-export.js";
 export { HTTP_PER_SCENARIO, httpRecorder } from "./http.js";
 export { renderReportMd } from "./render.js";
 export { reportRoutes } from "./routes.js";
@@ -124,11 +125,18 @@ export function startBuildReport(o: BuildReportOptions): BuildReportSession {
             error: String((e as Error)?.message ?? e).slice(0, 200),
           }));
           if (r.error) gaps.push(`снимки: ${r.error}`);
+          const routes = [...new Set(r.shots.map((s) => s.route))];
           for (const s of r.shots)
             shots.push({
+              route: s.route,
               width: s.width,
               mime: s.mime,
-              key: await putReportFile(o.files, `shot-${s.width}.jpg`, s.mime as "image/jpeg", s.data),
+              key: await putReportFile(
+                o.files,
+                `shot-${routes.indexOf(s.route)}-${s.width}.jpg`,
+                s.mime as "image/jpeg",
+                s.data,
+              ),
             });
         } else if (o.files) gaps.push("снимки: браузера нет");
         if (o.files && recorded) {

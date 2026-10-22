@@ -12,6 +12,8 @@ node tools/eval/v5/cli.mjs run --set full --wizard-shots <dir>   # <dir>/<id б�
 node tools/eval/v5/cli.mjs run --mode live --set full --cap-rub 300 --wizard-shots <dir>   # ключи в окружении
 ```
 
+Снимки Wizard из отчёта сборки (V5-10): `pnpm --filter @wizard/platform-api eval-shots <id прогона> <id брифа> <каталог>` кладёт главную в `<каталог>/<бриф>/{1440,390}.png` (JPEG отчёта пересохраняется в PNG).
+
 Отчёт (`--out`, по умолчанию `tools/eval/results/v5-<набор>-<режим>/`): `summary.json`, `report.md` (доля пар «не хуже эталона», голоса судей, **стоимость**), `index.html` — лента пар для основателя (Wizard и эталон подписаны, голоса судей). Лента только для основателя. Цель 40 % — замер, не условие (D81 (1)).
 
 Живой прогон — workflow `eval-v5` (вручную; потолок трат прогона в ₽, не больше 1 500; потолок на волну — 5 000 ₽).

@@ -47,10 +47,18 @@ async function clinicStore(): Promise<BuildStore> {
 }
 
 describe.skipIf(!hasChromium)("V4-04: screenshots and HTTP responses of the report", () => {
-  test("the home page at 390 and 1440 (JPEG)", async () => {
+  test("every page at 390 and 1440 (JPEG), the home page first (V5-10)", async () => {
     const r = await siteShots(await clinicStore(), browser);
     expect(r.error).toBeUndefined();
-    expect(r.shots.map((s) => s.width).sort((a, b) => a - b)).toEqual([390, 1440]);
+    const routes = [...new Set(r.shots.map((s) => s.route))];
+    expect(routes[0]).toBe("/");
+    for (const route of routes)
+      expect(
+        r.shots
+          .filter((s) => s.route === route)
+          .map((s) => s.width)
+          .sort((a, b) => a - b),
+      ).toEqual([390, 1440]);
     for (const s of r.shots) {
       expect(s.mime).toBe("image/jpeg");
       expect(s.data.byteLength).toBeGreaterThan(1_000);
