@@ -74,6 +74,8 @@ export interface ReportCall {
 }
 
 export interface ReportShot {
+  /** Page of the site (V5-10); absent in reports before — the home page. */
+  route?: string;
   width: 390 | 1440;
   /** Key in the shared file storage (wz_reports/<uuid>). */
   key: string;

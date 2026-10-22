@@ -55,7 +55,7 @@ export function renderReportMd(r: BuildReport, base: string): string {
   );
   out.push("", "### Снимки");
   if (!r.shots.length) out.push("Снимков нет.");
-  for (const s of r.shots) out.push(`- ${s.width}: ${base}/files/${s.key}`);
+  for (const s of r.shots) out.push(`- ${s.route ?? "/"} ${s.width}: ${base}/files/${s.key}`);
   out.push(
     "",
     "### Вызовы моделей",

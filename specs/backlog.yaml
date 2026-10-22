@@ -2997,6 +2997,23 @@ tasks:
     acceptance:
       - "«Да» основателя по двум сайтам-планкам (снимки 1440/390)"
       - "Блоки обоих направлений в каталоге V5-01 со слотами; тесты каталога (контраст, фолбэк, запреты) зелёные"
+  - id: V5-10
+    title: "Браузер сборки в platform-api: критик слотов и снимки 390/1440 в режиме ролей"
+    milestone: V5
+    deps: [V5-03]
+    specs: ["specs/product.yaml#decisions.D80_v5", "specs/product.yaml#decisions.D81_v5_finish"]
+    owner: platform
+    parallel_group: v5-b
+    estimate_days: 1
+    status: done
+    claimed_by: session_01UabwYFmaRsazmX7GyhWX34
+    owns: ["apps/platform-api/src/builds-v3/host.ts", "apps/platform-api/src/builds-v3/report/**", "apps/platform-api/package.json", "apps/platform-api/test/v5-eval-shots.test.ts", "tools/eval/v5/README.md"]
+    description: >
+      host.inspect (Chromium процесса, criticInspector) подключён к V3Host сборки флагмана: при WIZARD_BUILD_ROLES=1 критик слотов получает реальные проверки. Отчёт сборки хранит снимки 390 и 1440 каждой страницы сайта (route в ReportShot); команда eval-shots складывает снимки главной в <каталог>/<бриф>/{1440,390}.png для стенда V5-02.
+    acceptance:
+      - "При наличии браузера V3Host.inspect задан; без браузера — нет (роли пропускают критика)"
+      - "Отчёт хранит снимки 390 и 1440 для каждой страницы site.json (главная первой)"
+      - "eval-shots пишет <бриф>/{1440,390}.png в формате стенда (тест)"
   - id: M4-01
     title: "Лендинг под финальным именем, самостоятельная регистрация, нагрузочный тест 200 одновременных прогонов"
     milestone: M4

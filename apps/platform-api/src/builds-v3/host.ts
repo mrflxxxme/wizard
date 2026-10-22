@@ -643,20 +643,16 @@ export async function buildByBrief(
   });
   // V3-12 / V4-06: the page composer (skeleton without a model; pages as code through host.route); the judge of the
   // home page's two first screens sees them in the process Chromium (the critic's inspector).
-  const composer =
-    o.composer ??
-    createPageComposer(
-      provider && withBrowser
-        ? {
-            inspect: criticInspector({
-              browser: provider,
-              ...(o.files ? { photo: criticLibraryPhotos(o.files) } : {}),
-              data: demoRows,
-              log: criticLog(host.run.id, systemId),
-            }),
-          }
-        : {},
-    );
+  const inspect =
+    provider && withBrowser
+      ? criticInspector({
+          browser: provider,
+          ...(o.files ? { photo: criticLibraryPhotos(o.files) } : {}),
+          data: demoRows,
+          log: criticLog(host.run.id, systemId),
+        })
+      : undefined;
+  const composer = o.composer ?? createPageComposer(inspect ? { inspect } : {});
   const v3: V3Host = {
     route: report.route(host.route),
     runStep: host.runStep,
@@ -696,6 +692,8 @@ export async function buildByBrief(
         checkScenario(host, report.provider(provider), withBrowser, input, promiseCheck),
       ),
     goalBrowser: withBrowser,
+    // V5-10: the browser of the roles' slot critic and of its 390/1440 snapshots (WIZARD_BUILD_ROLES=1).
+    ...(inspect ? { inspect } : {}),
     // V3-13: the visual critic in the process Chromium by default — with the platform's composer (its site model).
     // V3-14: the template gate with the process browser (without one the stage stays skipped); o.hooks override.
     hooks: {
