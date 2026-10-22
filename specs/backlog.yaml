@@ -2908,8 +2908,8 @@ tasks:
     owner: platform
     parallel_group: v5-b
     estimate_days: 3
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: session_01Pz5BvHA4qW7PwCY6qJcpda
     owns: ["packages/agents/src/interview-v3/**", "packages/agents/src/builder/v3/directions/**"]
     description: >
       Поток А, Sonnet. Блоки бизнес/стиль/система, 12–18 шагов, гипотеза и кнопки в каждом вопросе, «Сделай сам»; 2–3 конкурента через поиск в РФ; 8 вайбов живыми превью hero; референс через vision в токены (D80 (5), (7)).
