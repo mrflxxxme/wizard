@@ -46,6 +46,8 @@ export const DEFAULT_V3_BUDGETS: Readonly<V3Budgets> = {
   scenarioMin: 40,
   // V4-10: 20 small photos and a short answer; the upper bound takes Kimi K3 of the chain (≈ 4 ₽).
   photos: 6,
+  // V5-03: seven calls of the chain, the dearest model of a route bounds each; the build cap stays 500 ₽ (D80 (6)).
+  roles: 220,
 };
 
 const rubText = (x: number) => `${Math.round(x).toLocaleString("ru-RU")} ₽`;

@@ -38,6 +38,11 @@ export const CALL_TYPES = [
   "repo_review",
   "page_edit",
   "photo_pick",
+  "role_strategist",
+  "role_copywriter",
+  "role_editor",
+  "role_director",
+  "role_judge",
 ] as const;
 
 /** Real texts per payload class; the router sees these through @wizard/pii.detect. */

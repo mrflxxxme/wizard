@@ -66,6 +66,17 @@ export {
   WHERE_RE,
 } from "./rubric.js";
 export {
+  SLOT_CRITIC_ROUNDS,
+  SLOT_CRITIC_TOOL,
+  type SlotCritique,
+  type SlotEdit,
+  setSlot,
+  slotCritiqueMessages,
+  slotCritiqueSchema,
+  slotCritiqueTool,
+  slotOutline,
+} from "./slots.js";
+export {
   type CriticInspectInput,
   type CriticInspection,
   type CriticInspector,
