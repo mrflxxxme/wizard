@@ -1,4 +1,4 @@
-// V5-01 block catalog: machine-readable specs, both accepted bar sites assembled from catalog blocks with content that
+// V5-01 and V5-09 block catalog: machine-readable specs, both accepted bar sites assembled from catalog blocks with content that
 // fits the slots, contrast AA, a still final frame without hydration, the bans of grill-11 (8), a snapshot per block.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -20,6 +20,8 @@ import {
   templateMarkupErrors,
 } from "../src/index.js";
 import { BakeryLoaf, bakeryBlocks } from "../src/v3/bar/heroes/bakery.js";
+import { BureauSite, bureauBlocks } from "../src/v3/bar/heroes/bureau.js";
+import { ClinicSite, clinicBlocks } from "../src/v3/bar/heroes/clinic.js";
 import { ServiceAsk, serviceBlocks } from "../src/v3/bar/heroes/service.js";
 import { BAR_PHOTOS, type PhotoSlot } from "../src/v3/bar/photos.js";
 import type { Photo } from "../src/v3/bar/still.js";
@@ -32,7 +34,12 @@ const photos = Object.fromEntries(
     { src: `/${p.file}`, alt: p.alt, credit: `${p.author} / Pexels` },
   ]),
 ) as Record<PhotoSlot, Photo>;
-const pages = { masterskaya: bakeryBlocks(photos), "nochnoy-produkt": serviceBlocks(photos) } as const;
+const pages = {
+  masterskaya: bakeryBlocks(photos),
+  "nochnoy-produkt": serviceBlocks(photos),
+  "chistaya-medicina": clinicBlocks(photos),
+  redaktsiya: bureauBlocks(photos),
+} as const;
 const dirs = Object.keys(DIRECTIONS) as DirectionId[];
 const html = (id: string, content: unknown) =>
   renderToStaticMarkup(
@@ -97,7 +104,7 @@ describe("the accepted sites are assembled from the catalog (grill-11, round 4)"
   });
 
   test("the pages render with one h1, the brand mark, prices and photo credits", () => {
-    for (const Site of [BakeryLoaf, ServiceAsk]) {
+    for (const Site of [BakeryLoaf, ServiceAsk, ClinicSite, BureauSite]) {
       const out = renderToStaticMarkup(createElement(Site, { photos }));
       expect(out.match(/<h1/g)).toHaveLength(1);
       expect(out).toContain("<svg");

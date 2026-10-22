@@ -5,12 +5,14 @@ import { type ComponentType, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import BakerySite from "./bakery/site.js";
 import { BakeryLoaf } from "./heroes/bakery.js";
+import { BureauSite } from "./heroes/bureau.js";
+import { ClinicSite } from "./heroes/clinic.js";
 import { ServiceAsk } from "./heroes/service.js";
 import type { PhotoSlot } from "./photos.js";
 import ServiceSite from "./service/site.js";
 import type { Photo } from "./still.js";
 
-type Site = "bakery" | "service";
+type Site = "bakery" | "service" | "clinic" | "bureau";
 type BarData = {
   photos: Record<PhotoSlot, Photo>;
   sites: Site[];
@@ -29,6 +31,9 @@ type Hero = {
 export const HEROES: Hero[] = [
   { id: "b5", site: "bakery", label: "П5 · Один хлеб", Screen: BakeryLoaf },
   { id: "s5", site: "service", label: "С5 · Опишите проблему", Screen: ServiceAsk },
+  // V5-09: the bar sites of «Чистая медицина» and «Редакция».
+  { id: "m1", site: "clinic", label: "Медицина · Тридцать два", Screen: ClinicSite },
+  { id: "r1", site: "bureau", label: "Редакция · Бюро Лаптевой", Screen: BureauSite },
 ];
 
 function Heroes({ data }: { data: BarData }) {
@@ -69,7 +74,12 @@ function Heroes({ data }: { data: BarData }) {
   );
 }
 
-const SITES: Record<Site, string> = { bakery: "Мастерская: пекарня", service: "Ночной продукт: автосервис" };
+const SITES: Record<Site, string> = {
+  bakery: "Мастерская: пекарня",
+  service: "Ночной продукт: автосервис",
+  clinic: "Чистая медицина: стоматология",
+  bureau: "Редакция: бюро переводов",
+};
 
 function Preview({ data }: { data: BarData }) {
   const first = data.sites[0] ?? "bakery";

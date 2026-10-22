@@ -3,8 +3,10 @@
 // oven hour start hidden and play in view; on 390 px and with prefers-reduced-motion they stay in their final frame.
 import { createElement } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { MMoment, NStatus } from "../src/index.js";
+import { EdProof, MedPlan, MMoment, NStatus } from "../src/index.js";
 import { bakeryBlocks } from "../src/v3/bar/heroes/bakery.js";
+import { bureauBlocks } from "../src/v3/bar/heroes/bureau.js";
+import { clinicBlocks } from "../src/v3/bar/heroes/clinic.js";
 import { serviceBlocks } from "../src/v3/bar/heroes/service.js";
 import type { Photo } from "../src/v3/bar/still.js";
 import { type Rendered, render } from "./helpers/dom.js";
@@ -12,7 +14,9 @@ import { type Rendered, render } from "./helpers/dom.js";
 const photo: Photo = { src: "/p.jpg", alt: "фото", credit: "Автор / Pexels" };
 const photos = new Proxy({}, { get: () => photo }) as never;
 const content = (id: string) =>
-  [...bakeryBlocks(photos), ...serviceBlocks(photos)].find((b) => b.id === id)?.content as never;
+  [...bakeryBlocks(photos), ...serviceBlocks(photos), ...clinicBlocks(photos), ...bureauBlocks(photos)].find(
+    (b) => b.id === id,
+  )?.content as never;
 const screen = (o: { wide: boolean; reduce: boolean }) =>
   vi.spyOn(window, "matchMedia").mockImplementation(
     (q: string) =>
@@ -56,6 +60,30 @@ describe("signature moments after hydration", () => {
   test("wide screen with motion: messages wait to arrive", async () => {
     screen({ wide: true, reduce: false });
     r = await render(createElement(NStatus, { content: content("nochnoy-produkt.status") }));
+    expect(hidden(r)).toBeGreaterThan(0);
+  });
+
+  // V5-09: the treatment plan of «Чистая медицина» and the second reading of «Редакция».
+  test.each([
+    { wide: false, reduce: false, name: "390 px" },
+    { wide: true, reduce: true, name: "reduced motion" },
+  ])("$name: the plan total and the editor's notes stand in their final frame", async (o) => {
+    screen(o);
+    r = await render(createElement(MedPlan, { content: content("chistaya-medicina.plan") }));
+    expect(r.container.textContent).toMatch(/57\s400/u);
+    expect(hidden(r)).toBe(0);
+    r.unmount();
+    r = await render(createElement(EdProof, { content: content("redaktsiya.proof") }));
+    expect(r.container.textContent).toContain("IULIIA");
+    expect(hidden(r)).toBe(0);
+  });
+
+  test("wide screen with motion: plan lines and margin notes wait to appear", async () => {
+    screen({ wide: true, reduce: false });
+    r = await render(createElement(MedPlan, { content: content("chistaya-medicina.plan") }));
+    expect(hidden(r)).toBeGreaterThan(0);
+    r.unmount();
+    r = await render(createElement(EdProof, { content: content("redaktsiya.proof") }));
     expect(hidden(r)).toBeGreaterThan(0);
   });
 });

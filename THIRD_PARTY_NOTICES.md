@@ -154,3 +154,25 @@ Job `sandbox` (`.github/workflows/sandbox.yml`, M2-01) скачивает их �
 | Пакет | Лицензия | Где используется |
 |---|---|---|
 | Lighthouse | Apache-2.0, Copyright (c) Google LLC | только devDependency CI: отчёт mobile (perf ≥ 85, LCP ≤ 2,5 с) подаётся в `checkEffects` (`@wizard/build`); в бандл не входит, в рантайме не работает |
+
+## Направления «Чистая медицина» и «Редакция» (V5-09)
+
+Блоки `chistaya-medicina.*` (`packages/ui-kit/src/v4/blocks/medicine/**`) и `redaktsiya.*` (`packages/ui-kit/src/v4/blocks/editorial/**`) нарезаны из сайтов-планок «Тридцать два» и «Бюро Лаптевой» (`packages/ui-kit/src/v3/bar/heroes/clinic.tsx`, `bureau.tsx`) и написаны своим кодом. Сторонний код — только motion (MIT) для фирменных моментов `chistaya-medicina.plan` (строки плана и итог) и `redaktsiya.proof` (правка красным карандашом) и Tailwind CSS v4 (MIT), как в разделе выше.
+
+Шрифты (OFL-1.1, уже в таблице шрифтов тем выше, файлы из @fontsource 5.3.0 в `packages/ui-kit/fonts/`): «Чистая медицина» — Wix Madefor Display 700 (© 2021 The Wix Madefor Project Authors) и IBM Plex Sans 400 (© 2019 IBM Corp.); «Редакция» — Cormorant Garamond 700 (© 2015 The Cormorant Project Authors) и Commissioner 400 (© 2019 The Commissioner Project Authors).
+
+Фото — копии Pexels по Pexels License (https://www.pexels.com/license/), автор и страница каждого — в `packages/ui-kit/src/v3/bar/photos.ts`, в подвале сайтов строка «Фото: <автор> / Pexels»:
+
+| Слот | Автор | Страница |
+|---|---|---|
+| med-hero | Anna Shvets | https://www.pexels.com/photo/man-having-dental-check-up-3845806/ |
+| med-room | Pavel Danilyuk | https://www.pexels.com/photo/photo-of-a-dental-chair-6812479/ |
+| med-dr-1 | Emily Gaibor | https://www.pexels.com/photo/confident-female-dentist-in-modern-dental-clinic-37458147/ |
+| med-dr-2 | Pavel Danilyuk | https://www.pexels.com/photo/photo-of-a-dentist-holding-a-tool-6812464/ |
+| med-dr-3 | Tima Miroshnichenko | https://www.pexels.com/photo/female-doctor-holding-a-pen-5407222/ |
+| med-kid | Nadezhda Moryak | https://www.pexels.com/photo/dentist-showing-a-dental-tool-to-patient-7800560/ |
+| ed-desk | Ron Lach | https://www.pexels.com/photo/a-woman-proof-reading-a-script-7967586/ |
+| ed-portrait | MART PRODUCTION | https://www.pexels.com/photo/woman-in-brown-coat-7222322/ |
+| ed-city | Lesya Kikh | https://www.pexels.com/photo/birds-eye-view-of-yekaterinburg-11914156/ |
+
+Знаки «Тридцать два» (моляр одной линией) и «Бюро Лаптевой» (Л с корректорским знаком вставки) нарисованы своим кодом; бизнесы, люди, реквизиты и номер лицензии вымышлены.

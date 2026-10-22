@@ -3,6 +3,8 @@
 // palettes grill-11 (8) bans (cream + serif + terracotta, violet-blue gradient, black + acid accent).
 import type { DesignSystemV3 } from "../../v3/design/index.js";
 import { designSystemV3, font } from "../../v3/design/system.js";
+import { EDITORIAL_BRAND, EDITORIAL_DS } from "./editorial/design.js";
+import { MEDICINE_BRAND, MEDICINE_DS } from "./medicine/design.js";
 import type { Direction, DirectionId } from "./types.js";
 
 /** «Мастерская»: cobalt of enamel bread tins on a cool white, Alegreya headings, Golos Text body. */
@@ -74,6 +76,32 @@ export const DIRECTIONS: Record<DirectionId, Direction> = {
     signature: {
       block: "nochnoy-produkt.status",
       moment: "Чат мастера: сообщения приходят по одному, этапы ремонта заполняются до текущего",
+    },
+  },
+  "chistaya-medicina": {
+    id: "chistaya-medicina",
+    title: "Чистая медицина",
+    niches: ["стоматология", "клиника", "медицинский центр", "косметология", "ветеринарная клиника"],
+    grammar:
+      "Сайт как медицинский бланк. Первый экран и есть запись: предложение с ценой приёма, свободные окна с врачом и кабинетом, поле телефона. Холодный белый, линии вместо карточек, мелкие подписи капителью, крупные ровные цифры Wix Madefor Display для цен и времени. Фото прямыми кадрами до края, портреты врачей 4:5.",
+    design: MEDICINE_DS,
+    brandChoice: MEDICINE_BRAND,
+    signature: {
+      block: "chistaya-medicina.plan",
+      moment: "План лечения заполняется по строке, итог поднимается снизу, затем штамп «Цена зафиксирована»",
+    },
+  },
+  redaktsiya: {
+    id: "redaktsiya",
+    title: "Редакция",
+    niches: ["бюро переводов", "юрист", "эксперт", "студия услуг", "курсы"],
+    grammar:
+      "Сайт как газетная полоса. Шапка с названием над двойной линейкой, колонки разделены тонкими вертикальными линиями. Заголовок Cormorant Garamond до 2,2 дисплейного кегля, прайс оглавлением с отточиями, буквица в первом абзаце. Фото чёрно-белые, с подписью курсивом; один красный акцент редакторского карандаша.",
+    design: EDITORIAL_DS,
+    brandChoice: EDITORIAL_BRAND,
+    signature: {
+      block: "redaktsiya.proof",
+      moment: "Красный карандаш зачёркивает слово переводчика, вписывает верное и оставляет пометку на полях",
     },
   },
 };

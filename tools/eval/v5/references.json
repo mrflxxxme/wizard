@@ -1,0 +1,83 @@
+{
+  "$comment": "V5-02, grill-12 (5): 8 снимков шаблонов poehali.dev (только снимки экрана 1440 и 390, код и тексты не копируются, GZ-03) и 2 сайта-планки из packages/ui-kit. Снимки лежат в tools/fixtures/eval/v5/refs/<id>/{1440,390}.png; нет файла — «снимок не получен».",
+  "refs": [
+    {
+      "id": "ref-poehali-coffeeshop",
+      "kind": "poehali",
+      "brief": "v5-01-coffee-shop",
+      "template": "https://poehali.dev/templates/coffeeshop-12",
+      "demo": "https://drinkit-desktop-app-1--preview.poehali.dev/"
+    },
+    {
+      "id": "ref-poehali-bistro",
+      "kind": "poehali",
+      "brief": "v5-02-retro-bistro",
+      "template": "https://poehali.dev/templates/retro-bistro",
+      "demo": "https://byte-revolution--preview.poehali.dev/"
+    },
+    {
+      "id": "ref-poehali-voyages",
+      "kind": "poehali",
+      "brief": "v5-03-tour-operator",
+      "template": "https://poehali.dev/templates/horizon-voyages",
+      "demo": "https://cloud-storage-upgrade--preview.poehali.dev/"
+    },
+    {
+      "id": "ref-poehali-wabi",
+      "kind": "poehali",
+      "brief": "v5-04-interior-studio",
+      "template": "https://poehali.dev/templates/wabi-studio",
+      "demo": "https://quantum-data-matrix--preview.poehali.dev/"
+    },
+    {
+      "id": "ref-poehali-insurance",
+      "kind": "poehali",
+      "brief": "v5-05-insurance-broker",
+      "template": "https://poehali.dev/templates/clearshield-insurance",
+      "demo": "https://eco-sustainability-initiative--preview.poehali.dev/"
+    },
+    {
+      "id": "ref-poehali-tea",
+      "kind": "poehali",
+      "brief": "v5-06-tea-shop",
+      "template": "https://poehali.dev/templates/erba-mate",
+      "demo": "https://project-cosmos-creation--preview.poehali.dev/"
+    },
+    {
+      "id": "ref-poehali-realty",
+      "kind": "poehali",
+      "brief": "v5-07-realty-agency",
+      "template": "https://poehali.dev/templates/hously-studio",
+      "demo": "https://moonlight-harbor-exploration--preview.poehali.dev/"
+    },
+    {
+      "id": "ref-poehali-saas",
+      "kind": "poehali",
+      "brief": "v5-08-analytics-saas",
+      "template": "https://poehali.dev/templates/datapulse",
+      "demo": "https://sky-innovation-project--preview.poehali.dev/"
+    },
+    {
+      "id": "ref-plank-masterskaya",
+      "kind": "plank",
+      "brief": "v5-09-bakery",
+      "direction": "masterskaya",
+      "source": "packages/ui-kit (V5-01/V5-09): первый экран сайта-планки, снимок docs/prototypes/blocks, перекодирован в PNG (формат файла не выдаёт источник судье)",
+      "source_shots": {
+        "1440": "docs/prototypes/blocks/masterskaya.hero-1440.jpg",
+        "390": "docs/prototypes/blocks/masterskaya.hero-390.jpg"
+      }
+    },
+    {
+      "id": "ref-plank-nochnoy",
+      "kind": "plank",
+      "brief": "v5-10-auto-service",
+      "direction": "nochnoy",
+      "source": "packages/ui-kit (V5-01/V5-09): первый экран сайта-планки, снимок docs/prototypes/blocks, перекодирован в PNG (формат файла не выдаёт источник судье)",
+      "source_shots": {
+        "1440": "docs/prototypes/blocks/nochnoy-produkt.hero-1440.jpg",
+        "390": "docs/prototypes/blocks/nochnoy-produkt.hero-390.jpg"
+      }
+    }
+  ]
+}
