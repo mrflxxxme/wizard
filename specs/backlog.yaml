@@ -2989,7 +2989,7 @@ tasks:
     owner: platform
     parallel_group: v5-b
     estimate_days: 2
-    status: in_progress
+    status: done
     claimed_by: session_017puH4ZoRHH43nAhmJyA2HP
     owns: ["packages/ui-kit/src/v3/bar/** (новые сайты)", "packages/ui-kit/src/v4/blocks/medicine/** (новый)", "packages/ui-kit/src/v4/blocks/editorial/** (новый)", "THIRD_PARTY_NOTICES.md"]
     description: >

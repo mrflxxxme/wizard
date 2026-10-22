@@ -125,8 +125,10 @@ if (blocksAt > 0) {
   const ORDER = {
     s5: ["hero", "prices", "booking", "status", "steps", "reviews", "contacts", "footer"],
     b5: ["hero", "menu", "moment", "order", "locations", "reviews", "footer"],
+    m1: ["hero", "prices", "plan", "doctors", "reviews", "contacts", "footer"],
+    r1: ["hero", "proof", "prices", "steps", "people", "reviews", "contacts", "footer"],
   };
-  const DIR = { b5: "masterskaya", s5: "nochnoy-produkt" };
+  const DIR = { b5: "masterskaya", s5: "nochnoy-produkt", m1: "chistaya-medicina", r1: "redaktsiya" };
   const pw = await import(
     pathToFileURL(createRequire(join(root, "package.json")).resolve("@playwright/test")).href
   );
@@ -150,7 +152,9 @@ if (blocksAt > 0) {
       for (const [name, loc] of parts) {
         await loc.scrollIntoViewIfNeeded();
         // The signature blocks play once in view (status ≈ 3 s); the rest settle at once.
-        await pg.waitForTimeout(["status", "moment", "hero"].includes(name) ? 4000 : 400);
+        await pg.waitForTimeout(
+          ["plan", "proof"].includes(name) ? 4800 : ["status", "moment", "hero"].includes(name) ? 4000 : 400,
+        );
         await loc.screenshot({ path: join(dir, `${DIR[id]}.${name}-${w}.jpg`), type: "jpeg", quality: 70 });
       }
       await pg.close();
@@ -187,7 +191,7 @@ if (!process.argv.includes("--no-shots")) {
         window.scrollTo(0, 0);
         await Promise.all([...document.images].map((i) => i.decode().catch(() => {})));
       });
-      await pg.waitForTimeout(2500);
+      await pg.waitForTimeout(process.argv.includes("--v509") ? 4500 : 2500);
       await pg.screenshot({ path: join(out, `${site}-${w}.png`), fullPage: true });
       if (process.argv.includes("--v509"))
         await pg.screenshot({

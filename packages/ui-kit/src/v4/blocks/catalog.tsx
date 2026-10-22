@@ -2,7 +2,9 @@
 // come from the accepted bar sites with room for a longer Russian word (grill-11, round 4).
 import type { ComponentType } from "react";
 import { DIRECTIONS } from "./directions.js";
+import { editorialCatalog } from "./editorial/catalog.js";
 import * as M from "./masterskaya.js";
+import { medicineCatalog } from "./medicine/catalog.js";
 import * as N from "./nochnoy.js";
 import type { Block, BlockProps, BlockSpec, DirectionId, SlotSpec } from "./types.js";
 
@@ -454,7 +456,11 @@ function catalog(): readonly Block<never>[] {
 }
 
 /** All blocks of the catalog; `Component` takes `{content, variant}` with content shaped by `spec.slots`. */
-export const BLOCKS: readonly Block<never>[] = /* @__PURE__ */ catalog();
+export const BLOCKS: readonly Block<never>[] = /* @__PURE__ */ [
+  ...catalog(),
+  ...medicineCatalog(),
+  ...editorialCatalog(),
+];
 
 /** A block by id; throws on an unknown id. */
 export function block(id: string): Block<never> {
@@ -498,8 +504,8 @@ function check(slots: Record<string, SlotSpec>, v: Record<string, unknown>, at: 
       )
         out.push(`${p}: фото без src, alt или автора`);
     } else if (s.kind === "href") {
-      if (typeof x !== "string" || !/^(#[\w-]+|tel:\+\d+|https:\/\/)/.test(x))
-        out.push(`${p}: ссылка не #, tel: или https:`);
+      if (typeof x !== "string" || !/^(#[\w-]+|tel:\+\d+|https:\/\/|mailto:[^@\s]+@)/.test(x))
+        out.push(`${p}: ссылка не #, tel:, mailto: или https:`);
     } else if (s.kind === "icon") {
       if (typeof x !== "string" || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(x)) out.push(`${p}: имя иконки Lucide`);
     } else if (s.kind === "list") {

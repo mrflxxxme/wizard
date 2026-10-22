@@ -16,7 +16,7 @@ const rule = "border-t border-foreground";
 
 export type NavLink = { id: string; label: string };
 
-/** Content of medicine.header. */
+/** Content of chistaya-medicina.header. */
 export type MedHeaderContent = {
   name: string;
   logo?: ReactNode;
@@ -51,10 +51,11 @@ export function MedHeader({ content: c }: BlockProps<MedHeaderContent>) {
   );
 }
 
-export type Slot = { time: string; doctor: string; taken?: boolean };
+/** A window of the schedule; an empty `doctor` marks it taken. */
+export type Slot = { time: string; doctor: string };
 export type SlotDay = { id: string; label: string; slots: readonly Slot[] };
 
-/** Content of medicine.hero. */
+/** Content of chistaya-medicina.hero. */
 export type MedHeroContent = {
   /** Anchor of the booking form (the other blocks link to it). */
   anchor: string;
@@ -79,7 +80,7 @@ export type MedHeroContent = {
 export function MedHero({ content: c }: BlockProps<MedHeroContent>) {
   const [dayId, setDay] = useState(c.days[0]?.id ?? "");
   const day = c.days.find((d) => d.id === dayId) ?? (c.days[0] as SlotDay);
-  const firstFree = (d: SlotDay) => d.slots.find((s) => !s.taken)?.time ?? "";
+  const firstFree = (d: SlotDay) => d.slots.find((s) => s.doctor)?.time ?? "";
   const [time, setTime] = useState(firstFree(day));
   const slot = day.slots.find((s) => s.time === time);
   return (
@@ -120,10 +121,10 @@ export function MedHero({ content: c }: BlockProps<MedHeroContent>) {
                 <button
                   key={s.time}
                   type="button"
-                  disabled={s.taken}
+                  disabled={!s.doctor}
                   aria-pressed={s.time === time}
                   onClick={() => setTime(s.time)}
-                  className={`min-h-12 rounded-control border text-lg ${num} ${s.taken ? "border-line text-muted-foreground line-through" : s.time === time ? "border-accent bg-accent text-accent-ink" : "border-border hover:border-accent"} ${focus}`}
+                  className={`min-h-12 rounded-control border text-lg ${num} ${!s.doctor ? "border-line text-muted-foreground line-through" : s.time === time ? "border-accent bg-accent text-accent-ink" : "border-border hover:border-accent"} ${focus}`}
                 >
                   {s.time}
                 </button>
@@ -174,7 +175,7 @@ export function MedHero({ content: c }: BlockProps<MedHeroContent>) {
 
 export type PriceRow = { name: string; what: string; price: number };
 
-/** Content of medicine.prices. */
+/** Content of chistaya-medicina.prices. */
 export type MedPricesContent = {
   anchor: string;
   title: string;
@@ -226,7 +227,7 @@ export function MedPrices({ content: c }: BlockProps<MedPricesContent>) {
 
 export type PlanLine = { tooth: string; item: string; price: number };
 
-/** Content of medicine.plan (the signature). */
+/** Content of chistaya-medicina.plan (the signature). */
 export type MedPlanContent = {
   anchor: string;
   title: string;
@@ -280,7 +281,7 @@ export function MedPlan({ content: c }: BlockProps<MedPlanContent>) {
           <ul className="m-0 list-none p-0">
             {c.sheet.lines.map((l, i) => (
               <motion.li
-                key={`${l.tooth}-${l.item}`}
+                key={`${l.tooth}-${l.item}-${still}`}
                 {...line(i)}
                 className="grid grid-cols-[3.5rem_1fr_auto] gap-x-4 border-b border-line py-3 text-base"
               >
@@ -293,6 +294,7 @@ export function MedPlan({ content: c }: BlockProps<MedPlanContent>) {
           <div className="mt-4 flex items-end justify-between gap-4">
             <p className="text-base font-semibold">{c.sheet.totalLabel}</p>
             <motion.p
+              key={`total-${still}`}
               className={`text-[calc(var(--ds-text-display)*0.9)] leading-none lg:text-[calc(var(--ds-text-display)*1.2)] ${num}`}
               {...(still
                 ? {}
@@ -308,6 +310,7 @@ export function MedPlan({ content: c }: BlockProps<MedPlanContent>) {
           </div>
         </div>
         <motion.p
+          key={`stamp-${still}`}
           aria-hidden="true"
           className="absolute -top-4 right-4 m-0 -rotate-6 border-2 border-accent bg-card px-3 py-1 text-sm font-bold uppercase tracking-[0.12em] text-accent-text lg:right-10"
           {...(still
@@ -336,7 +339,7 @@ export type Doctor = {
   photo: Photo;
 };
 
-/** Content of medicine.doctors. */
+/** Content of chistaya-medicina.doctors. */
 export type MedDoctorsContent = {
   anchor: string;
   title: string;
@@ -381,7 +384,7 @@ export function MedDoctors({ content: c }: BlockProps<MedDoctorsContent>) {
   );
 }
 
-/** Content of medicine.reviews. */
+/** Content of chistaya-medicina.reviews. */
 export type MedReviewsContent = {
   anchor: string;
   title: string;
@@ -432,7 +435,7 @@ export function MedReviews({ content: c }: BlockProps<MedReviewsContent>) {
   );
 }
 
-/** Content of medicine.contacts. */
+/** Content of chistaya-medicina.contacts. */
 export type MedContactsContent = {
   anchor: string;
   title: string;
@@ -488,7 +491,7 @@ export function MedContacts({ content: c }: BlockProps<MedContactsContent>) {
   );
 }
 
-/** Content of medicine.footer. */
+/** Content of chistaya-medicina.footer. */
 export type MedFooterContent = {
   name: string;
   logo?: ReactNode;

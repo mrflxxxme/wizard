@@ -15,7 +15,7 @@ const bw = "grayscale contrast-[1.08]";
 
 export type NavLink = { id: string; label: string };
 
-/** Content of editorial.header. */
+/** Content of redaktsiya.header. */
 export type EdHeaderContent = {
   name: string;
   logo?: ReactNode;
@@ -66,7 +66,7 @@ export function EdHeader({ content: c }: BlockProps<EdHeaderContent>) {
 
 export type TocRow = { name: string; price: number; plus?: string; term: string };
 
-/** Content of editorial.hero. */
+/** Content of redaktsiya.hero. */
 export type EdHeroContent = {
   header: EdHeaderContent;
   kicker: string;
@@ -166,7 +166,7 @@ export function EdHero({ content: c }: BlockProps<EdHeroContent>) {
 
 export type Fix = { wrong: string; right: string; note: string };
 
-/** Content of editorial.proof (the signature). */
+/** Content of redaktsiya.proof (the signature). */
 export type EdProofContent = {
   anchor: string;
   kicker: string;
@@ -230,7 +230,7 @@ export function EdProof({ content: c }: BlockProps<EdProofContent>) {
             const i = n++;
             return (
               <li
-                key={l.label}
+                key={`${l.label}-${still}`}
                 className="grid gap-x-6 border-b border-line py-3 md:grid-cols-[11rem_1fr_15rem]"
               >
                 <span className="text-sm text-muted-foreground">{l.label}</span>
@@ -269,7 +269,7 @@ export function EdProof({ content: c }: BlockProps<EdProofContent>) {
 
 export type Lang = { name: string; doc: number; page: number; term: string };
 
-/** Content of editorial.prices. */
+/** Content of redaktsiya.prices. */
 export type EdPricesContent = {
   anchor: string;
   title: string;
@@ -336,7 +336,7 @@ export function EdPrices({ content: c }: BlockProps<EdPricesContent>) {
   );
 }
 
-/** Content of editorial.steps. */
+/** Content of redaktsiya.steps. */
 export type EdStepsContent = {
   anchor: string;
   title: string;
@@ -368,7 +368,7 @@ export function EdSteps({ content: c }: BlockProps<EdStepsContent>) {
   );
 }
 
-/** Content of editorial.people. */
+/** Content of redaktsiya.people. */
 export type EdPeopleContent = {
   anchor: string;
   quote: string;
@@ -424,7 +424,7 @@ export function EdPeople({ content: c }: BlockProps<EdPeopleContent>) {
   );
 }
 
-/** Content of editorial.reviews. */
+/** Content of redaktsiya.reviews. */
 export type EdReviewsContent = {
   anchor: string;
   title: string;
@@ -469,7 +469,7 @@ export function EdReviews({ content: c }: BlockProps<EdReviewsContent>) {
   );
 }
 
-/** Content of editorial.contacts. */
+/** Content of redaktsiya.contacts. */
 export type EdContactsContent = {
   anchor: string;
   title: string;
@@ -529,7 +529,7 @@ export function EdContacts({ content: c }: BlockProps<EdContactsContent>) {
   );
 }
 
-/** Content of editorial.footer. */
+/** Content of redaktsiya.footer. */
 export type EdFooterContent = {
   name: string;
   logo?: ReactNode;

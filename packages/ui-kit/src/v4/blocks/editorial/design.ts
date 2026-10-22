@@ -16,7 +16,7 @@ export const EDITORIAL_DS: DesignSystemV3 = /* @__PURE__ */ (() => {
     ...ds,
     name: "Редакция",
     fonts: {
-      display: font("Cormorant Garamond", 600),
+      display: font("Cormorant Garamond", 700),
       text: font("Commissioner", 400),
       why: "газетный заголовок и спокойный текст справки",
     },
@@ -27,7 +27,7 @@ export const EDITORIAL_DS: DesignSystemV3 = /* @__PURE__ */ (() => {
       light: {
         ...ds.palette.light,
         bg: "oklch(0.975 0.003 250)",
-        surfaceAlt: "oklch(0.94 0.004 250)",
+        surfaceAlt: "oklch(0.95 0.004 250)",
         line: "oklch(0.86 0.004 250)",
       },
     },

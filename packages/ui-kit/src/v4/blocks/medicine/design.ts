@@ -3,7 +3,7 @@
 import type { DesignSystemV3 } from "../../../v3/design/index.js";
 import { designSystemV3, font } from "../../../v3/design/system.js";
 
-/** «Чистая медицина»: scrub green on cool white, Inter Tight headings and figures, IBM Plex Sans body. */
+/** «Чистая медицина»: scrub green on cool white, Wix Madefor Display headings and figures, IBM Plex Sans body. */
 export const MEDICINE_DS: DesignSystemV3 = /* @__PURE__ */ (() => {
   const ds = designSystemV3({
     archetype: "calm_medical",
@@ -16,7 +16,7 @@ export const MEDICINE_DS: DesignSystemV3 = /* @__PURE__ */ (() => {
     ...ds,
     name: "Чистая медицина",
     fonts: {
-      display: font("Inter Tight", 600),
+      display: font("Wix Madefor Display", 700),
       text: font("IBM Plex Sans", 400),
       why: "ровные цифры бланка и стерильной маркировки",
     },
@@ -31,4 +31,4 @@ export const MEDICINE_DS: DesignSystemV3 = /* @__PURE__ */ (() => {
 })();
 
 export const MEDICINE_BRAND =
-  "Зелёный хирургического костюма #1D6B57 на холодном белом вместо голубой медицинской пастели; Inter Tight даёт крупные ровные цифры цен и времени, IBM Plex Sans читается как бланк назначения.";
+  "Зелёный хирургического костюма #1D6B57 на холодном белом вместо голубой медицинской пастели; Wix Madefor Display даёт крупные ровные цифры цен и времени, IBM Plex Sans читается как бланк назначения.";
