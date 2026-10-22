@@ -2925,8 +2925,8 @@ tasks:
     owner: platform
     parallel_group: v5-b
     estimate_days: 1
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: session_01SCSto6oDqMyMauSqTEHA6B
     owns: ["packages/build/src/gates/effects.ts (новый)", "packages/build/src/index.ts"]
     description: >
       Поток Б, Sonnet. Бюджет D80 (4). Lighthouse (Apache-2.0) — devDependency для CI (грилл-12 (7)); вес JS и reduced-motion — статическими проверками.
