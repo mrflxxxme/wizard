@@ -1,0 +1,87 @@
+# V5-02 (grill-12 (3), (5)): the live run of the evaluation stand — Wizard's snapshots against the references, three vision
+# judges, the report and the ribbon of pairs as an artifact. By hand only. The spend cap of the run is in ₽ and never above
+# 1 500 ₽ (the wave's ceiling is 5 000 ₽; tools/eval/v5/lib.mjs refuses a higher cap). No key in the install step.
+name: eval-v5
+
+on:
+  workflow_dispatch:
+    inputs:
+      set:
+        description: "full — все 10 брифов, slice — срез из 3"
+        type: choice
+        options: [full, slice]
+        default: slice
+      cap_rub:
+        description: "Потолок трат прогона, ₽ (не больше 1500)"
+        type: string
+        default: "300"
+      seed:
+        description: "Seed порядка пар (пусто — по умолчанию)"
+        type: string
+        default: ""
+      shots_run_id:
+        description: "Номер запуска, чей артефакт wizard-shots (<бриф>/1440.png, 390.png) содержит снимки Wizard; пусто — «снимок не получен»"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: eval-v5
+  cancel-in-progress: false
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: eval-live
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Snapshots of Wizard
+        if: inputs.shots_run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: wizard-shots
+          path: wizard-shots
+          run-id: ${{ inputs.shots_run_id }}
+          github-token: ${{ github.token }}
+      - name: Cap
+        env:
+          CAP: ${{ inputs.cap_rub }}
+        run: |
+          case "$CAP" in ''|*[!0-9]*) echo "потолок — целое число ₽"; exit 2;; esac
+          [ "$CAP" -le 1500 ] || { echo "потолок не больше 1500 ₽"; exit 2; }
+      - name: Run
+        env:
+          WIZARD_LLM_MODE: live
+          SET: ${{ inputs.set }}
+          CAP: ${{ inputs.cap_rub }}
+          SEED: ${{ inputs.seed }}
+          CLOUDRU_API_KEY: ${{ secrets.CLOUDRU_API_KEY }}
+          CLOUDRU_BASE_URL: ${{ vars.CLOUDRU_BASE_URL }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          ZAI_BASE_URL: ${{ vars.ZAI_BASE_URL }}
+          MOONSHOT_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          MOONSHOT_BASE_URL: https://api.moonshot.ai/v1
+        run: |
+          args=(--mode live --set "$SET" --cap-rub "$CAP" --out eval-v5-out)
+          [ -n "$SEED" ] && args+=(--seed "$SEED")
+          [ -d wizard-shots ] && args+=(--wizard-shots wizard-shots)
+          node tools/eval/v5/cli.mjs run "${args[@]}"
+          { echo "### Стенд оценки V5"; sed -n 3,8p eval-v5-out/report.md; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: eval-v5-report
+          path: eval-v5-out/
+          if-no-files-found: warn
+          retention-days: 30

@@ -2874,8 +2874,8 @@ tasks:
     owner: platform
     parallel_group: v5-a
     estimate_days: 2
-    status: todo
-    claimed_by: null
+    status: done
+    claimed_by: session_01AUxfYR5M149NTDb5ZxSRdo
     owns: ["tools/eval/** (новый)", "tools/fixtures/eval/** (новый)"]
     description: >
       Поток Б, Sonnet (код) + Haiku (фикстуры). По грилл-12 (5): 10 брифов, 8 эталонов — снимки шаблонов poehali.dev (только снимки, код и тексты не копируются, GZ-03), 2 — сайты-планки V5-01. Судьи — модели allowlist по снимкам 1440 и 390 px, порядок пар случайный (D80 (1)). Живой прогон — workflow Actions с потолком трат.
